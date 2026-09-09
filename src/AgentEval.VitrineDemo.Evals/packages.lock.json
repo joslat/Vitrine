@@ -54,9 +54,9 @@
       },
       "OpenTelemetry.Api": {
         "type": "Direct",
-        "requested": "[1.15.3, )",
-        "resolved": "1.15.3",
-        "contentHash": "fX+fkCysfPut+qCcT3bKqyX4QN9Saf4CgX8HLOHywEVD+Xr7sULtfuypITpoDysjx8R59dn/3mWhgimMH8cm/g=="
+        "requested": "[1.18.0, )",
+        "resolved": "1.18.0",
+        "contentHash": "Dhzm5oughIY9EWckt2J1yXcEbXpki5WCL2q7prJoYxzH6C7jdkfGtPMTkUVZZ4AhjJKzQnlC+kLSIlmIVwC4Vw=="
       },
       "Azure.Core": {
         "type": "Transitive",
@@ -311,7 +311,7 @@
           "Microsoft.Agents.AI.Workflows.Generators": "[1.17.0, )",
           "Microsoft.Extensions.AI": "[10.7.0, )",
           "Microsoft.Extensions.AI.OpenAI": "[10.7.0, )",
-          "OpenTelemetry.Api": "[1.15.3, )",
+          "OpenTelemetry.Api": "[1.18.0, )",
           "System.Memory.Data": "[10.0.9, )",
           "System.Numerics.Tensors": "[10.0.9, )"
         }
