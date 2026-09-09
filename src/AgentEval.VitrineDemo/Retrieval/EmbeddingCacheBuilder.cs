@@ -10,26 +10,19 @@ using Galaxus.RecommendationAgent.Signals;
 namespace Galaxus.RecommendationAgent.Retrieval;
 
 /// <summary>
-/// The <c>--rebuild-embeddings</c> path (design §D.4): regenerates the committed product-vector
+/// The <c>--rebuild-embeddings</c> path: regenerates the committed product-vector
 /// asset from a live embedding deployment, so the real-vector retrieval path has an index to search.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>This spends money.</b> One embedding call per product — <b>99 calls</b> on the shipped
-/// catalogue. The B-6 run that produced the committed asset cost 170 calls and 13 383 prompt tokens
-/// (≈ USD 0.00027) because it also embedded 71 query texts; that half is gone, so a rebuild today is
-/// roughly 58 % of it. It is a deliberate, explicit, occasional action behind a CLI switch, never
-/// something the demo does on startup.
+/// <b>This spends money.</b> Rebuilding issues one embedding call per product: <b>99 calls</b> for
+/// the shipped catalogue. It is an explicit maintenance action behind a CLI switch, never a
+/// startup side effect. Usage is read from provider responses and reported rather than estimated.
 /// </para>
 /// <para>
-/// <b>The query asset is DELETED, and that is the B-21 fix rather than a simplification.</b> This
-/// builder used to write a second file holding 71 pre-guessed query vectors — 17 canonical prompts
-/// and 54 authored interest phrases — and <see cref="PrecomputedEmbeddingSource"/> served queries out
-/// of it. A query composed at run time is not one of 71 guesses, so it missed, came back
-/// <c>Unavailable</c>, and <c>--real-vectors</c> retrieved NOTHING. The <c>DefaultQuerySet</c>,
-/// <c>CanonicalQueries</c> and <c>AuthoredInterestPhrases</c> lists existed only to feed that file
-/// and went with it. Queries are now embedded LIVE at search time, which is what a production
-/// retrieval system does: the INDEX is precomputed, the QUERY is not.
+/// <b>Only product vectors are build artifacts.</b> Runtime queries are open-ended and must be
+/// embedded live at search time; a pre-guessed query table would be incomplete by construction.
+/// The builder therefore writes one product-id-keyed index and no query-vector asset.
 /// </para>
 /// <para>
 /// <b>It refuses to write a file that would misrepresent itself.</b> The <c>model</c> stamp is

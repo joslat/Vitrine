@@ -12,11 +12,11 @@ using ChatOptions = Microsoft.Extensions.AI.ChatOptions;
 namespace Galaxus.RecommendationAgent.Agents;
 
 /// <summary>
-/// Builds Robin, the advisory recommendation agent (design §E.2, MAF 1.17.0 exact API).
+/// Builds Robin, the advisory recommendation agent against the MAF 1.17.0 API.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Two factories, on purpose (design §0.5 / D-5).</b> <see cref="Create()"/> registers the
+/// <b>Two factories, on purpose.</b> <see cref="Create()"/> registers the
 /// THIRTEEN read-only tools and nothing else — that is what Demo 1 ships, and
 /// <see cref="ToolSurfaceInvariant.AssertReadOnly"/> throws at construction if anything
 /// mutating ever creeps in, so adding a purchase tool later cannot be done by accident: the app
@@ -93,11 +93,10 @@ public static class RecommendationAgentFactory
         var tools = registeredTools.Tools.ToArray();
 
         // Mechanical guarantee, not a promise: throws if the registered set differs from the
-        // thirteen-name read-only allow-list in either direction (§F.1). The list is AUTHORED in
+        // thirteen-name read-only allow-list in either direction. The list is AUTHORED in
         // ToolSurfaceInvariant.ReadOnlyToolNames as literal strings; the array below is
-        // ASSEMBLED from method groups. The two are independent, which is what makes the check
-        // bite instead of agreeing with itself — and it is why A-1's ten-tools-against-a-nine-name
-        // allow-list would have failed the app at startup rather than passing quietly.
+        // ASSEMBLED from method groups. Their independent authorship makes drift fail at startup
+        // instead of letting the surface validate against a second copy of itself.
         ToolSurfaceInvariant.AssertReadOnly(tools);
 
         return new ChatClientAgent(new ObservedChatClient(chatClient, events), new ChatClientAgentOptions
@@ -115,7 +114,7 @@ public static class RecommendationAgentFactory
     /// <summary>
     /// Creates the TESTED agent: the thirteen read-only tools plus <c>AddToCart</c> and
     /// <c>PlaceOrder</c> behind an approval requirement. Used only by the two eval cases that
-    /// exercise the human-confirmation gate (design §0.5 / D-5). Never shipped in Demo 1.
+    /// exercise the human-confirmation gate. Never shipped in Demo 1.
     /// </summary>
     /// <exception cref="InvalidOperationException">Azure credentials are not configured, or the commit tools are not approval-gated.</exception>
     public static ChatClientAgent CreateWithCommitTools() => CreateWithCommitTools(CreateConfiguredChatClient());
@@ -187,7 +186,7 @@ public static class RecommendationAgentFactory
         AIFunctionFactory.Create(GalaxusTools.ListDepartments),
         AIFunctionFactory.Create(GalaxusTools.GetCatalogueStatistics),
 
-        // The one sanctioned recommendation channel (§0.5 / D-1).
+        // The one sanctioned recommendation channel.
         AIFunctionFactory.Create(GalaxusTools.PresentRecommendation)
     ];
 

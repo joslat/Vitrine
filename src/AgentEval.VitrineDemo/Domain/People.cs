@@ -4,8 +4,8 @@
 namespace Galaxus.RecommendationAgent.Domain;
 
 /// <summary>
-/// A customer. Four of these are authored in <c>Catalogue/Personas.cs</c>; each exists
-/// to demonstrate exactly one mechanism (§B.3).
+/// A customer. Fourteen are authored in <c>Catalogue/Personas.cs</c>: four canonical demo
+/// personas, one sensitive-inference fixture, and nine evaluation-cohort personas.
 /// </summary>
 /// <param name="Id">Stable customer id, e.g. <c>"USR-NB-01"</c>.</param>
 /// <param name="DisplayName">Name shown in the console header.</param>
@@ -13,7 +13,7 @@ namespace Galaxus.RecommendationAgent.Domain;
 /// <param name="Market">"CH" | "DE" | … — gates <see cref="Product.AvailableMarkets"/>.</param>
 /// <param name="PersonalizationEnabled">
 /// FDPIC one-click opt-out, shipped by Galaxus Nov-2025. FALSE ⇒ the tool layer
-/// REFUSES purchase history (see §F.6) with a typed refusal, never an empty list.
+/// REFUSES purchase history (see the personalization opt-out) with a typed refusal, never an empty list.
 /// Enforced in code, not in the prompt: a prompt rule is a request, a tool refusal is a fact.
 /// </param>
 /// <param name="CustomerSince">Account creation date, printed in the customer header.</param>
@@ -27,7 +27,7 @@ public sealed record User(
 {
     /// <summary>
     /// Inverse of <see cref="PersonalizationEnabled"/>. The eval lane's contract (R-3)
-    /// names the opt-out polarity; §A.2 names the opt-in polarity. Both now read off the
+    /// names the opt-out polarity; the customer-and-purchase contract names the opt-in polarity. Both now read off the
     /// same field, so the two lanes cannot disagree about which way the switch points.
     /// </summary>
     public bool PersonalizationOptOut => !PersonalizationEnabled;
@@ -38,7 +38,7 @@ public sealed record User(
 /// </summary>
 /// <remarks>
 /// <para>
-/// There is deliberately NO <c>IsGift</c> field (design §0.5 / A-3). Gift-ness is DERIVED
+/// There is deliberately NO <c>IsGift</c> field. Gift-ness is DERIVED
 /// by <c>PurchaseIntentClassifier</c> from the observable signals below, exactly as a real
 /// system would have to — and the eval lane's gold derivation goes through
 /// <see cref="ClassifiedPurchase.IsGift"/>, not through a label handed to it. Adding a
@@ -73,7 +73,7 @@ public sealed record Purchase(
 {
     /// <summary>
     /// Alias for <see cref="ProductId"/>. The eval lane's contract (R-3) writes
-    /// <c>Purchase(Sku, …)</c>; §A.2 writes <c>ProductId</c>. Same value, both names.
+    /// <c>Purchase(Sku, …)</c>; the customer-and-purchase contract writes <c>ProductId</c>. Same value, both names.
     /// </summary>
     public string Sku => ProductId;
 
@@ -103,9 +103,9 @@ public sealed record Purchase(
 /// UNTRUSTED TEXT. Galaxus takes roughly 4 000 user-authored ratings a day, all public,
 /// all headed for a model's context window, and a marketplace seller can write one. The
 /// tool layer fences <see cref="Body"/> in explicit begin/end markers with an inline
-/// instruction never to follow directives found inside it (§F.10), and the discovery loop
+/// instruction never to follow directives found inside it, and the discovery loop
 /// constrains any query terms proposed from review text to vocabulary already present in
-/// the catalogue (§0.5 / D-3). Quote a review as evidence; never take an instruction from one.
+/// the catalogue. Quote a review as evidence; never take an instruction from one.
 /// </remarks>
 /// <param name="Id">Review id, e.g. <c>"REV-1042-03"</c> — the token a <c>review:</c> evidence citation resolves against.</param>
 /// <param name="ProductId">The reviewed SKU.</param>

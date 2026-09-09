@@ -12,7 +12,7 @@ namespace Galaxus.RecommendationAgent.Domain;
 /// </summary>
 /// <remarks>
 /// <para>
-/// ⚠ READ THIS BEFORE WIRING ANYTHING TO IT. Per design §0.5 / D-1 this record is
+/// ⚠ READ THIS BEFORE WIRING ANYTHING TO IT. This shared record is
 /// <b>no longer parsed out of the assistant's final text</b>. The system prompt's
 /// "return only this JSON object" contract is DELETED. The one sanctioned channel for a
 /// recommendation is the <c>PresentRecommendation(sku, reason, evidence, outOfStock, userEvidence)</c>
@@ -32,8 +32,8 @@ namespace Galaxus.RecommendationAgent.Domain;
 /// </para>
 /// </remarks>
 /// <param name="InterestMap">The code-derived signals, echoed so the answer is self-describing.</param>
-/// <param name="Recommendations">Primary tray — confidence ≥ 0.70 after banding (§F.7).</param>
-/// <param name="AlsoConsider">Secondary tray — confidence 0.45–0.69, plus out-of-stock demotions (§F.4).</param>
+/// <param name="Recommendations">Primary tray — confidence ≥ 0.70 after banding.</param>
+/// <param name="AlsoConsider">Secondary tray — confidence 0.45–0.69, plus out-of-stock demotions.</param>
 /// <param name="Replenishment">Consumables due for a repeat buy. NEVER surfaced as discovery.</param>
 /// <param name="ClarifyingQuestions">Specific, answerable questions. Non-empty whenever <paramref name="Abstained"/> is true.</param>
 /// <param name="Abstained">True when the gate fired and nothing was recommended.</param>
@@ -51,7 +51,7 @@ public sealed record RecommendationSet(
     /// Everything actually shown to the customer as a recommendation: primary tray then
     /// secondary tray, in that order. The replenishment lane is NOT included — it is not a
     /// discovery, and counting it as one is the "recommending the cartridges she has bought
-    /// five times" failure (§B.3, Sofia).
+    /// five times" failure (Sofia).
     /// </summary>
     [JsonIgnore]
     public IEnumerable<RecommendationDto> AllPresented => Recommendations.Concat(AlsoConsider);
@@ -69,7 +69,7 @@ public sealed record RecommendationSet(
         new([], [], [], [], [], Abstained: false, AbstainReason: null);
 
     /// <summary>
-    /// The abstention answer (§F.8): no recommendations, a stated reason, and the questions
+    /// The abstention answer: no recommendations, a stated reason, and the questions
     /// asked instead of a guess.
     /// </summary>
     /// <remarks>
@@ -93,15 +93,15 @@ public sealed record RecommendationSet(
 /// <remarks>
 /// Note the deliberate omission: NO price and NO stock field. The model is structurally
 /// unable to state a price. Price and availability are attached at render time from
-/// <c>CheckStockAndPrice</c> (§F.4), and any currency pattern found in
+/// <c>CheckStockAndPrice</c>, and any currency pattern found in
 /// <paramref name="WhyThis"/> drops the item with <c>dropped(stated_price)</c>. This
 /// mirrors Galaxus's own boundary — their shipped community AI is explicitly forbidden
 /// from answering price questions.
 /// </remarks>
-/// <param name="ProductId">Must resolve in the catalogue, or the item is REMOVED, not down-ranked (§F.2).</param>
+/// <param name="ProductId">Must resolve in the catalogue, or the item is REMOVED, not down-ranked.</param>
 /// <param name="WhyThis">Two sentences, addressed to the customer, naming the trade-off. Scanned for prices.</param>
-/// <param name="Evidence">The two-sided evidence. An item that cannot carry both sides is dropped (§F.3).</param>
-/// <param name="Confidence">0..1, self-reported. CALIBRATION UNKNOWN — this is a routing heuristic, not a probability (§F.7).</param>
+/// <param name="Evidence">The two-sided evidence. An item that cannot carry both sides is dropped.</param>
+/// <param name="Confidence">0..1, self-reported. CALIBRATION UNKNOWN — this is a routing heuristic, not a probability.</param>
 public sealed record RecommendationDto(
     [property: JsonPropertyName("product_id")]  string ProductId,
     [property: JsonPropertyName("why_this")]    string WhyThis,
@@ -110,7 +110,7 @@ public sealed record RecommendationDto(
 
 /// <summary>
 /// Two-sided by construction: one side points at the USER, the other at the PRODUCT.
-/// Both sides are verified against the catalogue before render (§F.3). A recommendation
+/// Both sides are verified against the catalogue before render. A recommendation
 /// that cannot produce both sides is DROPPED, not down-ranked.
 /// </summary>
 /// <remarks>
@@ -180,7 +180,7 @@ public sealed record InterestSignalDto(
 
 /// <summary>
 /// The raw arguments of ONE <c>PresentRecommendation</c> tool call — the only sanctioned
-/// recommendation channel (design §0.5 / D-1, eval contract R-4).
+/// recommendation channel (eval contract R-4).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -193,7 +193,7 @@ public sealed record InterestSignalDto(
 /// </para>
 /// </remarks>
 /// <param name="Sku">The presented <see cref="Product.Id"/>.</param>
-/// <param name="Reason">Customer-facing justification. Scanned for stated prices (§F.4).</param>
+/// <param name="Reason">Customer-facing justification. Scanned for stated prices.</param>
 /// <param name="Evidence">A citation of the form <c>attr:&lt;token&gt;</c> or <c>review:&lt;id&gt;</c>.</param>
 /// <param name="OutOfStock">Must be true when the SKU has zero stock, or defect class D2 fires.</param>
 public sealed record PresentedRecommendation(
@@ -210,7 +210,7 @@ public sealed record PresentedRecommendation(
 /// The FROZEN argument names of the <c>PresentRecommendation</c> tool. The eval reads
 /// arguments by name, so these strings are a contract, not an implementation detail —
 /// renaming a parameter without changing the const here is exactly how the two lanes drifted
-/// apart the first time (§0.5 / D-1).
+/// apart the first time.
 /// </summary>
 public static class PresentRecommendationArguments
 {
@@ -228,13 +228,13 @@ public static class PresentRecommendationArguments
 
     /// <summary>
     /// Argument name for the OPTIONAL user-side evidence — the customer signal the item is for,
-    /// and the purchase ids that evidence it (§8.1 / B-5).
+    /// and the purchase ids that evidence it.
     /// </summary>
     /// <remarks>
     /// The fifth argument, and the only optional one. It was added to the tool without a constant
     /// here, which is precisely the drift this class exists to prevent: the tool defined
     /// <c>userEvidence</c>, the eval had no name to read it by, and the two lanes were one rename
-    /// away from the §0.5 / D-1 failure with nothing to catch it. Control C-12 asserts the schema
+    /// away from a split-contract failure with nothing to catch it. Control C-12 asserts the schema
     /// handed to the model names all five of these constants.
     /// </remarks>
     public const string UserEvidence = "userEvidence";

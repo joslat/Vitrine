@@ -34,7 +34,8 @@ public static class ConsoleReport {
                 _ => gate.Passed == true ? "PASS" : "FAIL",
             };
             var score = gate.Score is { } value ? value.ToString("0.000", CultureInfo.InvariantCulture) : "—";
-            writer.WriteLine($"{state,-12} {gate.Name}");
+            var authority = gate.Authority == GateAuthority.Diagnostic ? "[DIAGNOSTIC] " : string.Empty;
+            writer.WriteLine($"{state,-12} {authority}{gate.Name}");
             writer.WriteLine($"             score {score} · null/chance baseline {FormatFloor(gate.ChanceFloor)} (descriptive; not a pass threshold)");
             writer.WriteLine($"             {gate.Evidence}");
         }
@@ -168,6 +169,24 @@ public static class ConsoleReport {
             $"{result.Workload.PlannedSubjectCalls} planned subject call(s) · " +
             $"up to {result.Workload.PlannedJudgeEvaluations} judge evaluation(s)");
         writer.WriteLine($"LLM quality pass threshold: {result.PassThreshold.ToString("0.000", CultureInfo.InvariantCulture)}");
+        writer.WriteLine(result.Configuration.Acceptance.Policy switch
+        {
+            LiveTerminalAcceptancePolicy.WilsonLowerBoundPerScenario =>
+                $"Terminal acceptance: every arm/scenario must be fully measured; a whole-trial success requires quality, response-observed, and arm-specific tool-journal/workflow-trace checks; its 95% Wilson lower bound must be >= " +
+                $"{Optional(result.Configuration.Acceptance.MinimumLowerBound)}",
+            LiveTerminalAcceptancePolicy.EveryTrialMustPass =>
+                "Terminal acceptance: every fully measured trial must pass",
+            _ => "Terminal acceptance: NOT APPLICABLE",
+        });
+        foreach (var decision in result.ScenarioAcceptances)
+        {
+            writer.WriteLine($"Scenario acceptance: {decision.ArmId} · {decision.ScenarioId} · " +
+                $"census {decision.Census.Measured}/{decision.Census.Total} measured · " +
+                $"whole-trial successes {decision.Reliability.Successes}/{decision.Reliability.Total} · " +
+                $"Wilson [{Optional(decision.Reliability.Lower)}, {Optional(decision.Reliability.Upper)}] · " +
+                $"floor {decision.MinimumLowerBound.ToString("0.000", CultureInfo.InvariantCulture)} · " +
+                $"{(decision.Passed is true ? "PASS" : decision.Passed is false ? "FAIL" : "NOT MEASURED")}");
+        }
         foreach (var arm in result.Arms) {
             writer.WriteLine($"Arm: {arm.ArmId} · {arm.Architecture} · {arm.Repetitions} repetition(s)");
             foreach (var check in arm.Checks) {

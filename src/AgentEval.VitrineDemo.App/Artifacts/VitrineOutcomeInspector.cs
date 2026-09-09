@@ -60,6 +60,11 @@ internal static class VitrineOutcomeInspector
         if (artifact.Result.LiveEvaluation is { } liveEvaluation)
         {
             AppendLiveEvaluation(detail, liveEvaluation);
+            if (artifact.Result.Gates.Count > 0)
+            {
+                AppendGates(detail, artifact.Result.Gates);
+                AppendControls(detail, artifact.Result.Controls);
+            }
             return ($"LIVE EVALUATION OUTCOME · {liveEvaluation.PlanLabel} · {liveEvaluation.TerminalStatus}",
                 detail.ToString().Trim());
         }
@@ -245,6 +250,29 @@ internal static class VitrineOutcomeInspector
                     .Append(Measured(check.Reliability.Upper)).AppendLine("]");
         }
 
+        text.AppendLine().AppendLine("Terminal per-scenario Wilson decisions:")
+            .AppendLine("  These are the exact stochastic terminal-acceptance facts: every planned trial must be fully measured; a whole-trial success means use-case quality, response observed, and the arm-specific agent tool journal or workflow trace all passed; every arm/scenario must clear its 95% Wilson lower-bound floor of 0.500. Pooled per-check summaries are diagnostic and cannot replace them.");
+        if (live.ScenarioAcceptances is not { Count: > 0 })
+        {
+            text.AppendLine("  none recorded · not applicable to non-stochastic plans and absent from compatible schema 7/8 artifacts");
+        }
+        else
+        {
+            foreach (var decision in live.ScenarioAcceptances)
+                text.Append("  · ").Append(decision.ScenarioId).Append(" · ").Append(decision.PersonaId)
+                    .Append(" · ").Append(decision.ArmId).Append(" · ").Append(decision.Architecture)
+                    .Append(" · census M/N-A/N-M/total ").Append(decision.Census.Measured).Append('/')
+                    .Append(decision.Census.NotApplicable).Append('/').Append(decision.Census.NotMeasured)
+                    .Append('/').Append(decision.Census.Total)
+                    .Append(" · whole-trial successes/total ").Append(decision.Reliability.Successes).Append('/')
+                    .Append(decision.Reliability.Total)
+                    .Append(" · Wilson [").Append(Measured(decision.Reliability.Lower)).Append(", ")
+                    .Append(Measured(decision.Reliability.Upper)).Append(']')
+                    .Append(" · confidence ").Append(Measured(decision.ConfidenceLevel))
+                    .Append(" · minimum lower bound ").Append(Measured(decision.MinimumLowerBound))
+                    .Append(" · decision ").AppendLine(Measured(decision.Passed));
+        }
+
         text.AppendLine("Evaluator-owned paired comparisons (no UI winner):");
         if (live.Comparisons.Count == 0) text.AppendLine("  none recorded");
         foreach (var comparison in live.Comparisons)
@@ -281,6 +309,10 @@ internal static class VitrineOutcomeInspector
             .Append("  Subject / judge output limits; response preview characters: ")
             .Append(configuration.SubjectMaxOutputTokens).Append(" / ").Append(configuration.JudgeMaxOutputTokens)
             .Append("; ").AppendLine(configuration.ResponsePreviewCharacters.ToString(CultureInfo.InvariantCulture));
+        if (configuration.Acceptance is { } acceptance)
+            text.Append("  Terminal acceptance: ").Append(acceptance.Policy)
+                .Append(" · confidence ").Append(Measured(acceptance.ConfidenceLevel))
+                .Append(" · minimum Wilson lower bound ").AppendLine(Measured(acceptance.MinimumLowerBound));
         AppendList(text, "  Subject provenance", configuration.Subjects.Select(subject =>
             $"{subject.ArmId} · {subject.Architecture} · model {subject.ModelId} · judge relation {subject.JudgeSubjectRelation}"));
         if (configuration.Safety is { } safety)
@@ -473,10 +505,12 @@ internal static class VitrineOutcomeInspector
 
     private static void AppendGates(StringBuilder text, IReadOnlyList<VitrineGateSnapshot> gates)
     {
-        text.AppendLine().AppendLine("Evaluation gates:");
+        text.AppendLine().AppendLine("Mandatory gates and diagnostic evaluations:")
+            .AppendLine("  Mandatory gates control the process-equivalent exit; diagnostic rows remain visible evidence but cannot fail the suite.");
         foreach (var gate in gates)
         {
             text.Append("  · ").Append(gate.Name).Append(" · ").Append(gate.Outcome)
+                .Append(" · authority ").Append(gate.EffectiveAuthority)
                 .Append(" · pass ").Append(Measured(gate.Passed))
                 .Append(" · score ").Append(Measured(gate.Score))
                 .Append(" · chance floor ").Append(Floor(gate.ChanceFloor))

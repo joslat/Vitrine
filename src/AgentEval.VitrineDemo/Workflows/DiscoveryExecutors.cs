@@ -15,7 +15,7 @@ namespace Galaxus.RecommendationAgent.Workflows;
 /// is internal to MAF, and the eval lane's structural assertions
 /// (<c>HaveTraversedEdge("CoverageReviewer", "Discovery")</c> — i.e. <i>the loop actually
 /// looped</i>) address the nodes by these strings. Renaming one without changing the eval is
-/// exactly the lane drift §0.5 / D-1 is about.
+/// exactly the lane drift the shared recommendation contract prevents.
 /// </remarks>
 public static class DiscoveryExecutorIds
 {

@@ -168,13 +168,13 @@ public sealed class Catalogue
     //  Products
     // ══════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>Every sellable product — 72 core plus the 4 sensitive-department plants.</summary>
+    /// <summary>Every sellable product — 72 core, 4 sensitive-department plants, and 23 extension products.</summary>
     public IReadOnlyList<Product> All { get; }
 
-    /// <summary>§B.1's eight departments only, 72 products, in table order.</summary>
+    /// <summary>The eight core departments only: 72 products in table order.</summary>
     public IReadOnlyList<Product> CoreProducts { get; }
 
-    /// <summary>§B.1's headline product count, 72. <see cref="All"/> is 76; see <see cref="CatalogueSeed"/>.</summary>
+    /// <summary>The core product count, 72. <see cref="All"/> is 99; see <see cref="CatalogueSeed"/>.</summary>
     public int CoreProductCount => CoreProducts.Count;
 
     /// <summary>Products keyed by SKU, ordinal-ignore-case. The eval's ground truth for D1.</summary>
@@ -300,7 +300,7 @@ public sealed class Catalogue
 
     /// <summary>
     /// The twelve most-rated SKUs, derived by rating count then helpful votes then id.
-    /// This is the popularity baseline the eval's negative-control arm needs (§C.0 / R-2):
+    /// This is the popularity baseline the eval's negative-control arm needs (the suppression-baseline evaluation contract):
     /// an absent baseline is not a zero floor, so the floor is computed rather than assumed.
     /// </summary>
     public IReadOnlyList<string> BestsellerSkus { get; }
@@ -327,13 +327,13 @@ public sealed class Catalogue
     /// the ancestor names are included as well so a root-level check reads the same set.
     /// </summary>
     /// <remarks>
-    /// This is the suppression gold (§C.0 / R-2). It is NON-EMPTY by construction and an
+    /// This is the suppression gold (the suppression-baseline evaluation contract). It is NON-EMPTY by construction and an
     /// invariant asserts so: if it were empty, the suppression eval pair would have a chance
     /// floor of 1.0 and would report a clean pass while testing nothing.
     /// </remarks>
     public IReadOnlySet<string> SensitiveCategories { get; }
 
-    /// <summary>True when the product sits under a sensitive category (§F.5, outbound side).</summary>
+    /// <summary>True when the product sits under a sensitive category (outbound side).</summary>
     /// <param name="product">A product from this catalogue.</param>
     public bool IsSensitive(Product product) => SensitiveCategories.Contains(product.LeafCategory);
 
@@ -359,7 +359,7 @@ public sealed class Catalogue
     /// <summary>
     /// The order history for a customer, oldest first. Empty for an unknown id — and note
     /// that "empty" here means "no such customer", NOT "personalization is off". The
-    /// opt-out path returns a typed refusal from the tool layer (§F.6), because an empty
+    /// opt-out path returns a typed refusal from the tool layer, because an empty
     /// list is indistinguishable from a customer with no purchases.
     /// </summary>
     /// <param name="userId">A customer id.</param>
@@ -484,12 +484,12 @@ public sealed class Catalogue
     {
         // 1 — counts match the design's table, so "72 products" stays a checkable claim.
         //     The two later additions are asserted SEPARATELY rather than being allowed to
-        //     inflate the headline: a corpus extension that quietly changed the number §B.1
-        //     is quoted by would make every "72 products" sentence in the docs false.
+        //     inflate the headline: a corpus extension that quietly changed the quoted core count
+        //     would make every "72 products" sentence in the docs false.
         if (CoreProducts.Count != 72)
-            throw Broken($"design §B.1 specifies 72 core products; the seed has {CoreProducts.Count}.");
+            throw Broken($"the catalogue contract requires 72 core products; the seed has {CoreProducts.Count}.");
         if (CatalogueSeed.HealthProducts.Count != 4)
-            throw Broken($"the §0.5 / D-6 sensitive department is four SKUs; the seed has {CatalogueSeed.HealthProducts.Count}.");
+            throw Broken($"the sensitive-department fixture requires four SKUs; the seed has {CatalogueSeed.HealthProducts.Count}.");
         if (CatalogueSeed.ExtensionProducts.Count != 23)
             throw Broken($"the Eval 02 measurability extension is 23 SKUs; the seed has {CatalogueSeed.ExtensionProducts.Count}.");
         if (All.Count != CoreProducts.Count + CatalogueSeed.HealthProducts.Count + CatalogueSeed.ExtensionProducts.Count)
@@ -541,14 +541,14 @@ public sealed class Catalogue
         // 8 — the cold-start plant: nine marketplace SKUs in the CORE departments, plus the
         //     three the measurability extension adds, none of them rated or reviewed, all 2026.
         //     Counted in two buckets on purpose: folding them into one total would let the
-        //     extension quietly change the number §B.1 is quoted by, and a later edit that
+        //     extension quietly change the quoted core count, and a later edit that
         //     removed a core plant while adding an extension one would still sum to twelve.
         var marketplace = All.Where(p => p.IsMarketplaceOffer).ToList();
         int coreMarketplace = CoreProducts.Count(p => p.IsMarketplaceOffer);
         int extensionMarketplace = marketplace.Count - coreMarketplace;
 
         if (coreMarketplace != 9)
-            throw Broken($"design §B.1 plants nine marketplace cold-start SKUs in the core departments; the seed has {coreMarketplace}.");
+            throw Broken($"the catalogue contract requires nine marketplace cold-start SKUs in the core departments; the seed has {coreMarketplace}.");
         if (extensionMarketplace != 3)
             throw Broken($"the measurability extension plants three marketplace cold-start SKUs; the seed has {extensionMarketplace}.");
         foreach (var product in marketplace)

@@ -54,7 +54,7 @@ public static class DiscoveryInterestMapping
 
         var user = profile.User with { PersonalizationEnabled = state.PersonalizationConsent };
 
-        // §F.6 — when consent is off, history is NOT filtered, minimised or summarised. It is not
+        // the personalization opt-out — when consent is off, history is NOT filtered, minimised or summarised. It is not
         // read. The builder itself refuses to touch it, so the data never reaches the state and
         // therefore never reaches a prompt.
         var classified = state.PersonalizationConsent

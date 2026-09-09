@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 AgentEval Contributors
 
+using System.Runtime.CompilerServices;
 using Galaxus.RecommendationAgent.Agents;
 using Galaxus.RecommendationAgent.Catalog;
 using Galaxus.RecommendationAgent.Demos;
 using Galaxus.RecommendationAgent.Observability;
 using Galaxus.RecommendationAgent.Retrieval;
 using Galaxus.RecommendationAgent.Tools;
+using Galaxus.RecommendationAgent.Workflows;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 
@@ -66,6 +68,17 @@ public sealed class ObservedRecommendationAgentTests
         Assert.Equal(0, result.ModelCalls);
         Assert.Null(result.ToolCallsUsed);
         Assert.NotEmpty(result.Presented);
+        Assert.NotNull(result.InterestMap);
+        foreach (var recommendation in result.Presented)
+        {
+            var signal = Assert.Single(result.InterestMap!.Signals, candidate =>
+                recommendation.Reason.Contains($"\"{candidate.Label}\"", StringComparison.Ordinal));
+            var interest = DiscoveryInterestMapping.ToInterest(signal, "baseline-test");
+            var product = Catalogue.Default.BySku[recommendation.Sku];
+            Assert.True(
+                InterestAttribution.IsAttributable(Catalogue.Default, interest, product, out var attribution),
+                $"{recommendation.Sku} was not attributable to {signal.Label}: {attribution}");
+        }
     }
 
     [Fact]
@@ -158,10 +171,37 @@ public sealed class ObservedRecommendationAgentTests
 
         Assert.Equal(RecommendationRunStatus.Failed, result.Status);
         Assert.Equal(nameof(InvalidOperationException), result.FailureKind);
+        Assert.Equal(1, result.ModelCalls);
+        Assert.Equal(ProviderUsageStatus.Missing, result.ProviderUsage.Status);
+        Assert.Equal(1, result.ProviderUsage.ModelCalls);
         Assert.Single(result.Events, item => item.Kind == RecommendationRuntimeEventKind.ModelRequestFailed);
         Assert.Single(result.Events, item => item.Kind == RecommendationRuntimeEventKind.RunFailed);
         Assert.DoesNotContain(result.Events, item => item.Kind == RecommendationRuntimeEventKind.RunCompleted);
         Assert.Equal(RecommendationRuntimeEventKind.RunFailed, result.Events[^1].Kind);
+    }
+
+    [Fact]
+    public async Task CallerCancellationPreservesTheObservedModelAttempt()
+    {
+        using var cancellation = new CancellationTokenSource();
+        using var client = new CancellingChatClient(cancellation);
+
+        var result = await RecommendationRunEngine.RunAsync(
+            new RecommendationRunOptions(
+                Personas.NadiaUserId,
+                Arm: RecommendationExecutionArm.ScriptedAgent,
+                ChatClient: client),
+            cancellationToken: cancellation.Token);
+
+        Assert.Equal(RecommendationRunStatus.Cancelled, result.Status);
+        Assert.Null(result.FailureKind);
+        Assert.Equal(1, result.ModelCalls);
+        Assert.Equal(ProviderUsageStatus.Missing, result.ProviderUsage.Status);
+        Assert.Equal(1, result.ProviderUsage.ModelCalls);
+        Assert.Single(result.Events, item => item.Kind == RecommendationRuntimeEventKind.ModelRequestStarted);
+        Assert.Single(result.Events, item => item.Kind == RecommendationRuntimeEventKind.ModelRequestCancelled);
+        Assert.Single(result.Events, item => item.Kind == RecommendationRuntimeEventKind.RunCancelled);
+        Assert.Equal(RecommendationRuntimeEventKind.RunCancelled, result.Events[^1].Kind);
     }
 
     [Fact]
@@ -181,5 +221,33 @@ public sealed class ObservedRecommendationAgentTests
         Assert.Single(events.Events, item => item.Kind == RecommendationRuntimeEventKind.ModelRequestStarted);
         Assert.Single(events.Events, item => item.Kind == RecommendationRuntimeEventKind.ModelRequestFailed);
         Assert.DoesNotContain(events.Events, item => item.Kind == RecommendationRuntimeEventKind.ModelResponseReceived);
+    }
+
+    private sealed class CancellingChatClient(CancellationTokenSource callerCancellation) : IChatClient
+    {
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            callerCancellation.Cancel();
+            return Task.FromCanceled<ChatResponse>(callerCancellation.Token);
+        }
+
+        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            callerCancellation.Cancel();
+            await Task.FromCanceled(callerCancellation.Token);
+            yield break;
+        }
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        public void Dispose()
+        {
+        }
     }
 }

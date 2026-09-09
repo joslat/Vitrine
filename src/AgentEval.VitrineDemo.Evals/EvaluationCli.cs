@@ -36,8 +36,8 @@ public static class EvaluationCli {
         --scenario selects one canonical live scenario id, or all (the live default):
           nadia-cross-category | sofia-capability-gap | marco-gift-trap |
           luca-safe-abstention | all
-        --repetitions N overrides a live plan's repetition count (1..100). Eval 01 and Eval 02
-          always run once and reject values other than 1.
+        --repetitions N overrides a live plan's repetition count. Eval 01 and Eval 02 always run
+          once; Eval 03 accepts 1..100; stochastic Eval 04 and Eval 05 accept 4..100.
         Eval 06 runs a fixed AgentEval safety-probe campaign against Robin. It does not accept
           scenario or repetition options.
         --confirm-paid is mandatory for every live plan. Live plans require configured model services,
@@ -45,12 +45,15 @@ public static class EvaluationCli {
           and a live plan never falls back to the offline suite.
         --live-subjects-and-judge is a backward-compatible alias for --eval-plan eval03-compare;
           it also requires --confirm-paid.
-        --gates-only executes the six non-control gates; the CI control uses it without recursion.
+        --gates-only executes five mandatory evaluation gates plus the matched-quality diagnostic;
+          the CI control uses this six-stage lane without recursion.
         --self-test runs all eleven admitted checks offline, proves each ablation goes red, and
           returns exit 1 if any execution, census, tool-journal, healthy, or degraded expectation fails.
         --ablate-catalogue removes one product from an isolated snapshot and must exit 1.
-        Exit codes: 0 pass, 1 gate failure, 2 invalid arguments, 3 not measured,
-                    4 evaluation or report infrastructure failure.
+        Exit codes: 0 pass; 1 mandatory-gate or registered-control failure, admitted-check
+                    self-test failure, or expected catalogue-ablation detection; 2 invalid
+                    arguments; 3 not measured; 4 evaluation or report infrastructure failure.
+                    A matched-quality diagnostic finding alone cannot set exit 1.
         """;
     public static EvaluationCliParseResult Parse(IReadOnlyList<string> args) {
         ArgumentNullException.ThrowIfNull(args);
@@ -183,6 +186,10 @@ public static class EvaluationCli {
                 return Invalid("The selected evaluation plan does not accept a repetitions option.");
             if (repetitions is not null && !descriptor.SupportsRepetitions && repetitions != 1)
                 return Invalid("The selected evaluation plan always runs exactly one repetition.");
+            if (repetitions is < 4 && evalPlan is
+                VitrineEvaluationPlan.LiveEval04StochasticAgent or
+                VitrineEvaluationPlan.LiveEval05StochasticWorkflow)
+                return Invalid("Stochastic Eval 04 and Eval 05 require between 4 and 100 repetitions.");
         }
         if (selfTest && (ablate || legacyLive || jsonPath is not null || htmlPath is not null))
             return Invalid("Self-test is offline-only and cannot be combined with ablation, live execution, or report paths.");
@@ -270,8 +277,8 @@ public static class EvaluationCli {
             if (options.Mode == EvaluationCliMode.Gates &&
                 ReferenceEquals(services, EvaluationCliServices.Default) &&
                 !CiProofPolicy.RequiredCiStepsPlanned(CiProofPolicy.ObservePlan() with {
-                    GateExitCode = result.ExitCode,
-                    ExecutedGateCount = result.Gates.Count,
+                    CheckStageExitCode = result.ExitCode,
+                    ExecutedCheckStageCount = result.Gates.Count,
                 }))
                 throw new InvalidDataException("The committed non-recursive CI proof contract was not satisfied.");
             ConsoleReport.Print(result, verboseControls: true, output);
@@ -360,7 +367,8 @@ internal sealed record EvaluationCliServices(Func<bool, CancellationToken, Task<
             includeControls: false),
         cancellationToken => VitrineAdmittedChecksSelfTest.RunAsync(cancellationToken: cancellationToken),
         (plan, options, progress, cancellationToken) => LiveEvaluationPlanRunner.RunAsync(
-            plan, options, progress: progress, cancellationToken: cancellationToken));
+            plan, paidExecutionConfirmed: true, options, progress: progress,
+            cancellationToken: cancellationToken));
 }
 internal sealed record ReportWriteReceipt(string FullPath, long Bytes, DateTimeOffset WrittenAtUtc);
 internal static class EvaluationReportWriter {

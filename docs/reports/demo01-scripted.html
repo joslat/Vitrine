@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nadia Brunner — Demo 01 — one agent</title>
+<title>Nadia Brunner — Demo 01 — one tool-using agent</title>
 <style>
 :root{color-scheme:light}
 *{box-sizing:border-box}
@@ -119,7 +119,7 @@ h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5f6672;ma
 <nav class="tour"><a href="https://azuresamurai.blog/Vitrine/">← Back to the VITRINE tour</a></nav>
 <header class="top">
   <div class="brand">VITRINE · <b>Robin</b>, the recommendation agent</div>
-  <div class="top-meta"><span class="pill">Demo 01 — one agent</span><span class="pill">offline baseline — no model call</span></div>
+  <div class="top-meta"><span class="pill">Demo 01 — one tool-using agent</span><span class="pill">scripted model boundary — no provider call</span></div>
 </header>
 <section class="card who">
   <h2>1 · The customer</h2>
@@ -143,34 +143,16 @@ h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5f6672;ma
     <article class="prod">
       <div class="prod-head">
         <div>
-          <div class="prod-name">Nitecore NB10000 Gen 3 ultralight power bank</div>
-          <div class="dim small">Nitecore · Power &amp; Travel Tech › Power banks › Ultralight power banks · <span class="mono">GLX-8005</span></div>
+          <div class="prod-name">K&amp;F Concept Nano-X ND filter set, 82 mm</div>
+          <div class="dim small">K&amp;F Concept · Photography › Filters › Neutral density · <span class="mono">GLX-1003</span></div>
         </div>
-        <div class="conf" title="code-derived routing heuristic; uncalibrated, it routes between trays">conf 0.73</div>
+        <div class="conf" title="code-derived routing heuristic; uncalibrated, it routes between trays">conf 0.71</div>
       </div>
-      <div class="price">CHF 79.00 <span class="dim small">· 19 in stock · 2 working days</span></div>
-      <p class="why">Matches the derived interest &quot;multi-day trips, starts before sunrise, carried&quot; because &#39;multi&#39; meets &#39;multi&#39; in the product&#39;s title, category or attributes. Selected by the baseline arm, with no model call.</p>
+      <div class="price">CHF 189.00 <span class="dim small">· 24 in stock · 2 working days</span></div>
+      <p class="why">This packable filter set supports long-exposure landscape work on multi-day trips. The ten-stop option is the useful trade-off, while a slight warm cast may need correction.</p>
       <div class="ev">
         <div class="ev-side"><span class="ev-lbl">Your signal</span> multi-day trips, starts before sunrise, carried <span class="mono dim">← PUR-NB-01, PUR-NB-02, PUR-NB-03, PUR-NB-04, PUR-NB-05</span></div>
-        <div class="ev-side"><span class="ev-lbl">Catalogue</span> Ports: 1 USB-C, 1 USB-A <span class="mono dim">[attr:ports]</span></div>
-      </div>
-    </article>
-  </div>
-  <p class="lbl">You might also consider · 1</p>
-  <div class="tray">
-    <article class="prod prod-second">
-      <div class="prod-head">
-        <div>
-          <div class="prod-name">Sony FE 16-35 mm F4 PZ G</div>
-          <div class="dim small">Sony · Photography › Lenses › Wide-angle zoom · <span class="mono">GLX-1002</span></div>
-        </div>
-        <div class="conf" title="code-derived routing heuristic; uncalibrated, it routes between trays">conf 0.69</div>
-      </div>
-      <div class="price">CHF 1349.00 <span class="dim small">· 3 in stock · 2 working days</span></div>
-      <p class="why">Matches the derived interest &quot;multi-day trips, starts before sunrise, carried&quot; because &#39;multi&#39; meets &#39;multi&#39; in the product&#39;s title, category or attributes. Selected by the baseline arm, with no model call.</p>
-      <div class="ev">
-        <div class="ev-side"><span class="ev-lbl">Your signal</span> multi-day trips, starts before sunrise, carried <span class="mono dim">← PUR-NB-01, PUR-NB-02, PUR-NB-03, PUR-NB-04, PUR-NB-05</span></div>
-        <div class="ev-side"><span class="ev-lbl">Catalogue</span> Focal length: 16-35 mm <span class="mono dim">[attr:focal-length]</span></div>
+        <div class="ev-side"><span class="ev-lbl">Catalogue</span> customer review REV-1003-01 <span class="mono dim">[review:REV-1003-01]</span></div>
       </div>
     </article>
   </div>
@@ -201,18 +183,15 @@ h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5f6672;ma
     <li class="chk chk-na">
       <div class="chk-head"><span class="chk-name">Two-sided evidence</span><span class="chk-verdict">NOT MEASURED</span></div>
       <div class="chk-what">Each item must cite a code-derived interest AND a catalogue fact that resolves. Plausible prose cannot pass.</div>
-      <div class="chk-entry"><span class="mono">user-side evidence</span> <b>not tested</b> · <span class="mono dim">arm_inapplicable</span><div class="dim small">2 of 2 presentation(s) carried NO userEvidence argument, so their user side was DERIVED from retrieval provenance. On those the arm can fail only when no derived interest explains the product at all — it cannot catch a wrongly cited purchase, because nothing was cited. Do not read its silence as a pass</div></div>
       <div class="chk-entry"><span class="mono">product-side value + citation</span> <b>not tested</b> · <span class="mono dim">arm_inapplicable</span><div class="dim small">attribute_value_mismatch and unresolvable_evidence cannot fire on this path. The tool carries ONE evidence string, so the product-side key AND value are both resolved from the catalogue before the check runs, and the compact citation is rebuilt from the key that resolution already verified. The product-side arm that IS discriminating is attribute_not_found, on the model&#39;s verbatim citation. Do not read these two arms&#39; silence as a pass</div></div>
-      <div class="chk-entry"><span class="mono">offline baseline arm</span> <b>not tested</b> · <span class="mono dim">arm_inapplicable</span><div class="dim small">no model ran: the citations below were read straight from the catalogue and the reason strings were composed by this file, so the evidence, grounding, sensitive_prose and stated_price arms cannot fail on this path either. The already_owned arm is likewise pre-empted — the offline selector passes the customer&#39;s owned SKUs as a retrieval exclusion, so nothing owned ever reaches the filter. This panel measures the BASELINE, not the agent</div></div>
     </li>
     <li class="chk chk-ok">
       <div class="chk-head"><span class="chk-name">Special-category screen, outbound</span><span class="chk-verdict">CLEAN</span></div>
       <div class="chk-what">A product under a sensitive leaf is not surfaced unless the customer asked for it.</div>
     </li>
-    <li class="chk chk-hit">
-      <div class="chk-head"><span class="chk-name">Confidence banding</span><span class="chk-verdict">CAUGHT 1</span></div>
+    <li class="chk chk-ok">
+      <div class="chk-head"><span class="chk-name">Confidence banding</span><span class="chk-verdict">CLEAN</span></div>
       <div class="chk-what">Routes between the two trays. A number that is not a confidence is not a pass.</div>
-      <div class="chk-entry"><span class="mono">GLX-1002</span> <b>demoted</b> · <span class="mono dim">low_confidence</span><div class="dim small">confidence 0.69 is below the primary threshold 0.70 — moved to &#39;also consider&#39;</div></div>
     </li>
     <li class="chk chk-ok">
       <div class="chk-head"><span class="chk-name">Price + stock authority</span><span class="chk-verdict">CLEAN</span></div>
@@ -229,12 +208,12 @@ h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5f6672;ma
   </ul>
   <p class="lbl">This turn, counted</p>
   <table class="nums">
-    <tr><td>Proposed → shown</td><td class="num">2 → 2</td></tr>
+    <tr><td>Proposed → shown</td><td class="num">1 → 1</td></tr>
     <tr><td>Removed by a guardrail</td><td class="num">0</td></tr>
-    <tr><td>Moved to the second tray</td><td class="num">1</td></tr>
+    <tr><td>Moved to the second tray</td><td class="num">0</td></tr>
     <tr><td>Purchases ruled out as gifts</td><td class="num">0</td></tr>
-    <tr><td>Prices re-read from the catalogue</td><td class="num">2 of 2</td></tr>
-    <tr><td>Tool calls spent</td><td class="num absent">n/a — this arm makes no refusable tool calls</td></tr>
+    <tr><td>Prices re-read from the catalogue</td><td class="num">1 of 1</td></tr>
+    <tr><td>Tool calls spent</td><td class="num">4 of 24 allowed</td></tr>
   </table>
   <p class="lbl">What this page does not measure</p>
   <p class="note">Everything above is <b>one turn</b>. The claims that need more than one turn — does the loop cover more of a customer's interests than the single agent, does a hostile product review change what gets recommended, is the answer stable when the same turn is repeated — cannot be read off this page in either direction. The credential-free <span class="mono">--all</span> command runs the deterministic offline gates, benchmark and registered negative controls; it does not run the paid multi-scenario or repeated-model plans:</p>

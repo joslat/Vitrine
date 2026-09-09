@@ -6,7 +6,7 @@ using System.Numerics.Tensors;
 namespace Galaxus.RecommendationAgent.Retrieval;
 
 /// <summary>
-/// The embedding seam (design §D.4). One method: turn text into a vector.
+/// The embedding seam. One method: turn text into a vector.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -44,12 +44,10 @@ public interface IEmbeddingSource
 
     /// <summary>
     /// The dense cosine floor this source suggests for <see cref="HybridRetriever"/>.
-    /// <b>DERIVED PER SPACE 2026-09-05</b> — see <see cref="CalibratedThresholds"/>. It lives on the
-    /// source rather than on the retriever because a floor is a property of an embedding SPACE: a
-    /// threshold picked for <c>text-embedding-3-small</c> cosines says nothing about concept-vector
-    /// cosines. Calibrating one and reusing it for the other would be a number with no provenance —
-    /// which is exactly what every implementation of this property did until the derivation ran: all
-    /// three returned 0.28.
+    /// See <see cref="CalibratedThresholds"/>. The floor lives on the source because it is a
+    /// property of an embedding space: a threshold derived for <c>text-embedding-3-small</c>
+    /// cosines does not transfer to concept-vector cosines. Each implementation must therefore
+    /// return the value derived for its own space.
     /// </summary>
     float SuggestedDenseScoreFloor { get; }
 

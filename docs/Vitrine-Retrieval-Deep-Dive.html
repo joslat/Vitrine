@@ -7,6 +7,13 @@
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="A code-grounded deep dive into VITRINE's offline concept vectors, optional real embeddings, hybrid retrieval, and guardrails.">
   <title>VITRINE · Retrieval deep dive</title>
+  <meta name="author" content="José Luis Latorre Millas">
+  <link rel="canonical" href="https://azuresamurai.blog/Vitrine/Vitrine-Retrieval-Deep-Dive.html">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Retrieval deep dive · VITRINE">
+  <meta property="og:description" content="How VITRINE retrieves, attributes, screens, and limits claims about synthetic e-commerce recommendations.">
+  <meta property="og:url" content="https://azuresamurai.blog/Vitrine/Vitrine-Retrieval-Deep-Dive.html">
+  <meta property="og:image" content="https://azuresamurai.blog/Vitrine/images/vitrine-control-room.png">
   <style>
     :root {
       --paper:#f1f4f7; --surface:#fff; --surface-2:#edf1f5; --ink:#17212d; --muted:#5d6978;
@@ -120,6 +127,7 @@
 <nav aria-label="Page sections">
   <div class="wrap">
     <a href="index.html">VITRINE docs</a>
+    <a href="Vitrine-One-Page-Summary.html">Plain-language summary</a>
     <a href="#content">Retrieval</a>
     <a href="#spaces">Spaces</a>
     <a href="#hybrid">Hybrid search</a>
@@ -244,7 +252,7 @@
       </figure>
 
       <div class="grid3">
-        <article class="card"><h3>What it is good at</h3><p>Stable demonstrations, known retail concepts, understandable explanations, and byte-repeatable offline evaluation.</p></article>
+        <article class="card"><h3>What it is good at</h3><p>Stable demonstrations, known retail concepts, understandable explanations, and repeatable offline verdicts. Artifact bytes differ because receipts deliberately contain run IDs and timestamps.</p></article>
         <article class="card"><h3>What it is bad at</h3><p>Unanticipated vocabulary, linguistic nuance outside the lexicon, and any claim of broad semantic generalization.</p></article>
         <article class="card"><h3>Why zero is visible</h3><p>An unrecognized query has no dense signal. The retriever records a degraded reason rather than ranking 99 identical zero cosines.</p></article>
       </div>
@@ -271,6 +279,13 @@
         vector length changed.</strong> Query embedding, cosine distributions, dense cut behavior,
         attribution, and confidence routing all change together. The runtime prints the resolved
         space so the provenance cannot disappear.</p></div>
+      <div class="callout danger"><p><strong>Calibration limitation:</strong> these are committed
+        operating constants, not a reproducible public calibration package. The original derived
+        calibration JSON and split are not present in this sanitized repository. The recorded
+        held-out bands did not validate every row: the concept dense floor was cleared by roughly
+        57% of arbitrary products and the real-vector dense floor by roughly 24%. Treat these cuts
+        as sample operating points that need re-derivation on governed production data, not as
+        universal similarity thresholds.</p></div>
     </div>
   </section>
 

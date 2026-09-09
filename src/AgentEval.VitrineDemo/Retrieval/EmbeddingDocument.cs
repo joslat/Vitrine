@@ -9,7 +9,7 @@ using Galaxus.RecommendationAgent.Observability;
 namespace Galaxus.RecommendationAgent.Retrieval;
 
 /// <summary>
-/// The exact per-product embedding document (design §D.1) and its version stamp.
+/// The exact per-product embedding document and its version stamp.
 /// Composition matters more than model choice at this catalogue size, so the template is
 /// pinned here, in one place, and stamped — nothing else in the project may compose
 /// embedding text.
@@ -52,10 +52,10 @@ public static class EmbeddingDocument
     /// </summary>
     public const string TemplateVersion = "v2";
 
-    /// <summary>Maximum description characters carried into the document (§D.1).</summary>
+    /// <summary>Maximum description characters carried into the document.</summary>
     public const int DescriptionCharacterBudget = 320;
 
-    /// <summary>How many specs the <c>Key specs:</c> line carries (§D.1's <c>.Take(6)</c>).</summary>
+    /// <summary>How many specs the <c>Key specs:</c> line carries; enforced by <c>.Take(6)</c>.</summary>
     public const int KeySpecCount = 6;
 
     /// <summary>The line separator used inside every document. LF, always — see the remarks.</summary>
@@ -66,11 +66,9 @@ public static class EmbeddingDocument
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b><c>mode:</c> is the B-8 fix and this list is why it needed a code change.</b> The
-    /// design's §8.1 row expected <c>mode:on-foot</c> / <c>mode:on-bike</c> to be a seed edit
-    /// alone; it is not, because this list is CLOSED — a tag whose prefix is absent here never
+    /// This list is CLOSED: a tag whose prefix is absent here never
     /// reaches the <c>Use:</c> line and therefore never reaches the vector, so the token would
-    /// have been authored into the seed and read by nothing. The measured failure it closes:
+    /// be authored into the seed and read by nothing. <c>mode:</c> is required because
     /// <c>trip:multi-day</c> is mode-agnostic, so a bike multi-tool and a trekking pack were
     /// neighbours on the one line that is supposed to carry use context.
     /// </para>
@@ -94,7 +92,7 @@ public static class EmbeddingDocument
     public const int UseLineIndex = 2;
 
     /// <summary>
-    /// Renders the five-line embedding document for a product, exactly as §D.1 specifies.
+    /// Renders the canonical five-line embedding document for a product.
     /// </summary>
     /// <param name="product">The product to describe.</param>
     /// <returns>The document text; never null, never empty.</returns>
@@ -179,7 +177,7 @@ public static class EmbeddingDocument
     }
 
     /// <summary>
-    /// The accessory query document behind <c>FindComplements</c> (§C.2): the anchor's identity and
+    /// The accessory query document behind <c>FindComplements</c>: the anchor's identity and
     /// <c>Use:</c> line, plus the caller's extra steer. It deliberately does NOT restate the anchor's
     /// category — complements usually live in a different one, and repeating the category would pull
     /// the neighbourhood back towards more of the same product.
@@ -272,7 +270,7 @@ public static class EmbeddingDocument
 
     /// <summary>
     /// Picks the document line that best explains why a product matched — the <c>matchedOn</c>
-    /// field of §C.2's payload.
+    /// field of Demo02's retrieval payload.
     /// </summary>
     /// <remarks>
     /// Scored by how many DISTINCT query tokens a line contains, so a long description cannot win

@@ -32,6 +32,11 @@ public sealed record VitrineEvaluationPlanDescriptor(
 /// <summary>The ordered, stable evaluation-plan catalogue.</summary>
 public static class VitrineEvaluationPlans
 {
+    /// <summary>Minimum sample count at which an all-success 95% Wilson interval clears the 0.50 floor.</summary>
+    public const int MinimumStochasticRepetitions = 4;
+    public const double StochasticConfidenceLevel = 0.95;
+    public const double StochasticMinimumWilsonLowerBound = 0.50;
+
     public static IReadOnlyList<VitrineEvaluationPlanDescriptor> All { get; } =
     [
         new(VitrineEvaluationPlan.OfflineSuite, "Offline suite",
@@ -43,9 +48,9 @@ public static class VitrineEvaluationPlans
         new(VitrineEvaluationPlan.LiveEval03AgentVsWorkflow, "Eval 03 · Agent vs workflow",
             "Run matched fresh agent and workflow arms and compare them case by case.", true, true, true, true, true, 1),
         new(VitrineEvaluationPlan.LiveEval04StochasticAgent, "Eval 04 · Stochastic agent",
-            "Repeat the agent arm and report reliability with a Wilson interval.", true, true, true, true, false, 5),
+            "Repeat the agent arm; all planned trials must be measured and each scenario's whole-trial (quality + response + tool journal) 95% Wilson lower bound must be at least 0.50.", true, true, true, true, false, 5),
         new(VitrineEvaluationPlan.LiveEval05StochasticWorkflow, "Eval 05 · Stochastic workflow",
-            "Repeat the workflow arm and report reliability with a Wilson interval.", true, true, true, true, false, 5),
+            "Repeat the workflow arm; all planned trials must be measured and each scenario's whole-trial (quality + response + workflow trace) 95% Wilson lower bound must be at least 0.50.", true, true, true, true, false, 5),
         new(VitrineEvaluationPlan.LiveEval06SafetyProbes, "Eval 06 · Safety probes",
             "Run a small real AgentEval jailbreak and hidden-instruction extraction scan against fresh Robin targets only.",
             true, true, false, false, false, 1),
@@ -54,4 +59,8 @@ public static class VitrineEvaluationPlans
     public static VitrineEvaluationPlanDescriptor Require(VitrineEvaluationPlan plan) =>
         All.FirstOrDefault(item => item.Plan == plan)
         ?? throw new ArgumentOutOfRangeException(nameof(plan), plan, "Unknown evaluation plan.");
+
+    public static bool IsStochastic(VitrineEvaluationPlan plan) =>
+        plan is VitrineEvaluationPlan.LiveEval04StochasticAgent
+            or VitrineEvaluationPlan.LiveEval05StochasticWorkflow;
 }

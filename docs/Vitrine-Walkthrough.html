@@ -6,6 +6,13 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>VITRINE operator walkthrough</title>
+  <meta name="author" content="José Luis Latorre Millas">
+  <link rel="canonical" href="https://azuresamurai.blog/Vitrine/Vitrine-Walkthrough.html">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Operator walkthrough · VITRINE">
+  <meta property="og:description" content="Run the VITRINE agent, workflow, offline suite, paid evaluations, safety probes, exports, and replay.">
+  <meta property="og:url" content="https://azuresamurai.blog/Vitrine/Vitrine-Walkthrough.html">
+  <meta property="og:image" content="https://azuresamurai.blog/Vitrine/images/vitrine-control-room.png">
   <style>
     :root {
       --paper:#f6f8fb; --surface:#fff; --surface-2:#edf2f7; --ink:#182537; --muted:#586a80;
@@ -91,6 +98,7 @@
 <nav aria-label="Walkthrough sections">
   <div class="wrap">
     <a href="index.html">VITRINE docs</a>
+    <a href="Vitrine-One-Page-Summary.html">Plain-language summary</a>
     <a href="#content">Walkthrough</a>
     <a href="#start">Start</a>
     <a href="#agent">Agent</a>
@@ -195,12 +203,12 @@
         <table>
           <thead><tr><th>Choice</th><th>What runs</th><th>Provider cost</th><th>What to inspect</th></tr></thead>
           <tbody>
-            <tr><td>Offline Evals</td><td>Six production gates; persisted Nadia/Sofia benchmark across Demo01, Demo02, and degraded arms; five predicates; 43 registered diagnostic controls</td><td>None</td><td>Gate evidence, benchmark census/floor/reference facts, and three-phase controls</td></tr>
+            <tr><td>Offline Evals</td><td>Five mandatory evaluation gates plus one matched-quality diagnostic; persisted Nadia/Sofia benchmark across Demo01, Demo02, and degraded arms; five predicates; 43 registered mutation diagnostics</td><td>None</td><td>Authority-labelled gate/diagnostic evidence, benchmark census/floor/reference facts, and three-phase controls</td></tr>
             <tr><td>Eval 01 · Agent</td><td>One fresh Robin agent trial for each selected use case</td><td>Paid; confirmation required</td><td>Response preview, read-only tool journal, LLM criterion verdicts, and local run receipt</td></tr>
             <tr><td>Eval 02 · Workflow</td><td>One fresh five-executor discovery-workflow trial for each selected use case</td><td>Paid; confirmation required</td><td>Response preview, executor/route facts, LLM criterion verdicts, and local run receipt</td></tr>
             <tr><td>Eval 03 · Agent vs workflow</td><td>Matched agent-reference and workflow-challenger arms; repetitions are configurable</td><td>Paid; confirmation required</td><td>Per-arm checks plus paired-case observation unit, <code>RepCollapse.All</code>, repetition counts, wins/losses/ties, effective n, p-value, minimum attainable p, mean delta, and power warning</td></tr>
-            <tr><td>Eval 04 · Stochastic agent</td><td>Repeated agent trials; five repetitions by default</td><td>Paid; confirmation required</td><td>Per-check measured/N/A/not-measured census, success rate, and Wilson interval</td></tr>
-            <tr><td>Eval 05 · Stochastic workflow</td><td>Repeated workflow trials; five repetitions by default</td><td>Paid; confirmation required</td><td>Per-check measured/N/A/not-measured census, success rate, and Wilson interval</td></tr>
+            <tr><td>Eval 04 · Stochastic agent</td><td>Repeated agent trials; five repetitions by default and at least four</td><td>Paid; confirmation required</td><td>Per-scenario terminal acceptance from the whole-trial 95% Wilson lower bound ≥ 0.50, plus separate per-check census and intervals</td></tr>
+            <tr><td>Eval 05 · Stochastic workflow</td><td>Repeated workflow trials; five repetitions by default and at least four</td><td>Paid; confirmation required</td><td>The same persisted per-arm/per-scenario acceptance decision, plus per-check diagnostic reliability</td></tr>
             <tr><td>Eval 06 · Safety probes</td><td>Fixed Robin-only AgentEval jailbreak and hidden-instruction-extraction campaign</td><td>Paid; confirmation required; 104-model-call ceiling by default</td><td>Redacted per-attack/per-probe resisted, compromised, inconclusive, error, fidelity, and usage facts; no scenario, repetition, or benchmark run</td></tr>
             <tr><td>Offline Evals · controls panel</td><td>The 43 registered mutation controls inside the offline suite, each using healthy → defect-injected → recovered observations</td><td>None</td><td>Which exact planted defect was detected and whether the same evaluator recovered; this is not a separate app mode</td></tr>
           </tbody>
@@ -246,8 +254,9 @@
 
       <h3 style="margin-top:24px">How to read the board</h3>
       <div class="grid3">
-        <article class="card"><span class="tag info">Gates</span><h3>Six production contracts</h3><p>
-          Catalogue, topology, matched quality, injection, recall, and honesty each expose the
+        <article class="card"><span class="tag info">Authority</span><h3>Five gates + one diagnostic</h3><p>
+          Catalogue, topology, injection, recall, and honesty are mandatory evaluation gates.
+          Matched quality is a reported diagnostic. All six stages expose the
           observed value, measurement state, pass/fail verdict, evidence, observation producer, and
           acceptance evaluator. Expand a row for the cause—not just the completion count.</p></article>
         <article class="card"><span class="tag info">Benchmark</span><h3>Scores are measured facts</h3><p>
@@ -300,10 +309,11 @@
           to pass would erase the proof that the real contract noticed the defect.</p></article>
         <article class="card"><span class="tag ok">Interpretation</span><h3>EXPECTED DEFECT DETECTED</h3><p>
           Timeline and graph present the failed gate as successful detection. Its expanded evidence
-          names the expected/observed counts and isolated removed SKU rather than only “6/6”.</p></article>
+          names the expected/observed counts and isolated removed SKU rather than only a stage counter.</p></article>
         <article class="card"><span class="tag ok">Overall</span><h3>SELF-TEST SUCCEEDED</h3><p>
-          The overall self-test is green only when the catalogue defect is detected, all other gates
-          behave normally, and the requested controls are caught.</p></article>
+          The overall self-test is green only when the catalogue defect is detected, all other
+          mandatory gates pass, the matched-quality diagnostic is reported independently, and the
+          requested controls are caught.</p></article>
       </div>
       <div class="callout danger"><strong>Exit code remains 1.</strong> The underlying evaluation
         process still reports a failed admitted gate for automation and artifact fidelity. In this
@@ -326,7 +336,7 @@
             <tr><td>DETECTED</td><td>A deliberately injected control fault produced the expected failure</td><td>Confirm recovery also passes</td></tr>
             <tr><td>EXPECTED DEFECT DETECTED</td><td>The isolated catalogue 99→98 defect was caught</td><td>Inspect the red underlying gate as evidence</td></tr>
             <tr><td>SELF-TEST SUCCEEDED</td><td>The intentional defect was caught and self-test invariants held</td><td>No repair is required; exit 1 is retained intentionally</td></tr>
-            <tr><td>FAILED</td><td>An unplanned operation/gate failure, missed control defect, or failed recovery</td><td>Expand evidence; expected vs observed and cause are shown</td></tr>
+            <tr><td>FAILED</td><td>An unplanned operation, mandatory-check, or registered-control failure; a diagnostic finding alone does not fail the suite</td><td>Expand evidence; expected vs observed and cause are shown</td></tr>
             <tr><td>BLOCKED</td><td>A runtime guardrail or pre-gate prevented an unsafe/ineligible transition</td><td>Inspect the guard decision; planted control detection no longer uses this label</td></tr>
             <tr><td>NOT MEASURED</td><td>No valid measurement exists; it is not zero</td><td>Inspect readiness, applicability, or instrument evidence</td></tr>
             <tr><td>NOT APPLICABLE</td><td>The registered criterion does not apply to this authored request</td><td>No score should be invented</td></tr>
@@ -337,7 +347,8 @@
         tool events show safe arguments/results; evaluation events show expected outcome, measurement,
         verdict, score, pass threshold, criterion explanation, workflow degradation, census, and
         producer/evaluator when available. Judge explanations are bounded evidence, not hidden
-        reasoning. A progress value such as 6/6 says only that six stages completed—the evidence
+        reasoning. A progress value such as “six of six stages completed” does not mean six
+        mandatory gates passed—the authority label and evidence
         block explains what happened.</div>
     </div>
   </section>
@@ -348,7 +359,8 @@
       <h2>One screened artifact, three views</h2>
       <div class="grid3">
         <article class="card"><span class="tag info">JSON</span><h3>Machine-readable receipt</h3><p>
-          Saves the completed, sanitized, integrity-protected run artifact for downstream inspection.
+          Saves the completed, sanitized, checksummed run artifact for downstream inspection. The
+          checksum detects accidental alteration; it is not a keyed signature or authenticity proof.
           It becomes enabled only after an artifact exists.</p></article>
         <article class="card"><span class="tag info">HTML</span><h3>Human-readable report</h3><p>
           Saves a self-contained report generated from the same artifact, including graph, outcome,
@@ -363,9 +375,11 @@
         sanitized session receipt to
         <code>.agenteval/live/live-sessions/&lt;session-id&gt;/outcome.json</code>, and the rolling
         <code>.agenteval/live/live-sessions/index.json</code> links to it. The Evaluation board and
-        schema-v8 app export show the same plan-specific evidence: Eval 01–05 retain the pass threshold, bounded response preview, criterion
+        schema-v9 app export show the same plan-specific evidence: Eval 01–03 retain every-trial
+        acceptance and no scenario-decision rows; Eval 04/05 add per-scenario whole-trial Wilson
+        decisions. Eval 01–05 retain the pass threshold, bounded response preview, criterion
         verdicts/explanations, check facts, tool or workflow/degradation evidence, usage when
-        reported, Wilson summaries, and optional paired comparisons; Eval 06 retains its redacted
+        reported, per-check Wilson summaries, and optional paired comparisons; Eval 06 retains its redacted
         safety configuration, workload ceiling, census/probe facts, and usage.</div>
       <pre># Offline launcher aliases (Controls invokes the eval CLI; it is not an app mode)
 .\start.ps1 -Mode Demo01

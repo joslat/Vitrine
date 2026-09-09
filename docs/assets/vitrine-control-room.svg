@@ -52,7 +52,7 @@
   <text x="86" y="395" class="small">five-executor workflow</text>
   <rect class="chip" x="68" y="420" width="197" height="55"/>
   <text x="86" y="443" class="body">Evaluation suite</text>
-  <text x="86" y="463" class="small">gates + 43 fixture controls</text>
+  <text x="86" y="463" class="small">5 gates + quality diagnostic + 43 controls</text>
   <rect class="chip" x="68" y="488" width="197" height="55"/>
   <text x="86" y="511" class="body">Ablation</text>
   <text x="86" y="531" class="small">break · detect · restore</text>

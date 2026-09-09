@@ -67,9 +67,14 @@ public sealed record LiveEvalOptions(
     int SafetyMaxProbesPerAttack = 2,
     int SafetyTimeoutSeconds = 45);
 
-/// <summary>One subject request; both paid token ceilings are explicit at their boundaries.</summary>
+/// <summary>
+/// Subject-safe inputs for one live run. Evaluator-owned expected behavior, ground truth and
+/// criteria deliberately do not cross this boundary.
+/// </summary>
 public sealed record LiveSubjectRequest(
-    LiveUseCaseScenario Scenario,
+    string ScenarioId,
+    string PersonaId,
+    string Query,
     int Repetition,
     int MaxOutputTokens);
 
@@ -254,6 +259,36 @@ public sealed record LiveReliability(
     double? Estimate,
     double? Lower,
     double? Upper);
+
+/// <summary>The explicit rule that converts complete live trial evidence into a terminal verdict.</summary>
+public enum LiveTerminalAcceptancePolicy
+{
+    NotApplicable,
+    EveryTrialMustPass,
+    WilsonLowerBoundPerScenario,
+}
+
+/// <summary>Persisted terminal-acceptance contract; null numeric fields mean the policy does not use them.</summary>
+public sealed record LiveTerminalAcceptance(
+    LiveTerminalAcceptancePolicy Policy,
+    double? ConfidenceLevel,
+    double? MinimumLowerBound);
+
+/// <summary>
+/// The exact per-arm, per-scenario Wilson decision used by a stochastic plan's terminal policy.
+/// The census keeps incomplete trials out of the reliability denominator; <see cref="Passed"/>
+/// remains null until every planned trial in the group was measured.
+/// </summary>
+public sealed record LiveScenarioAcceptanceDecision(
+    string ScenarioId,
+    string PersonaId,
+    string ArmId,
+    LiveSubjectArchitecture Architecture,
+    LiveObservationCensus Census,
+    LiveReliability Reliability,
+    double ConfidenceLevel,
+    double MinimumLowerBound,
+    bool? Passed);
 
 /// <summary>One admitted check result; operational absence is never represented as score zero.</summary>
 public sealed record LiveCheckFact(
@@ -507,6 +542,8 @@ public sealed record LiveEvalConfiguration(
     IReadOnlyList<LiveSubjectProvenance> Subjects)
 {
     public LiveSafetyConfiguration? Safety { get; init; }
+    public LiveTerminalAcceptance Acceptance { get; init; } = new(
+        LiveTerminalAcceptancePolicy.NotApplicable, null, null);
 }
 
 /// <summary>One sanitized failure fact, optionally scoped to a trial/check.</summary>
@@ -538,4 +575,5 @@ public sealed record LiveEvalResult(
 {
     public int ExitCode => (int)TerminalStatus;
     public LiveSafetySummary? Safety { get; init; }
+    public IReadOnlyList<LiveScenarioAcceptanceDecision> ScenarioAcceptances { get; init; } = [];
 }

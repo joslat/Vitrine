@@ -8,109 +8,45 @@ using Galaxus.RecommendationAgent.Domain;
 namespace Galaxus.RecommendationAgent.Retrieval;
 
 /// <summary>
-/// The lexical leg of the hybrid retriever (design §D.3) — an in-process, IDF-weighted token
+/// The lexical leg of the hybrid retriever — an in-process, IDF-weighted token
 /// overlap scorer with an exact boost for model numbers and GTINs.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Why this leg is not optional.</b> Dense retrieval is at its weakest exactly where Galaxus
-/// customers are strongest: they type model numbers. <c>α7 IV</c>, <c>A7IV</c> and
-/// <c>ILCE-7M4</c> are three surface forms of one product, and a 1536-dimensional vector treats
-/// the difference as noise. This leg treats it as the signal.
+/// Dense retrieval is weak on exact identities such as model numbers and GTINs. This leg treats
+/// <c>α7 IV</c>, <c>A7IV</c>, and <c>ILCE-7M4</c> as strong evidence rather than semantic noise.
 /// </para>
 /// <para>
-/// <b>What it stands in for.</b> In production this leg is Galaxus's existing Elasticsearch.
-/// The architectural claim is <i>fuse with their search, do not replace it</i> — a stronger
-/// claim than "we built a new search", and the reason the fusion step uses RRF, which needs no
-/// score calibration between a cosine and a token count.
+/// It stands in for an existing production search service. Reciprocal-rank fusion combines its
+/// ordering with dense retrieval without pretending that cosine and token-overlap scores share a
+/// calibrated scale.
 /// </para>
 /// <para>
 /// <b>Indexed fields:</b> <see cref="Product.Name"/>, <see cref="Product.Brand"/>,
-/// <see cref="Product.Specs"/> keys and values, and — since B-21 (2026-09-05) —
-/// <see cref="Product.Description"/> at <see cref="DescriptionFieldWeight"/>. Use-context tags
-/// are still NOT indexed here. That is not an omission: the whole demonstration is that the
-/// cross-category link (hiking pack → travel tripod) lives on the <c>Use:</c> line and is
-/// invisible to lexical matching. Indexing tags here would blur the one claim the demo exists to
-/// make, and would make the lexical baseline look better than the thing it is a baseline for.
+/// <see cref="Product.Specs"/> keys and values, and <see cref="Product.Description"/> at
+/// <see cref="DescriptionFieldWeight"/>. Use-context tags are intentionally excluded: the
+/// cross-category bridge remains evidence supplied by the semantic leg, not leaked into the
+/// lexical baseline.
 /// </para>
 /// <para>
-/// <b>Why <see cref="Product.Description"/> was added, and what it is FOR.</b> §D.3's original
-/// field list was Name / Brand / Specs, and the omission was invisible until the dense leg went
-/// away. <see cref="EmbeddingDocument"/> carries the description (line 5 of the template), so on
-/// the dense path the prose is searchable; on the lexical path it was not indexed at all. The
-/// consequence, MEASURED 2026-09-05: with the dense leg unavailable, Nadia's three searches
-/// returned <b>0 candidates each</b> and Demo 01's offline arm fell from 6 recommendations to 0 —
-/// every one of her six products had been the dense leg's alone, because nothing in a Name, a
-/// Brand or a spec value answers "multi-day trips, starts before sunrise, carried". Degraded mode
-/// is supposed to DEGRADE. It COLLAPSED, and the reason was this list.
+/// Description text keeps lexical-only degraded mode useful for need-shaped queries. It receives
+/// the lowest field weight because prose is much longer than names and specs; equal per-token
+/// weighting would let volume outrank an exact identity. The weights are chosen, not measured.
+/// On the shipped 99-SKU corpus, the index has 1,957 terms and the query
+/// <c>"multi-day trips, starts before sunrise, carried"</c> yields eight lexical hits led by the
+/// Icebreaker layer, Petzl headlamp, and Osprey pack. <c>"Mirrorless full-frame"</c> keeps the
+/// intended Sony body at rank one.
 /// </para>
 /// <para>
-/// So the description is indexed, and it is indexed at the LOWEST weight of any field. That is
-/// not timidity: it is the longest field by an order of magnitude, so an equal per-token weight
-/// would let prose volume out-vote an exact name match on sheer count. The weight is
-/// <b>chosen, not measured</b>, like every other weight in this class.
+/// <b>A fragment may add score but may not create a hit.</b> <see cref="ExpandToBag"/> exposes
+/// parts of hyphenated tokens so <c>16-35</c> can match <c>16</c> and <c>35</c>. Admission still
+/// requires a whole-token anchor, a model-number match, or an exact GTIN. This prevents unrelated
+/// compounds such as <c>multi-day</c> and <c>multi-tool</c> from becoming candidates solely through
+/// a shared fragment while retaining useful fragment evidence for an already anchored product.
 /// </para>
 /// <para>
-/// <b>The ANCHOR rule — a fragment may add score, it may not create a hit.</b>
-/// <see cref="ExpandToBag"/> splits a hyphenated token into its parts on BOTH sides, so that
-/// <c>16-35</c> also reaches <c>16</c> and <c>35</c>. Without a guard the parts are
-/// indistinguishable from real tokens, and two unrelated compounds meet on a fragment neither
-/// side ever wrote as a word. MEASURED on B-8's own query — the derived interest label
-/// <i>"multi-day trips, starts before sunrise, carried"</i> against the 99-SKU catalogue — the
-/// entire lexical leg was four products and every one of them was a fragment collision:
-/// <c>GLX-6007</c> (a bike multi-<b>tool</b>) at rank 1 with 10.58 on the single token
-/// <c>multi</c>, <c>GLX-9003</c> (a pill organiser, "four per <b>day</b>") at 6.91 on
-/// <c>day</c>, and two filter sets on <c>multi</c> from "multi-coating". ALL SIX of the query's
-/// own tokens had <c>df = 0</c> in the index AS IT THEN WAS — <c>multi-day</c>, <c>trips</c>,
-/// <c>starts</c>, <c>before</c>, <c>sunrise</c>, <c>carried</c> — so the only things that matched
-/// were the fragments <c>multi</c> (df 3) and <c>day</c> (df 1). Rank 1 in a leg is authority under RRF
-/// whatever the score, so a fragment put a Cycling SKU at the top of a photographer's tray, and
-/// a Health &amp; Personal Care SKU into her candidate set. That is the false positive §8.1
-/// records as B-8 and attributes to the <c>Use:</c> line, which is not where it came from — the
-/// bike multi-tool's dense rank on that query was 16th of 99.
-/// The same collision put a mudguard at lexical rank 1 for <i>"Mirrorless full-frame"</i>:
-/// <c>mirrorless</c> has df 0 and <c>full-frame</c> df 1 (Nadia's own camera), while the
-/// fragments <c>full</c> (df 4, "full-length mudguard") and <c>frame</c> (df 3, "aluminium
-/// frame") have carriers in three departments.
-/// </para>
-/// <para>
-/// So a product enters the lexical result only when it is ANCHORED: it shares at least one
-/// token that NEITHER side had to split to produce, or it took a model-number or GTIN boost.
-/// Fragment overlap still contributes its IDF-weighted score to an anchored product — the
-/// <c>16</c> of <c>16-35</c> is not thrown away — it simply cannot, alone, admit a product.
-/// This is the same defect class as <see cref="StopWords"/> (a token with no discriminating
-/// meaning winning on <c>df = 1</c>) and it is fixed in the same place, at match time.
-/// </para>
-/// <para>
-/// ⚠ <b>Those df figures are pre-B-21 and are left standing as the RECORD OF THE DEFECT, not as a
-/// description of this index.</b> Indexing <see cref="Product.Description"/> moved every one of
-/// them, and the direction matters: the six tokens that had no carrier now have carriers, so the
-/// anchor rule is no longer doing the work alone. Re-measured 2026-09-05 on the same 99 SKUs,
-/// before → after: vocabulary <b>1177 → 1957</b>; <c>multi-day</c> 0 → 1, <c>starts</c> 0 → 1,
-/// <c>sunrise</c> 0 → 1, <c>before</c> 0 → 4, <c>carried</c> 0 → 6, <c>mirrorless</c> 0 → 2;
-/// <c>trips</c> is the one that stayed at 0. The fragments moved too — <c>multi</c> 3 → 6,
-/// <c>day</c> 1 → 7, <c>full</c> 4 → 6, <c>frame</c> 3 → 5 — which DAMPS them: a fragment with
-/// six carriers earns far less IDF than one with three, so the collision this rule was written
-/// against is weaker as well as blocked.
-/// </para>
-/// <para>
-/// <b>The anchor rule stays.</b> It is not made redundant by a bigger vocabulary — a fragment can
-/// still be the only thing two texts share — and the two guards compose: anchoring decides
-/// ADMISSION, the description decides whether there is anything to admit. What changed is the
-/// outcome on B-8's own query: <i>"multi-day trips, starts before sunrise, carried"</i> returned
-/// <b>0 lexical hits</b> before (four collisions, all correctly refused admission, and nothing
-/// left) and returns <b>8</b> now, led by <c>GLX-2003</c> Icebreaker merino base layer (9.79),
-/// <c>GLX-2002</c> Petzl Actik Core headlamp (9.34) and <c>GLX-2001</c> Osprey Kestrel 38
-/// trekking pack (4.18) — three products from the right department, admitted on whole tokens
-/// their own prose carries. On <i>"Mirrorless full-frame"</i> the intended answer
-/// <c>GLX-1001</c> stays rank 1 and its score rises 17.07 → 23.63, because <c>mirrorless</c>
-/// finally has a carrier to score on.
-/// </para>
-/// <para>
-/// <b>What it does NOT fix, measured in the same pass.</b> <i>"Headlamps"</i> still returns 0
-/// hits — the catalogue writes "headlamp" and this index does no stemming — and <i>"I want to
-/// shoot waterfalls on my hikes"</i> still returns 0. Neither is a description problem, and
-/// neither is repaired here.
+/// Known lexical limits remain explicit: the index does no general stemming, and semantic
+/// cross-category queries may still return no lexical hit. The dense leg exists for those cases.
 /// </para>
 /// </remarks>
 public sealed class LexicalIndex
@@ -151,28 +87,14 @@ public sealed class LexicalIndex
     public const int MinimumModelTokenLength = 3;
 
     /// <summary>
-    /// Closed-class function words that are never indexed. Not a tuning knob — a correctness fix.
+    /// Closed-class function words that are never indexed. This is a correctness boundary, not a
+    /// relevance tuning knob.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// ⚠ <b>Smoothed IDF over 76 documents REWARDS a function word that lands in a product name.</b>
-    /// MEASURED before this set existed: <c>Search("it")</c> returned <c>GLX-9001</c> at
-    /// <b>13.03</b> — the highest single-token score anywhere in the corpus — because "IT" appears
-    /// in "Omron M7 Intelli IT" and in nothing else, so df = 1 gave it the maximum possible IDF and
-    /// the 3.0 name-field weight multiplied it. The only carrier of the corpus's best-scoring token
-    /// was the blood-pressure monitor.
-    /// </para>
-    /// <para>
-    /// The consequence was not theoretical. On the design's own headline query
-    /// <i>"I want to shoot waterfalls on my hikes"</i> NO content token scored at all — the whole
-    /// lexical leg was <c>"to"</c> and <c>"on"</c> — and the fused top-8 put the intended answer
-    /// (GLX-1003) at #4 and the blood-pressure cuff at #7. Removing these words alone restores
-    /// GLX-1003 to #1. Field weights are NOT the lever here: df = 1 beats any weighting.
-    /// </para>
-    /// <para>
-    /// Applied at INDEX time, in <see cref="AddField"/>. A query token that no document carries
-    /// simply scores nothing, so the query side needs no matching list to maintain.
-    /// </para>
+    /// Smoothed IDF rewards rare terms, including rare function words. A measured counterexample
+    /// gave <c>"it"</c> the corpus's strongest single-token score because it appeared in one product
+    /// name. Excluding closed-class words at index time prevents grammar from outranking content;
+    /// the query side needs no parallel list because unindexed tokens cannot score.
     /// </remarks>
     public static readonly IReadOnlySet<string> StopWords = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -278,14 +200,8 @@ public sealed class LexicalIndex
         var idf   = new Dictionary<string, float>(documentFreq.Count, StringComparer.Ordinal);
         foreach (var (token, df) in documentFreq)
         {
-            // Smoothed IDF. It damps a token present in MANY documents ("black", "aluminium") to
-            // almost nothing rather than exactly nothing.
-            //
-            // ⚠ It does the OPPOSITE at the other end, and the earlier comment here claimed
-            // otherwise: a token in exactly one document gets the largest weight the formula can
-            // produce. That is right for a model number and catastrophic for a function word that
-            // happens to sit in one product's name — which is why StopWords exists and why the
-            // fix is at index time rather than in these weights.
+            // Smoothed IDF damps common terms and rewards rare ones. StopWords prevents rare
+            // function words from receiving the same authority as useful identities.
             idf[token] = (float)Math.Log(1.0 + (double)total / df);
         }
 

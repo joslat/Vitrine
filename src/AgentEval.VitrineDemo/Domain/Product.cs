@@ -12,14 +12,14 @@ namespace Galaxus.RecommendationAgent.Domain;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is the ONE shared domain type (design §0.5 / D-1): both
+/// This is the ONE shared domain type: both
 /// <c>Galaxus.RecommendationAgent</c> and <c>Galaxus.RecommendationAgent.Evals</c>
 /// code against this record, so the eval lane cannot drift into a second,
 /// incompatible product model.
 /// </para>
 /// <para>
-/// The eval lane's contract (§C.0 / R-1) asks for <c>Sku</c>, <c>LeafCategory</c>,
-/// <c>Attributes</c> and <c>ReviewIds</c>. None of §A's field names were renamed to
+/// The eval lane's contract asks for <c>Sku</c>, <c>LeafCategory</c>,
+/// <c>Attributes</c> and <c>ReviewIds</c>. None of the domain-model contract's field names were renamed to
 /// satisfy it: <see cref="Sku"/> and <see cref="LeafCategory"/> are computed
 /// projections of <see cref="Id"/> and <see cref="CategoryPath"/>,
 /// <see cref="Attributes"/> is a derived token set fused from <see cref="Tags"/>
@@ -44,7 +44,7 @@ public sealed record Product
     /// <summary>Leaf-first-readable path, e.g. ["Photography", "Lenses", "Wide-angle zoom"].</summary>
     public required IReadOnlyList<string> CategoryPath { get; init; }
 
-    /// <summary>Current price in Swiss francs. The MODEL may never state this — see §F.4.</summary>
+    /// <summary>Current price in Swiss francs. The MODEL may never state this — see the live price-and-stock boundary.</summary>
     public required decimal PriceChf { get; init; }
 
     /// <summary>Strike-through price; null when the product was never discounted.</summary>
@@ -58,7 +58,7 @@ public sealed record Product
 
     /// <summary>
     /// USE-CONTEXT tags, not category synonyms. These are the cross-category bridge
-    /// (see §D.1): "context:golden-hour", "trip:multi-day", "weight:packable",
+    /// (see the embedding-document contract): "context:golden-hour", "trip:multi-day", "weight:packable",
     /// "skill:enthusiast", "compat:sony-e-mount", "consumable:true".
     /// </summary>
     public required IReadOnlyList<string> Tags { get; init; }
@@ -87,7 +87,7 @@ public sealed record Product
     /// <summary>Year of first release. Drives the durable-churn suppression rule.</summary>
     public required int ReleaseYear { get; init; }
 
-    /// <summary>Non-null ⇒ marketplace SKU ⇒ the COLD-START plant (§B.1).</summary>
+    /// <summary>Non-null ⇒ marketplace SKU ⇒ the COLD-START plant.</summary>
     public string? MarketplaceSeller { get; init; }
 
     /// <summary>True for refurbished / second-hand listings.</summary>
@@ -100,7 +100,7 @@ public sealed record Product
     public int? TypicalReplenishDays { get; init; }
 
     /// <summary>
-    /// Ids of the reviews written about this product. Additive over §A.1 to satisfy
+    /// Ids of the reviews written about this product. Additive over the product-schema contract to satisfy
     /// the eval lane's R-1/R-5: <c>evidence = "review:&lt;id&gt;"</c> is resolved by
     /// membership in this set.
     /// </summary>
@@ -115,7 +115,7 @@ public sealed record Product
 
     /// <summary>
     /// Alias for <see cref="Id"/>. The eval lane's contract (R-1) says <c>Sku</c>;
-    /// §A.1 says <c>Id</c>. Both names now address the same value.
+    /// the product-schema contract says <c>Id</c>. Both names now address the same value.
     /// </summary>
     public string Sku => Id;
 
@@ -145,7 +145,7 @@ public sealed record Product
     /// <para>
     /// This makes "always cites its evidence" NON-GAMEABLE: plausible prose cannot pass,
     /// because the token has to be present in the catalogue record. A model that invents a
-    /// flattering attribute fails the check harder, not softer (§F.3).
+    /// flattering attribute fails the check harder, not softer.
     /// </para>
     /// <para>
     /// DERIVED ON EVERY ACCESS — deliberately not cached in an instance field, because a
@@ -212,7 +212,7 @@ public sealed record Product
     /// <summary>
     /// Looks up a spec or a tag by key and returns its catalogue value. Tags are
     /// addressable both by their whole text and by their <c>prefix:</c> part.
-    /// Used by the two-sided evidence check (§F.3), which compares the model's stated
+    /// Used by the two-sided evidence check, which compares the model's stated
     /// value against the value returned here.
     /// </summary>
     /// <param name="attributeKey">A spec key, a whole tag, or a tag prefix.</param>
@@ -318,7 +318,7 @@ public sealed record Sustainability(
 /// <param name="ParentId">Parent category id; null for a root department.</param>
 /// <param name="AttributeSchema">The attribute keys every product in this leaf MUST fill. Deliberately per-leaf.</param>
 /// <param name="SensitiveInference">
-/// True ⇒ never surfaced by INFERENCE; see the sensitive blocklist in §F.5. The category
+/// True ⇒ never surfaced by INFERENCE; see the sensitive blocklist in the sensitive-category screen. The category
 /// stays browsable and searchable — it is the unsolicited inference that is blocked, not
 /// the category. Swiss revDSG Art. 5(c) and GDPR Art. 9 treat INFERRING a special category
 /// from behaviour as processing it.

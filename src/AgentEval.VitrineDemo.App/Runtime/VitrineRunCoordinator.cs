@@ -14,13 +14,17 @@ namespace AgentEval.VitrineDemo.App.Runtime;
 public sealed record VitrineRunRequest(
     VitrineRunMode Mode,
     string UserId,
-    bool PersonalizationEnabled = true,
+    bool? PersonalizationEnabled = true,
     RecommendationExecutionArm Demo01Arm = RecommendationExecutionArm.ScriptedAgent,
     int MaxRounds = DiscoveryState.DefaultMaxDiscoveryRounds,
     VitrineEvaluationPlan EvaluationPlan = VitrineEvaluationPlan.OfflineSuite,
     string? LiveScenarioId = null,
     int EvaluationRepetitions = 5,
-    bool PaidEvaluationConfirmed = false);
+    bool PaidEvaluationConfirmed = false)
+{
+    public const string MultiplePersonasScope = "multiple-personas";
+    public const string NotApplicablePersonaScope = "not-applicable";
+}
 
 public sealed record VitrineRunOutcome(
     Guid RunId,
@@ -42,8 +46,8 @@ public sealed class VitrineRunCoordinator : IAsyncDisposable
 {
     private readonly Lock _gate = new();
     private readonly Func<VitrineRunRequest, RecommendationToolSet?, VitrineGraphSnapshot> _initialGraphFactory;
-    private readonly Func<VitrineEvaluationPlan, LiveEvalOptions, IProgress<LiveEvalProgress>?, CancellationToken,
-        Task<LiveEvalResult>> _liveEvaluationRunner;
+    private readonly Func<VitrineEvaluationPlan, bool, LiveEvalOptions, IProgress<LiveEvalProgress>?,
+        CancellationToken, Task<LiveEvalResult>> _liveEvaluationRunner;
     private CancellationTokenSource? _activeCancellation;
     private Task<VitrineRunOutcome>? _activeRun;
     private bool _disposed;
@@ -63,7 +67,7 @@ public sealed class VitrineRunCoordinator : IAsyncDisposable
 
     internal VitrineRunCoordinator(
         Func<VitrineRunRequest, RecommendationToolSet?, VitrineGraphSnapshot> initialGraphFactory,
-        Func<VitrineEvaluationPlan, LiveEvalOptions, IProgress<LiveEvalProgress>?, CancellationToken,
+        Func<VitrineEvaluationPlan, bool, LiveEvalOptions, IProgress<LiveEvalProgress>?, CancellationToken,
             Task<LiveEvalResult>> liveEvaluationRunner)
     {
         _initialGraphFactory = initialGraphFactory
@@ -158,7 +162,7 @@ public sealed class VitrineRunCoordinator : IAsyncDisposable
                     var result = await RecommendationRunEngine.RunAsync(
                         new RecommendationRunOptions(
                             request.UserId,
-                            PersonalizationDisabled: !request.PersonalizationEnabled,
+                            PersonalizationDisabled: request.PersonalizationEnabled != true,
                             request.Demo01Arm,
                             RegisteredTools: recommendationTools),
                         recommendationSink,
@@ -178,7 +182,7 @@ public sealed class VitrineRunCoordinator : IAsyncDisposable
                         request.UserId,
                         new DiscoveryLoopOptions(
                             Offline: request.Demo01Arm == RecommendationExecutionArm.ZeroModelBaseline,
-                            PersonalizationDisabled: !request.PersonalizationEnabled,
+                            PersonalizationDisabled: request.PersonalizationEnabled != true,
                             MaxRounds: request.MaxRounds,
                             ChatClient: workflowClient,
                             Progress: sink,
@@ -199,9 +203,14 @@ public sealed class VitrineRunCoordinator : IAsyncDisposable
                     {
                         if (!request.PaidEvaluationConfirmed)
                             throw new InvalidOperationException("A paid live evaluation requires explicit confirmation.");
+                        VitrineEventDraft? deferredTerminal = null;
                         var liveProgress = new CallbackProgress<LiveEvalProgress>(item =>
                         {
-                            store.Append(VitrineEventAdapters.FromLiveEvaluation(item));
+                            var draft = VitrineEventAdapters.FromLiveEvaluation(item);
+                            if (item.Phase == LiveEvalProgressPhase.SessionCompleted)
+                                deferredTerminal = draft;
+                            else
+                                store.Append(draft);
                             NotifyLiveEvaluationProgress(item);
                         });
                         var repetitions = VitrineEvaluationPlans.Require(request.EvaluationPlan).SupportsRepetitions
@@ -213,9 +222,11 @@ public sealed class VitrineRunCoordinator : IAsyncDisposable
                                 ? null
                                 : [request.LiveScenarioId]);
                         var liveResult = await _liveEvaluationRunner(
-                            request.EvaluationPlan, options, liveProgress, cancellationToken).ConfigureAwait(false);
+                            request.EvaluationPlan, request.PaidEvaluationConfirmed, options, liveProgress,
+                            cancellationToken).ConfigureAwait(false);
                         foreach (var observation in VitrineEventAdapters.FromLiveSafetyResult(liveResult))
                             store.Append(observation);
+                        if (deferredTerminal is not null) store.Append(deferredTerminal);
                         return new(store.RunId, request, graph, store.Snapshot(), LiveEvaluation: liveResult);
                     }
 
@@ -295,10 +306,11 @@ public sealed class VitrineRunCoordinator : IAsyncDisposable
 
     private static Task<LiveEvalResult> RunLiveEvaluationAsync(
         VitrineEvaluationPlan plan,
+        bool paidExecutionConfirmed,
         LiveEvalOptions options,
         IProgress<LiveEvalProgress>? progress,
         CancellationToken cancellationToken) =>
-        LiveEvaluationPlanRunner.RunAsync(plan, options, progress: progress,
+        LiveEvaluationPlanRunner.RunAsync(plan, paidExecutionConfirmed, options, progress: progress,
             cancellationToken: cancellationToken);
 
     private void NotifyRunPrepared(VitrineEventStore store, VitrineGraphSnapshot graph)

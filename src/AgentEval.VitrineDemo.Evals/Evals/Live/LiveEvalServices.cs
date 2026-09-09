@@ -239,9 +239,10 @@ public sealed class LiveEvalServices
                 using var client = CreateBudgetedClient(request.MaxOutputTokens);
                 var run = await RecommendationRunEngine.RunAsync(
                     new RecommendationRunOptions(
-                        request.Scenario.PersonaId,
+                        request.PersonaId,
                         Arm: RecommendationExecutionArm.LiveAzure,
-                        ChatClient: client),
+                        ChatClient: client,
+                        SessionRequest: request.Query),
                     cancellationToken: cancellationToken).ConfigureAwait(false);
 
                 var status = run.Status switch
@@ -305,10 +306,10 @@ public sealed class LiveEvalServices
                 using var client = CreateBudgetedClient(request.MaxOutputTokens);
                 var recorder = new RecordingDiscoveryProgressSink();
                 var run = await GalaxusDiscoveryLoop.RunAsync(
-                    request.Scenario.PersonaId,
+                    request.PersonaId,
                     new DiscoveryLoopOptions(
                         Offline: false,
-                        SessionRequest: request.Scenario.Query,
+                        SessionRequest: request.Query,
                         ChatClient: client,
                         Progress: recorder),
                     cancellationToken).ConfigureAwait(false);

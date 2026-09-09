@@ -78,6 +78,10 @@ public sealed class LiveEvaluationAppIntegrationTests
         };
         setup.PaidEvaluationAcknowledged = true;
         Assert.True(setup.PaidEvaluationAcknowledged);
+        Assert.Equal(4, setup.MinimumEvaluationRepetitions);
+        setup.EvaluationRepetitions = 1;
+        Assert.Equal(4, setup.EvaluationRepetitions);
+        setup.PaidEvaluationAcknowledged = true;
 
         setup.EvaluationRepetitions++;
         Assert.False(setup.PaidEvaluationAcknowledged);
@@ -93,9 +97,10 @@ public sealed class LiveEvaluationAppIntegrationTests
         var calls = 0;
         await using var coordinator = new VitrineRunCoordinator(
             (request, _) => VitrineGraphFactory.ForRunningLiveEvaluation(request.EvaluationPlan),
-            (plan, options, progress, _) =>
+            (plan, paidExecutionConfirmed, options, progress, _) =>
             {
                 calls++;
+                Assert.True(paidExecutionConfirmed);
                 Assert.Equal(VitrineEvaluationPlan.LiveEval01Agent, plan);
                 Assert.Equal(1, options.Repetitions);
                 Assert.Equal(["nadia-cross-category"], options.ScenarioIds);
@@ -210,7 +215,7 @@ public sealed class LiveEvaluationAppIntegrationTests
         var calls = 0;
         await using var coordinator = new VitrineRunCoordinator(
             (request, _) => VitrineGraphFactory.ForRunningLiveEvaluation(request.EvaluationPlan),
-            (_, _, _, _) =>
+            (_, _, _, _, _) =>
             {
                 calls++;
                 return Task.FromResult(Result(VitrineEvaluationPlan.LiveEval01Agent));

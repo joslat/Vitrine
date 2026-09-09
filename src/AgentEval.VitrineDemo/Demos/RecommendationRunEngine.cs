@@ -9,6 +9,7 @@ using Galaxus.RecommendationAgent.Observability;
 using Galaxus.RecommendationAgent.Retrieval;
 using Galaxus.RecommendationAgent.Signals;
 using Galaxus.RecommendationAgent.Tools;
+using Galaxus.RecommendationAgent.Workflows;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 
@@ -45,7 +46,8 @@ public sealed record RecommendationRunOptions(
     IProductRetriever? Retriever = null,
     RecommendationToolSet? RegisteredTools = null,
     TimeSpan? RunTimeout = null,
-    TimeSpan? ModelCallTimeout = null);
+    TimeSpan? ModelCallTimeout = null,
+    string? SessionRequest = null);
 
 /// <summary>
 /// Safe, immutable description of a completed run. Runtime service objects deliberately do not
@@ -154,7 +156,9 @@ public static class RecommendationRunEngine
         }
 
         var catalogue = Catalogue.Default;
-        var prompt = Personas.CanonicalPromptFor(profile.Id);
+        var prompt = string.IsNullOrWhiteSpace(options.SessionRequest)
+            ? Personas.CanonicalPromptFor(profile.Id)
+            : options.SessionRequest.Trim();
         var classified = profile.User.PersonalizationEnabled
             ? PurchaseIntentClassifier.ClassifyAll(profile.Purchases, catalogue.BySku, Personas.DemoToday)
             : [];
@@ -252,18 +256,20 @@ public static class RecommendationRunEngine
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             return Finish(RecommendationRunStatus.Cancelled, null, profile, prompt, map, classified, [], null,
-                null, toolNames, null, null, null, null, null, runId, options, startedAt, recording, events);
+                null, toolNames, ObservedModelCallAttemptsOrMissing(recording), null, null, null, null,
+                runId, options, startedAt, recording, events);
         }
         catch (OperationCanceledException) when (runCancellation.IsCancellationRequested)
         {
             return Finish(RecommendationRunStatus.Failed, "RunTimeout", profile, prompt, map, classified, [], null,
-                null, toolNames, null, null, null, null, null, runId, options, startedAt, recording, events,
-                toolSet.Id, runTimeout, modelCallTimeout);
+                null, toolNames, ObservedModelCallAttemptsOrMissing(recording), null, null, null, null,
+                runId, options, startedAt, recording, events, toolSet.Id, runTimeout, modelCallTimeout);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             return Finish(RecommendationRunStatus.Failed, exception.GetType().Name, profile, prompt, map,
-                classified, [], null, null, toolNames, null, null, null, null, null,
+                classified, [], null, null, toolNames, ObservedModelCallAttemptsOrMissing(recording),
+                null, null, null, null,
                 runId, options, startedAt, recording, events);
         }
     }
@@ -345,6 +351,7 @@ public static class RecommendationRunEngine
 
         foreach (var signal in map.Signals.OrderByDescending(static signal => signal.Strength).Take(3))
         {
+            var attributedInterest = DiscoveryInterestMapping.ToInterest(signal, $"baseline-{presented.Count + 1}");
             var query = RetrievalQuery.For(signal.Label) with
             {
                 TopK = 6,
@@ -358,13 +365,14 @@ public static class RecommendationRunEngine
             foreach (var hit in result.Hits)
             {
                 if (kept >= 2) break;
-                if (!taken.Add(hit.ProductId)) continue;
                 if (!catalogue.TryGet(hit.ProductId, out var product) || product is null) continue;
+                if (!InterestAttribution.IsAttributable(catalogue, attributedInterest, product, out var attribution)) continue;
+                if (!taken.Add(hit.ProductId)) continue;
                 var citation = catalogue.AttributesOf(product).OrderBy(static value => value, StringComparer.Ordinal).FirstOrDefault();
                 if (citation is null) continue;
                 presented.Add(new(
                     product.Id,
-                    $"Retrieved for the derived interest \"{signal.Label}\". Selected by the baseline arm, with no model call.",
+                    $"Matches the derived interest \"{signal.Label}\" because {attribution}. Selected by the baseline arm, with no model call.",
                     EvidenceRef.AttributePrefix + citation,
                     product.StockUnits == 0));
                 provenance[product.Id] = [signal.Label];
@@ -466,6 +474,14 @@ public static class RecommendationRunEngine
         if (value <= TimeSpan.Zero || value == Timeout.InfiniteTimeSpan)
             throw new ArgumentOutOfRangeException(parameterName, "Timeouts must be finite and positive.");
         return value;
+    }
+
+    private static int? ObservedModelCallAttemptsOrMissing(
+        RecordingRecommendationRuntimeEventSink recording)
+    {
+        var attempts = recording.Events.Count(
+            static item => item.Kind == RecommendationRuntimeEventKind.ModelRequestStarted);
+        return attempts == 0 ? null : attempts;
     }
 
     private sealed record ArmResult(

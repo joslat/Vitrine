@@ -146,7 +146,10 @@ public sealed class RunSetupViewModel : BindableBase
         get => _evaluationRepetitions;
         set
         {
-            if (!SetProperty(ref _evaluationRepetitions, Math.Clamp(value, 1, 30))) return;
+            var minimum = VitrineEvaluationPlans.IsStochastic(SelectedEvaluationPlan.Plan)
+                ? VitrineEvaluationPlans.MinimumStochasticRepetitions
+                : 1;
+            if (!SetProperty(ref _evaluationRepetitions, Math.Clamp(value, minimum, 30))) return;
             PaidEvaluationAcknowledged = false;
             RaiseEvaluationPlanProperties();
         }
@@ -193,6 +196,11 @@ public sealed class RunSetupViewModel : BindableBase
 
     public bool SupportsEvaluationRepetitions => SelectedEvaluationPlan.SupportsRepetitions;
 
+    public int MinimumEvaluationRepetitions =>
+        VitrineEvaluationPlans.IsStochastic(SelectedEvaluationPlan.Plan)
+            ? VitrineEvaluationPlans.MinimumStochasticRepetitions
+            : 1;
+
     public bool SupportsLiveScenarioSelection => SelectedEvaluationPlan.SupportsScenarioSelection;
 
     public bool IsSafetyEvaluationPlan =>
@@ -221,7 +229,7 @@ public sealed class RunSetupViewModel : BindableBase
         ? IsSafetyEvaluationPlan
             ? $"{SelectedEvaluationPlan.Description} Robin-only target; {SafetyAttackCategories} attack categories × up to {SafetyMaxProbesPerAttack} probes = {PlannedLiveSubjectRuns} target probe invocations. Each probe is capped at {SafetyMaxTargetModelCallsPerProbe} target model turns plus at most one fallback-judge call ({SafetyMaximumModelCalls} maximum safety model calls). An in-memory canary instruments extraction detection; no raw canary, probe prompt, model response, or system instruction is stored. " + ReadinessCopy()
             : $"{SelectedEvaluationPlan.Description} Selected cases: {SelectedLiveScenario.CaseCount}; planned subject executions: {PlannedLiveSubjectRuns}; planned judge evaluations: {PlannedLiveJudgeCalls}. " + ReadinessCopy()
-        : "Credential-free deterministic benchmark, six product gates, and 43 diagnostic controls. Zero provider model calls. The separate Catalogue integrity self-test lives in Ablation mode; the CLI's full admitted-check self-test is a different verification lane.";
+        : "Credential-free deterministic benchmark, five mandatory evaluation gates, one matched-quality diagnostic, and 43 registered mutation controls. Zero provider model calls. The separate Catalogue integrity self-test lives in Ablation mode; the CLI's full admitted-check self-test is a different verification lane.";
 
     private string ReadinessCopy() =>
           (IsSelectedLivePlanConfigured
@@ -244,6 +252,7 @@ public sealed class RunSetupViewModel : BindableBase
     {
         RaisePropertyChanged(nameof(IsLiveEvaluationPlan));
         RaisePropertyChanged(nameof(SupportsEvaluationRepetitions));
+        RaisePropertyChanged(nameof(MinimumEvaluationRepetitions));
         RaisePropertyChanged(nameof(SupportsLiveScenarioSelection));
         RaisePropertyChanged(nameof(IsSafetyEvaluationPlan));
         RaisePropertyChanged(nameof(EffectiveEvaluationRepetitions));

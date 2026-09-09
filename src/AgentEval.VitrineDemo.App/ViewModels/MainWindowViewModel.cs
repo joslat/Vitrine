@@ -276,7 +276,7 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
                $"{Setup.SelectedLiveScenario.CaseCount} stable case(s), {Setup.EffectiveEvaluationRepetitions} repetition(s), " +
                $"{Setup.PlannedLiveSubjectRuns} subject execution(s), and {Setup.PlannedLiveJudgeCalls} judge evaluation(s). " +
                "Every arm/repetition is persisted locally. Provider failure cannot count as measured; bounded internal workflow fallbacks are disclosed.",
-        VitrineRunMode.Evals => "Offline Evals targets Demo01 + Demo02: an ADR-032 deterministic benchmark plus judged-quality, red-team, memory/honesty, topology/catalogue, and 43 causal-control lanes. Provider LLM calls and cost are exactly zero.",
+        VitrineRunMode.Evals => "Offline Evals targets Demo01 + Demo02: a deterministic AgentEval benchmark plus judged-quality, red-team, memory/honesty, topology/catalogue, and 43 registered mutation controls (20 production-observation rows + 23 boundary/calibration fixtures). Provider LLM calls and cost are exactly zero.",
         VitrineRunMode.Ablation => "Catalogue integrity self-test removes one row only from an isolated catalogue snapshot. Expected exit 1 proves detection; state is restored afterward and no provider LLM is used.",
         _ => string.Empty,
     };
@@ -360,10 +360,18 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
 
     internal VitrineRunRequest CaptureRunRequestForExecution()
     {
+        var isDemo = SelectedMode is VitrineRunMode.Demo01 or VitrineRunMode.Demo02;
+        var personaScope = isDemo
+            ? Setup.SelectedPersona.Id
+            : Setup.IsSafetyEvaluationPlan
+                ? VitrineRunRequest.NotApplicablePersonaScope
+                : Setup.SupportsLiveScenarioSelection && Setup.SelectedLiveScenario.Id is { } scenarioId
+                    ? LiveUseCaseScenarios.Require(scenarioId).PersonaId
+                    : VitrineRunRequest.MultiplePersonasScope;
         var request = new VitrineRunRequest(
             SelectedMode,
-            Setup.SelectedPersona.Id,
-            Setup.PersonalizationEnabled,
+            personaScope,
+            isDemo ? Setup.PersonalizationEnabled : null,
             Setup.SelectedArm.Arm,
             Setup.MaxRounds,
             SelectedMode == VitrineRunMode.Evals
@@ -550,7 +558,12 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
         if (outcome.Workflow is { } workflow)
             return $"Demo02: {workflow.ExecutorIds.Count} executors, {workflow.RoutesTaken.Count} route observations, loop-back {(workflow.Looped ? "observed" : "not taken")}, stop {workflow.State.StopReason}; usage {workflow.State.ProviderUsage.ToDisplayString()}.";
         if (outcome.Evaluation is { } evaluation)
-            return $"Evaluation: process-equivalent exit {evaluation.ExitCode}; {evaluation.CaughtControls}/{evaluation.Controls.Count} registered control mutations detected and recovered; {evaluation.Gates.Count} gates; local AgentEval run {evaluation.OfflineBenchmark?.RunDirectory ?? "NOT WRITTEN"}.";
+        {
+            var mandatory = evaluation.Gates.Count(static gate => gate.IsVerdictBearing);
+            var diagnostics = evaluation.Gates.Count - mandatory;
+            return $"Evaluation: process-equivalent exit {evaluation.ExitCode}; {evaluation.CaughtControls}/{evaluation.Controls.Count} registered control mutations detected and recovered; " +
+                $"{mandatory} mandatory gates and {diagnostics} diagnostic evaluations; local AgentEval run {evaluation.OfflineBenchmark?.RunDirectory ?? "NOT WRITTEN"}.";
+        }
         if (outcome.LiveEvaluation is { } live)
             return $"{VitrineEvaluationPlans.Require(live.Plan).Label}: {live.Trials.Count} scenario trial(s), " +
                    $"{live.Runs.Count} AgentEval run director{(live.Runs.Count == 1 ? "y" : "ies")}, " +
@@ -567,7 +580,7 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
         if (outcome.Evaluation is { ExitCode: 1 })
             return outcome.Request.Mode == VitrineRunMode.Ablation
                 ? "Catalogue integrity self-test detected the planted defect · expected exit 1 · isolated state restored"
-                : "Evaluation gates failed · process-equivalent exit 1";
+                : "One or more mandatory evaluation gates or registered controls failed · process-equivalent exit 1";
         if (outcome.Evaluation is { ExitCode: EvaluationExitCodes.NotMeasured })
             return "Evaluation NOT MEASURED · process-equivalent exit 3";
         if (outcome.Evaluation is { ExitCode: EvaluationExitCodes.InfrastructureFailure })

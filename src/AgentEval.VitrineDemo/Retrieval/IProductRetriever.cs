@@ -6,13 +6,13 @@ using Galaxus.RecommendationAgent.Domain;
 namespace Galaxus.RecommendationAgent.Retrieval;
 
 /// <summary>
-/// THE retrieval seam (design §G): the semantic tools of <c>Tools/GalaxusTools.cs</c> call this
+/// THE retrieval seam: the semantic tools of <c>Tools/GalaxusTools.cs</c> call this
 /// and nothing else, so the local brute-force index can be swapped for a real vector store
 /// (Microsoft.Extensions.VectorData / Azure AI Search) without touching a single tool.
 /// </summary>
 /// <remarks>
 /// <para>
-/// One method, deliberately. <c>FindSimilarProducts</c> and <c>FindComplements</c> (§C.2) are
+/// One method, deliberately. <c>FindSimilarProducts</c> and <c>FindComplements</c> are
 /// NOT extra seam methods — they are ordinary <see cref="RetrievalQuery"/> values built by
 /// <see cref="RetrievalQuery.SimilarTo"/> and <see cref="RetrievalQuery.ComplementsOf"/>.
 /// That keeps the compatibility gate where the design insists it lives: in the caller's code,
@@ -20,7 +20,7 @@ namespace Galaxus.RecommendationAgent.Retrieval;
 /// </para>
 /// <para>
 /// <b>Contract for any implementation.</b> Filters are applied as a PRE-filter, before the
-/// top-k cut (§D.2). Post-filtering after top-k silently returns fewer than k results and
+/// top-k cut. Post-filtering after top-k silently returns fewer than k results and
 /// quietly degrades recall on exactly the constrained queries this demo exists to showcase —
 /// which would fail in the flattering direction, because the console would still print a
 /// short, confident list.
@@ -43,7 +43,7 @@ public interface IProductRetriever
 
     /// <summary>
     /// Retrieve ranked candidates for a need. Candidates are <i>recall-oriented suggestions,
-    /// not facts</i> (§C.1) — the caller confirms anything it intends to state through the
+    /// not facts</i> — the caller confirms anything it intends to state through the
     /// structured tools.
     /// </summary>
     /// <param name="query">The need plus its hard pre-filters.</param>
@@ -60,7 +60,7 @@ public interface IProductRetriever
 /// <para>
 /// <see cref="Need"/> carries the semantics; everything else is a gate. Price, stock, market
 /// and category are gates rather than vector signals on purpose — embeddings are computed once
-/// and prices change hourly (§C.1), so anything time-varying is enforced in code at query time.
+/// and prices change hourly, so anything time-varying is enforced in code at query time.
 /// </para>
 /// <para>
 /// <see cref="AnchorProductId"/> switches the dense leg from "embed <see cref="Need"/>" to
@@ -73,10 +73,10 @@ public sealed record RetrievalQuery
     /// <summary>Smallest accepted <see cref="TopK"/>.</summary>
     public const int MinTopK = 1;
 
-    /// <summary>Default <see cref="TopK"/> — the §D.3 table's "final topK".</summary>
+    /// <summary>Default <see cref="TopK"/> — the hybrid-retrieval defaults table's "final topK".</summary>
     public const int DefaultTopK = 8;
 
-    /// <summary>Hard ceiling on <see cref="TopK"/> — the §D.3 table's "(max 12)".</summary>
+    /// <summary>Hard ceiling on <see cref="TopK"/> — the hybrid-retrieval defaults table's "(max 12)".</summary>
     public const int MaxTopK = 12;
 
     /// <summary>Market assumed when the caller does not say. Galaxus's home market.</summary>
@@ -111,7 +111,7 @@ public sealed record RetrievalQuery
 
     /// <summary>
     /// An extra hard predicate, evaluated with the other gates BEFORE top-k. This is where the
-    /// deterministic compatibility gate lives (§C.2): a 54 mm portafilter can never be returned
+    /// deterministic compatibility gate lives: a 54 mm portafilter can never be returned
     /// for a 58 mm machine, regardless of what the model asks for.
     /// </summary>
     public Func<Product, bool>? HardFilter { get; init; }
@@ -131,7 +131,7 @@ public sealed record RetrievalQuery
     public static RetrievalQuery For(string need) => new() { Need = need };
 
     /// <summary>
-    /// Builds the query behind <c>FindSimilarProducts</c> (§C.2): same job, different trade-offs.
+    /// Builds the query behind <c>FindSimilarProducts</c>: same job, different trade-offs.
     /// Anchors the dense leg on the product's own vector, excludes the anchor, and excludes other
     /// variants of the same model via <see cref="IsSameModelVariant"/> — "use to offer alternatives,
     /// not to pad a list".
@@ -156,12 +156,12 @@ public sealed record RetrievalQuery
     }
 
     /// <summary>
-    /// Builds the query behind <c>FindComplements</c> (§C.2): an accessory query document composed
+    /// Builds the query behind <c>FindComplements</c>: an accessory query document composed
     /// from the anchor's <c>Use:</c> line plus the caller's extra need, gated by a HARD compatibility
     /// predicate supplied by the caller.
     /// </summary>
     /// <remarks>
-    /// The compatibility predicate is a parameter, not an inferred signal, because §C.2 is explicit:
+    /// The compatibility predicate is a parameter, not an inferred signal: Demo02 explicitly requires
     /// "the compatibility gate is code". Passing <c>null</c> is legal but means nothing is gated —
     /// callers wiring the real tool must pass the <c>compat:</c> tag predicate.
     /// </remarks>
@@ -271,7 +271,7 @@ public sealed record RetrievalQuery
 
 /// <summary>
 /// One ranked candidate. Mirrors the <c>hits[]</c> element of the
-/// <c>SearchProductsByMeaning</c> payload (§C.2) exactly.
+/// <c>SearchProductsByMeaning</c> payload exactly.
 /// </summary>
 /// <param name="ProductId">Catalogue id — the only field downstream code is allowed to trust as an identity.</param>
 /// <param name="Name">Product title, for the console.</param>
@@ -281,7 +281,7 @@ public sealed record RetrievalQuery
 /// <param name="MatchedOn">The highest-contributing line of the embedding document, e.g. <c>"Use: trip:multi-day, weight:packable"</c>.</param>
 /// <remarks>
 /// There is deliberately NO price and NO stock field here. Price and stock never travel through
-/// the semantic leg (§C.1) — embeddings are index-time, prices are call-time, and
+/// the semantic leg — embeddings are index-time, prices are call-time, and
 /// <c>CheckStockAndPrice</c> is the only authority.
 /// </remarks>
 public sealed record RetrievalHit(
@@ -312,7 +312,7 @@ public sealed record RetrievalHit(
 }
 
 /// <summary>
-/// The honesty block returned with every search — the <c>retrieval</c> object of §C.2's payload.
+/// The honesty block returned with every search: the <c>retrieval</c> object in Demo02's payload.
 /// It exists so a degraded run cannot look like a healthy one.
 /// </summary>
 public sealed record RetrievalDiagnostics
@@ -327,7 +327,7 @@ public sealed record RetrievalDiagnostics
     public string Fusion { get; init; } = HybridRetriever.FusionName;
 
     /// <summary>
-    /// THE flag from §D.4. True means the dense leg could not run, so cross-category matches
+    /// The provider-degradation flag. True means the dense leg could not run, so cross-category matches
     /// will be missed. The console prints a banner when this is true; it is never silent.
     /// </summary>
     public bool Degraded { get; init; }
@@ -390,23 +390,20 @@ public sealed record RetrievalResult(IReadOnlyList<RetrievalHit> Hits, Retrieval
     /// <summary>True when nothing survived. A legitimate answer, and one the abstention gate reads.</summary>
     public bool IsEmpty => Hits.Count == 0;
 
-    // B-14(a) — TopFusedScore was here, and §F.8's post-hoc abstention arm ("the gate also fires
-    // if the best fused retrieval score is below the floor") is struck with it. It was never
-    // read: its declaration was its only reference, which is the third state §8.1 refuses to
-    // leave standing. It is deleted rather than wired because the quantity it exposed cannot
-    // carry a floor. The fused score is Reciprocal Rank Fusion — see HybridRetriever.RrfK — so
-    // Hits[0].Score is a sum of 1/(60 + rank) over the legs that returned the item, and nothing
+    // No quality floor is exposed over the fused score. Reciprocal Rank Fusion — see
+    // HybridRetriever.RrfK — produces a Hits[0].Score equal to the sum of 1/(60 + rank) over the
+    // legs that returned the item, and nothing
     // else. It reports HOW MANY LEGS AGREED, not how good the top hit is.
     //
-    // MEASURED over all 40 derived interest labels of the 14 personas (every query Demo 1's
-    // offline arm actually issues): the statistic is BIMODAL. Twelve labels score exactly
+    // Over all 40 derived interest labels of the 14 personas, the statistic is BIMODAL. Twelve
+    // labels score exactly
     // 1/61 = 0.016393 — the dense leg alone — and the other twenty-eight land in
     // 0.028787 .. 0.032787, a 14% spread whose top is exactly 2/61. Quality does not track it:
     // Elena's "Heart-rate monitors", which returns only two candidates, scores the same
     // 0.016393 as Nadia's headline conjunction, which returns six good ones; and Sofia's
     // "Whole beans" and Renzo's "Hiking shoes" both sit at the 2/61 ceiling. A floor anywhere in
     // that range separates one-leg queries from two-leg queries and nothing else — it would have
-    // printed as an abstention reason while measuring leg agreement. The real, calibratable
+    // mislabelled as an abstention reason while measuring leg agreement. The real, calibratable
     // floor is the dense one, RetrievalDiagnostics.DenseScoreFloor.
 
     /// <summary>

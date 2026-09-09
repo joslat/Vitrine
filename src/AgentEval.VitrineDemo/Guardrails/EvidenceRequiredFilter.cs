@@ -6,7 +6,7 @@ using Galaxus.RecommendationAgent.Domain;
 namespace Galaxus.RecommendationAgent.Guardrails;
 
 /// <summary>
-/// Stage 3 of <see cref="GuardrailPipeline"/>: the two-sided evidence check (§F.3). One side
+/// The evidence-verification stage of <see cref="GuardrailPipeline"/>: the two-sided evidence check. One side
 /// points at the CUSTOMER, the other at the PRODUCT, and both are verified against data the
 /// model did not write. A recommendation that cannot produce both sides is DROPPED, not
 /// down-ranked.
@@ -20,9 +20,9 @@ namespace Galaxus.RecommendationAgent.Guardrails;
 /// which is the opposite of what happens when a grader scores plausibility.
 /// </para>
 /// <para>
-/// <b>The one principled exception, and why it is not a loophole.</b> §F.3 as written requires
+/// <b>The one principled exception, and why it is not a loophole.</b> The two-sided evidence check as written requires
 /// <c>UserPurchaseIds</c> to be non-empty. That is right for a behaviour-derived interest and
-/// wrong for a stated one: under the personalization opt-out (§F.6) there IS no history — the
+/// wrong for a stated one: under the personalization opt-out there IS no history — the
 /// tool refuses it — so a recommendation serving a need the customer just typed has no purchase
 /// id it could honestly cite. Requiring one would either kill the opt-out path or teach the
 /// model to fabricate ids. So the rule is inverted per signal kind: a
@@ -35,7 +35,7 @@ namespace Galaxus.RecommendationAgent.Guardrails;
 /// Marco's own interests is a specific, nameable failure and deserves its own reason token.
 /// </para>
 /// <para>
-/// <b>Three grades of wrong id, three reason tokens (§8.1 B-5).</b> A cited purchase can fail for
+/// <b>Three grades of wrong id, three reason tokens.</b> A cited purchase can fail for
 /// three different reasons and they are NOT the same failure: it can belong to somebody else
 /// (<see cref="GuardrailReasons.ForeignPurchaseId"/>), it can be the customer's own but a gift
 /// (<see cref="GuardrailReasons.GiftPurchaseCited"/>), or it can be the customer's own, not a
@@ -55,7 +55,7 @@ public static class EvidenceRequiredFilter
     /// <param name="context">The catalogue-derived bar.</param>
     /// <param name="reason">One of <see cref="GuardrailReasons"/> on failure; empty on success.</param>
     /// <param name="detail">The human-readable justification on failure; empty on success.</param>
-    /// <returns>True when every clause of §F.3 holds.</returns>
+    /// <returns>True when every clause of the two-sided evidence check holds.</returns>
     public static bool TryVerify(RecommendationDto rec, GuardrailContext context, out string reason, out string detail)
     {
         ArgumentNullException.ThrowIfNull(rec);
@@ -120,7 +120,7 @@ public static class EvidenceRequiredFilter
                     return false;
                 }
 
-                // ── §8.1 B-5: the id must evidence THE CITED SIGNAL, not merely exist ────────
+                // ── the user-evidence provenance requirement: the id must evidence THE CITED SIGNAL, not merely exist ────────
                 //
                 // The customer's own id is not a blank cheque. "Photography" evidenced by the
                 // headlamp purchase is the customer's id, is not a gift, and is still a

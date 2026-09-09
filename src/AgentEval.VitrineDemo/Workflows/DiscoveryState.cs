@@ -8,7 +8,7 @@ using Galaxus.RecommendationAgent.Observability;
 namespace Galaxus.RecommendationAgent.Workflows;
 
 /// <summary>
-/// THE single message on every edge of the discovery loop (design Demo 2 §B.2).
+/// THE single message on every edge of Demo02's cross-category discovery loop.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -61,35 +61,21 @@ public sealed class DiscoveryState
     /// </summary>
     /// <remarks>
     /// <para>
-    /// ⚠ <b>MEASURED 2026-09-06 (Wave 3, plan item 2.11) — as a CUT it currently decides nothing,
-    /// and it cannot be calibrated by the rule the other four cuts were calibrated by.</b> Over all
-    /// fourteen authored customers on the shipped deterministic path there are <b>54</b> coverage
-    /// rows where candidates came back and the interest names something, and this cut refuses
-    /// <b>0</b> of them — so the fit population's admit rate at the anchor is <b>1.000</b>. Equal-tail
-    /// transport derives a cut by matching an admitted right tail; a population with no tail at the
-    /// anchor gives that rule nothing to match, so the derivation is degenerate rather than merely
-    /// unfavourable. The other two clauses of `ClassifyCoverage` decided 1 row each. ⚠ The headroom
-    /// is thin, not vast: the lowest score the corpus produces is <b>0.0164</b>, only 1.4× the cut,
-    /// so this says the cut is inert on THIS corpus, never that it is safely below any corpus.
-    /// Reported every run by Eval 03's advisory row <c>MinCandidateScoreDecidesNothing</c>, proven
-    /// able to move by ablation (at 0.030 it decides 27 of 52 and the admit rate is 0.481).
+    /// <b>This cut is inert on the current corpus and is not transport-calibratable.</b> Across the
+    /// fourteen authored customers, 54 coverage rows have candidates and a nameable interest; this
+    /// cut refuses 0, for an admit rate of 1.000. Equal-tail transport needs a non-degenerate right
+    /// tail, so it cannot derive a value from that anchor. Headroom is still thin: the minimum score
+    /// is 0.0164, only 1.4× the cut. At 0.030 the cut decides 27 of 52 rows and admits 0.481, proving
+    /// it can move even though it decides nothing at the shipped value. Eval 03 reports this as
+    /// <c>MinCandidateScoreDecidesNothing</c>.
     /// </para>
     /// <para>
-    /// ✅ <b>SPLIT 2026-09-06 (Wave 4) — 2.11's recorded precondition is CLEARED.</b> Until this
-    /// commit this ONE constant did TWO structurally different jobs: a <i>cut</i> here and in
-    /// <c>CoverageVerdictProjection.Starved</c>, and the <i>half-saturation constant</i> of
-    /// <c>DeterministicRanker.Confidence</c>'s squashing transform <c>s / (s + k)</c>. Re-deriving
-    /// it as a cut would therefore have moved every workflow-arm confidence, and confidence is the
-    /// quantity <c>ConfidenceBands</c> routes trays on — bands derived on the same held-out split,
-    /// which never looked at this constant. That coupling is GONE: the shape parameter is now
-    /// <see cref="RetrievalConfidenceHalfSaturation"/>, declared separately and at the same value,
-    /// so the split is arithmetically inert and every printed number is unchanged.
-    /// <b>What the split does NOT do is make this cut calibratable</b> — the admit rate above is
-    /// still 1.000, which is a fact about the corpus and not about the coupling. Both halves of
-    /// 2.11 are now closed for stated reasons, and they are DIFFERENT reasons: the cut is
-    /// degenerate under equal-tail transport, the shape parameter is not a threshold at all and
-    /// that rule does not apply to it. Held apart by Eval 03's gating row
-    /// <c>CoverageCutIsNotTheConfidenceShapeParameter</c>.
+    /// This coverage cut is independent of
+    /// <see cref="RetrievalConfidenceHalfSaturation"/>, the shape parameter in
+    /// <c>DeterministicRanker.Confidence</c>'s <c>s / (s + k)</c> transform. They currently share a
+    /// numeric value but have different semantics: a cut has an admit rate, while a shape parameter
+    /// does not. Eval 03's <c>CoverageCutIsNotTheConfidenceShapeParameter</c> gate keeps the two
+    /// roles separate.
     /// </para>
     /// </remarks>
     public const double MinCandidateScore = 0.012;
@@ -101,11 +87,8 @@ public sealed class DiscoveryState
     /// </summary>
     /// <remarks>
     /// <para>
-    /// ⚠ <b>It carries the same value as <see cref="MinCandidateScore"/> and that is a coincidence
-    /// of history, not a relationship.</b> The two were one constant until 2026-09-06; splitting
-    /// them at equal value is deliberately arithmetically inert, so that the change that removes
-    /// the coupling moves no number and the next change — whichever of the two it touches — is the
-    /// only thing a reader has to reason about.
+    /// It currently carries the same value as <see cref="MinCandidateScore"/>, but that equality
+    /// expresses no relationship. The two values must be reasoned about and changed independently.
     /// </para>
     /// <para>
     /// <b>Equal-tail transport does not apply to this number, in either direction.</b> The rule in
@@ -198,14 +181,14 @@ public sealed class DiscoveryState
     /// <summary>Review snippets seen this run — the channel a mid-run interest can come out of.</summary>
     public List<ObservedSignal> ObservedSignals { get; } = [];
 
-    /// <summary>Every query term the §0.5 / D-3 vocabulary constraint refused. Printed.</summary>
+    /// <summary>Every query term the structural query-vocabulary control refused. Printed.</summary>
     public List<DroppedQueryTerm> DroppedQueryTerms { get; } = [];
 
     /// <summary>
     /// Every mid-run interest the reviewer PROPOSED this run, accepted or refused, with the reason.
     /// </summary>
     /// <remarks>
-    /// The DENOMINATOR of the D-3 ledger. <see cref="ReviewerInferredCount"/> counts only what was
+    /// The DENOMINATOR of the structural query-vocabulary control ledger. <see cref="ReviewerInferredCount"/> counts only what was
     /// accepted, and an arm that proposed nothing is indistinguishable from one whose every
     /// proposal was refused if that is the only number on the page — but only the second one
     /// exercised the control.
@@ -321,22 +304,15 @@ public sealed class DiscoveryState
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <see cref="ModelCalls"/> answers "how many", which is the number this eval suite has been
-    /// quoting in place of a bill because it was the only one available. This answers "how much",
-    /// and it answers UNKNOWN rather than zero when the provider did not say.
+    /// <see cref="ModelCalls"/> answers "how many"; this meter answers "how much" from provider
+    /// usage and preserves UNKNOWN rather than substituting zero when the provider did not say.
     /// </para>
     /// <para>
-    /// ⚠ <b>The pairing rule, stated with its ONE exception, because the first version of this
-    /// remark stated it without.</b> It read <i>"every increment of <see cref="ModelCalls"/> is
-    /// paired with exactly one <see cref="ChatSpend"/> record … on every exit path"</i>. That is
-    /// false on the CALLER-cancellation path: <c>DiscoveryModelCall.RunAsync</c>'s
-    /// <c>when (cancellationToken.IsCancellationRequested)</c> filter rethrows without recording,
-    /// and the counter may already have been incremented. It is deliberate — the caller cancelling
-    /// is the answer, not a degradation — and it is harmless in practice because the throw
-    /// propagates past every printer, so no meter line is rendered for that turn. But a reader
-    /// checking <c>Calls == ModelCalls</c> as an invariant would be checking something the code
-    /// does not hold. Direction of the original claim: flattering. On every OTHER exit path —
-    /// success, timeout, and any other throw after the counter moved — the pairing does hold.
+    /// Every counted call is paired with one <see cref="ChatSpend"/> record on success, timeout,
+    /// and non-cancellation failure. Caller cancellation is the deliberate exception: it rethrows
+    /// without recording usage and may occur after <see cref="ModelCalls"/> increments, so
+    /// <c>Spend.Calls == ModelCalls</c> is not an invariant on that path. The throw bypasses the
+    /// printers, so no incomplete meter line is emitted.
     /// </para>
     /// </remarks>
     public ChatSpend Spend { get; } = new();

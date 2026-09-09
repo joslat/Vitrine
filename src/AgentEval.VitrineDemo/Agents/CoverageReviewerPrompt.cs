@@ -4,12 +4,12 @@
 namespace Galaxus.RecommendationAgent.Agents;
 
 /// <summary>
-/// The <c>CoverageReviewer</c> system prompt (design Demo 2 §C.3).
+/// The <c>CoverageReviewer</c> system prompt.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b><see cref="Prompt"/> is the design's text VERBATIM</b>, in its own constant so it can be
-/// diffed against §C.3. <see cref="ResponseContract"/> adds the JSON envelope the node parses.
+/// <b><see cref="Prompt"/> is the canonical prompt text.</b> It is isolated in its own constant
+/// so edits are reviewable. <see cref="ResponseContract"/> adds the JSON envelope the node parses.
 /// </para>
 /// <para>
 /// <b>Read the last paragraph of the prompt carefully — it is a guardrail, not encouragement.</b>
@@ -27,12 +27,12 @@ namespace Galaxus.RecommendationAgent.Agents;
 /// </para>
 /// <para>
 /// <b>And the anti-injection sentence is defence in depth, not the control.</b> Query terms this
-/// reviewer proposes are filtered by <c>QueryVocabulary</c> after the model returns (§0.5 / D-3).
+/// reviewer proposes are filtered by <c>QueryVocabulary</c> after the model returns.
 /// </para>
 /// </remarks>
 public static class CoverageReviewerPrompt
 {
-    /// <summary>Design §C.3, verbatim. Do not edit without changing the design.</summary>
+    /// <summary>The canonical coverage-review prompt. Review changes together with the response contract.</summary>
     public const string Prompt = """
 You are the coverage gate for a product-discovery loop. You do not choose
 products and you do not rank them. You answer one question per interest: did

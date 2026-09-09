@@ -46,12 +46,10 @@ public sealed class DiscoveryModelCall
     /// The wall-clock ceiling on ONE model call.
     /// </summary>
     /// <remarks>
-    /// ⚠ MEASURED, and the reason this exists at all. Without it a stalled deployment does not
-    /// fail — it QUEUES: the Azure SDK's default policy is four tries at a hundred seconds each,
-    /// this caller then retries once itself, and there are four model-backed stages. That is
-    /// roughly forty minutes of a demo standing still while every layer behaves exactly as
-    /// documented. Observed on this repository's own deployment, on the first live run.
-    /// A loop that "never hangs" has to bound the thing that can hang, not just the graph.
+    /// A stalled deployment can queue through four SDK attempts of up to one hundred seconds,
+    /// followed by this caller's retry across four model-backed stages: roughly forty minutes in
+    /// the worst composition. Bounding the graph is therefore insufficient; each model call must
+    /// also have a deadline.
     /// </remarks>
     public static TimeSpan DefaultModelCallTimeout { get; } = TimeSpan.FromSeconds(60);
 
@@ -186,17 +184,9 @@ public sealed class DiscoveryModelCall
                 .RunAsync([new ChatMessage(ChatRole.User, userMessage)], session, cancellationToken: deadline.Token)
                 .ConfigureAwait(false);
 
-            // ⚠ THE LINE THIS WHOLE LANE WAS MISSING. `response.Usage` is where the provider puts
-            //   what it billed for, and this method used to return `response.Text` and drop it. The
-            //   usage was never absent and was never un-asked-for; it arrived and we threw it away,
-            //   so `agent -- 2` made real model calls and printed no token count, and Eval 08's
-            //   workflow arm fell back to the harness's text-length ESTIMATE over text replayed from
-            //   workflow state. `MAFAgentAdapter` makes the identical RunAsync call against the same
-            //   deployment and reads this same property — that is the control that settles which of
-            //   the three possible causes it was.
-            //
-            //   Record BEFORE the return, and never conditionally: a null usage is an ABSENCE and
-            //   ChatSpend records it as one.
+            // Usage comes from the provider response, not from replayed workflow text. Record it
+            // before returning and without a presence guard: ChatSpend distinguishes a reported
+            // zero, partial usage, and an absent usage block.
             state.Spend.Record(response.Usage);
 
             _progress.Publish(DiscoveryEvent.ModelResponseReceived(
@@ -486,7 +476,7 @@ public sealed class ModelInterestMapper(Catalogue catalogue, DiscoveryModelCall 
     /// The signal list handed to the mapper.
     /// </summary>
     /// <remarks>
-    /// ⚠ §F.6 is a control-flow property here, not a redaction: when consent is withdrawn,
+    /// ⚠ the personalization opt-out is a control-flow property here, not a redaction: when consent is withdrawn,
     /// <c>classified</c> is EMPTY because the builder never read the history, so there is nothing
     /// to leave out of this string. The block below cannot leak what was never loaded.
     /// </remarks>
@@ -644,15 +634,10 @@ public sealed class ModelCoverageReviewer(
             var coverage = state.CoverageFor(interest.Id);
             builder.AppendLine(CultureInfo.InvariantCulture,
                 $"  {interest.Id}  queries run: {(coverage.QueriesRun.Count == 0 ? "(none)" : string.Join(" | ", coverage.QueriesRun))}");
-            // ⚠ WHAT THE REVIEWER SEES IS PINNED TO WHAT ITS INSTRUCTIONS SAY IT SEES.
-            //   CoverageReviewerPrompt is design §C.3 verbatim and describes this ledger as "the
-            //   queries already run, how many candidates came back, the best search score". An
-            //   "attributable" count was briefly added here on 2026-09-06: a field the pinned
-            //   instructions do not name, sent to a live model with no definition, changing the
-            //   paid workflow's input in a way nothing measured. The attributable channel belongs
-            //   on the CONSOLE ledgers (DiscoveryPresentation, DiscoveryProjection.CoverageBar),
-            //   where it informs a reader; putting it in the prompt is a design change and has to
-            //   be made as one.
+            // Keep this context aligned with CoverageReviewerPrompt's declared ledger: queries,
+            // candidate count, best score, and status. Attribution remains a console observation;
+            // adding it here would change the paid model contract and requires an explicit prompt
+            // and evaluation change.
             builder.AppendLine(CultureInfo.InvariantCulture,
                 $"      candidates: {coverage.CandidateProductIds.Count}   best score: {coverage.BestScore:0.0000}   "
               + $"status: {coverage.Status}");
@@ -869,16 +854,11 @@ public sealed class ModelRanker(
                 $"  {candidate.ProductId}  {candidate.Title}  ·  {candidate.CategoryPathText}  " +
                 $"(for {candidate.MatchedInterestId}, score {candidate.SearchScore:0.0000}, " +
                 $"{candidate.RatingCount} rating(s))");
-            // ⚠ Only tokens the RESOLVER accepts are offered. `ProductCandidate.Attributes` is the
-            //   FUSED set — tags, tag suffixes, spec keys, spec VALUES and `key=value` pairs — but
-            //   `Product.TryGetAttributeValue` resolves only a spec key or a whole tag. Rule 6 of the
-            //   ranker prompt tells the model to copy `grounding_attribute_key` from this list, so
-            //   listing a value like `230-g` or a suffix like `beginner` invites a citation that is
-            //   then dropped `attribute_not_found` — the model obeying the instruction literally and
-            //   being punished for it. Observed on the live run of 2026-09-04 ("230-g",
-            //   "1-kg-of-whole-beans", "beginner", "2-batteries" all dropped). Filtering here rather
-            //   than relaxing the resolver keeps the grounding check strict, and it self-maintains:
-            //   whatever the resolver accepts is exactly what the model is shown.
+            // Offer only tokens Product.TryGetAttributeValue can resolve: spec keys and whole tags.
+            // The fused candidate set also contains values, tag suffixes, and key=value pairs such
+            // as `230-g`, `beginner`, and `2-batteries`; exposing those would invite a citation the
+            // strict grounding check must drop. The prompt and resolver therefore share one token
+            // contract without weakening evidence validation.
             builder.AppendLine(CultureInfo.InvariantCulture,
                 $"      attribute keys: {string.Join(", ", ResolvableAttributeKeys(candidate, catalogue))}");
             if (candidate.ReviewIds.Count > 0)

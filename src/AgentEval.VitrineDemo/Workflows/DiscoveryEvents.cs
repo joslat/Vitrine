@@ -54,7 +54,7 @@ public enum DiscoveryEventKind
     /// <summary>An edge was taken. TRACE ONLY — never derive a round number from these.</summary>
     Route,
 
-    /// <summary>The §0.5 / D-3 vocabulary constraint refused a model-proposed term.</summary>
+    /// <summary>The structural query-vocabulary control refused a model-proposed term.</summary>
     QueryTermDropped,
 
     /// <summary>The reviewer put a new interest on the map.</summary>
@@ -113,7 +113,7 @@ public sealed record DiscoveryEvent(
             $"personalization: {(state.PersonalizationConsent ? "GRANTED" : "WITHDRAWN")} · {mode}",
             Detail: state.PersonalizationConsent
                 ? null
-                : ["history is not in this prompt because it is not in the state (§F.6)"]);
+                : ["history is not in this prompt because personalization is disabled and it is not in the state"]);
     }
 
     /// <summary>An executor started.</summary>
@@ -279,7 +279,7 @@ public sealed record DiscoveryEvent(
     public static DiscoveryEvent Route(string routeId, string description) =>
         new(DiscoveryEventKind.Route, routeId, description);
 
-    /// <summary>The §0.5 / D-3 constraint refused a term.</summary>
+    /// <summary>The structural query-vocabulary control refused a term.</summary>
     /// <param name="round">The round.</param>
     /// <param name="dropped">The refusal.</param>
     public static DiscoveryEvent QueryTermDropped(int round, DroppedQueryTerm dropped)

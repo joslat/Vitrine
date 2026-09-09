@@ -29,11 +29,11 @@ Console.OutputEncoding = Encoding.UTF8;
 // CLI flags (any order):
 //   0 .. 9                  Menu entry (skips the interactive menu). 1 and 3-7 run Demo 01, 2 and
 //                           8-9 run Demo 02, and 0 runs Demo 02's termination proof. The two
-//                           headline selectors are 1 and 2 — the design's §F demo script types
+//                           headline selectors are 1 and 2 — the documented demo script types
 //                           exactly `-- 1` and then `-- 2` — and the rest are conveniences that
 //                           only differ from those two by a persona or a toggle. See ShowMenuAsync.
 //   --user <USR-XX-NN>      Persona to run. Overrides the digit's persona.
-//   --no-personalization    §F.6 opt-out: history is not read, the turn runs on stated need.
+//   --no-personalization    the personalization opt-out: history is not read, the turn runs on stated need.
 //   --offline               Explicitly select the default deterministic, no-provider arm.
 //   --live                  Request the model-backed subject arm (never inferred from credentials).
 //   --confirm-paid          Required with every provider-capable option before work can start.
@@ -108,12 +108,9 @@ try
 }
 finally
 {
-    // ⚠ A RUN THAT SAYS IT SPENDS MUST SAY HOW MUCH. `--real-vectors` prints "This run EMBEDS
-    //   QUERIES LIVE … it spends" on every entry point, and until 2026-09-06 only Demo 01 closed
-    //   the loop with the figure — `-- 2 --offline --real-vectors` declared a cost and reported
-    //   none. PrintLiveSpend is print-once per process, so Demo 01's in-panel call still lands
-    //   where it belongs and this one covers every other selector. Pinned by Eval 03's gating row
-    //   `ARunThatSaysItSpendsSaysHowMuch`.
+    // Any path that advertises paid live query embeddings must report the observed usage.
+    // PrintLiveSpend is print-once per process: Demo 01 can place it in-panel, while this finalizer
+    // covers every other selector, including failures and cancellations.
     Galaxus.RecommendationAgent.Retrieval.EmbeddingSpace.PrintLiveSpend();
     logScope?.Dispose();
 }
@@ -122,11 +119,9 @@ finally
 
 // Returns null when an argument is not understood — the caller then exits 2.
 //
-// ⚠ Mirrors Galaxus.RecommendationAgent.Evals' parser deliberately. The previous version ended in
-// `parsed.Selector ??= args[i]`, which swallowed an unknown flag once a selector had been seen:
-// `-- 1 --offlien` ran a LIVE, paid turn while reading as a request for the offline arm. A flag
-// with a leading '-' that this switch does not name is a typo, and a missing value for a flag
-// that needs one is a typo too. Both now refuse rather than no-op.
+// Mirrors Galaxus.RecommendationAgent.Evals' parser deliberately. Any unrecognised leading-dash
+// token or missing option value is an error: a typo must never change an offline request into a
+// provider-capable run.
 static ParsedArgs? ParseArgs(string[] args)
 {
     var parsed = new ParsedArgs();
@@ -238,10 +233,8 @@ static bool IsSelector(string token) =>
 // is part of the resolved choice rather than inferred at the call site, so a new selector cannot
 // silently route to the wrong demo.
 //
-// ⚠ 1 = Demo 01 and 2 = Demo 02 is a CONTRACT, not a convenience. The design's §F demo script is
-// nine minutes of typing `-- 1`, talking, then typing `-- 2`; a numbering in which `-- 2` ran a
-// different persona of the SAME demo would break the script in the room. Marco, Sofia and Luca
-// moved to 3, 4 and 5 for that reason. Nothing outside this file referenced the old digits.
+// 1 = Demo 01 and 2 = Demo 02 is a documented presentation contract: the walkthrough invokes
+// those selectors in sequence. Persona-specific Demo 01 shortcuts therefore use 3-7.
 static bool TryResolveSelector(ParsedArgs parsed, out (int Demo, string UserId, bool NoPersonalization, bool Offline) choice)
 {
     var (demo, defaultUser, defaultNoPersonalization, defaultOffline) = parsed.Selector switch
@@ -351,7 +344,7 @@ static async Task ShowMenuAsync(ParsedArgs parsed)
         Console.ForegroundColor = ConsoleColor.Cyan;
         Console.WriteLine(@"
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║          Galaxus — Robin, the recommendation agent (MAF demo)                ║
+║          VITRINE — Robin, the recommendation agent (MAF demo)                ║
 ╠══════════════════════════════════════════════════════════════════════════════╣
 ║                                                                              ║
 ║   ── The demo script, in the order it is told ──────────────────────────     ║
@@ -363,12 +356,12 @@ static async Task ShowMenuAsync(ParsedArgs parsed)
 ║   3  Marco  · gift trap            Two gift purchases, suppressed in code   ║
 ║   4  Sofia  · replenish + gap      Owns the beans, owns no grinder          ║
 ║   5  Luca   · thin signal          The abstention gate, before any spend    ║
-║   6  Nadia, personalization OFF    §F.6 — the tool refuses, not the prompt   ║
+║   6  Nadia, personalization OFF    Tool refusal, not a prompt-only rule      ║
 ║   7  Nadia, OFFLINE baseline       No model call. The arm to compare against ║
 ║                                                                              ║
 ║   ── Demo 02 · toggles and the termination proof ───────────────────────     ║
 ║   8  Nadia, LOOP offline           The loop's mechanics at zero cost         ║
-║   9  Nadia, LOOP offline, no pers. §F.6 through the loop                     ║
+║   9  Nadia, LOOP offline, no pers. Tool refusal through the loop             ║
 ║   0  PROVE the three terminations  Forces each stop, discriminates each one  ║
 ║                                                                              ║
 ║   R  Rebuild embedding assets      Paid; start menu with --confirm-paid      ║
@@ -439,9 +432,8 @@ static async Task ShowMenuAsync(ParsedArgs parsed)
 
 // Regenerates the committed PRODUCT embedding index from a LIVE embedding deployment.
 //
-// One asset, since B-21: there used to be a second holding 71 pre-guessed query vectors, and
-// serving queries out of it is what made the real-vector path retrieve nothing. Queries are
-// embedded live at search time now. What this switch writes is the INDEX, and its model stamp
+// This switch writes only the PRODUCT INDEX. Queries are embedded live at search time rather than
+// served from a finite table of pre-authored query vectors. The index's model stamp
 // is load-bearing: EmbeddingSpace reads it back to decide which live deployment is even allowed
 // to embed queries against these vectors.
 //
@@ -497,7 +489,7 @@ static async Task<int> RebuildEmbeddingsAsync()
 static void PrintUsage()
 {
     Console.WriteLine(@"
-Galaxus.RecommendationAgent — Demo 01 (Robin, the single agent) and Demo 02 (the
+VITRINE recommendation sample — Demo 01 (Robin, the single agent) and Demo 02 (the
 bounded discovery loop), plus the loop's termination proof.
 
   dotnet run --project src/AgentEval.VitrineDemo [-- <selector>] [flags]
@@ -528,11 +520,11 @@ so the offline loop is one keystroke from the menu:
 Selector 0 proves the loop's three terminations (offline, no cost, exit code 1 on failure):
   0   Forces the round cap, no-progress and gaps-unresolvable in turn, and shows why each
       outcome could NOT have been produced by the other two. Also checks the loop-back edge
-      and the D-3 vocabulary constraint in BOTH directions.
+      and the query-vocabulary constraint in BOTH directions.
 
 Flags:
   --user <USR-XX-NN>     Run this persona instead of the selector's default.
-  --no-personalization   §F.6 opt-out. GetPurchaseHistory and GetInterestMap refuse;
+  --no-personalization   Tool-enforced opt-out. GetPurchaseHistory and GetInterestMap refuse;
                          the turn runs on what the customer says in this conversation.
   --offline              Explicitly select the default deterministic retrieval +
                          guardrail arm. No provider call is made.

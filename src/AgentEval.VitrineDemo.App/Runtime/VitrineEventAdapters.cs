@@ -315,6 +315,7 @@ public static class VitrineEventAdapters
 
     public static VitrineEventDraft FromEvaluation(EvaluationProgressEvent item)
     {
+        var authority = item.Gate?.Authority ?? item.Authority;
         var disposition = item.Kind switch
         {
             EvaluationProgressKind.GateCompleted
@@ -325,6 +326,11 @@ public static class VitrineEventAdapters
                 when item.Expectation == EvaluationProgressExpectation.CatalogueSelfTestSucceeded
                 => VitrineEventDisposition.SelfTestSucceeded,
             EvaluationProgressKind.SuiteStarted or EvaluationProgressKind.GateStarted or EvaluationProgressKind.ControlStarted => VitrineEventDisposition.Active,
+            EvaluationProgressKind.GateCompleted when authority == GateAuthority.Diagnostic
+                && item.Gate?.Outcome == GateMeasurementOutcome.NotApplicable => VitrineEventDisposition.NotApplicable,
+            EvaluationProgressKind.GateCompleted when authority == GateAuthority.Diagnostic
+                && item.Passed is null => VitrineEventDisposition.NotMeasured,
+            EvaluationProgressKind.GateCompleted when authority == GateAuthority.Diagnostic => VitrineEventDisposition.Neutral,
             EvaluationProgressKind.GateCompleted when item.Gate?.Outcome == GateMeasurementOutcome.InstrumentError => VitrineEventDisposition.Failed,
             EvaluationProgressKind.GateCompleted when item.Gate?.Outcome == GateMeasurementOutcome.NotApplicable => VitrineEventDisposition.NotApplicable,
             EvaluationProgressKind.GateCompleted or EvaluationProgressKind.SuiteCompleted when item.Passed is null => VitrineEventDisposition.NotMeasured,
@@ -349,6 +355,15 @@ public static class VitrineEventAdapters
                 => $"SELF-TEST FAILED · catalogue defect was not detected · {item.Name}",
             EvaluationProgressExpectation.CatalogueSelfTestSucceeded
                 => "SELF-TEST SUCCEEDED · expected 99→observed 98 catalogue detection",
+            _ when item.Kind == EvaluationProgressKind.GateCompleted
+                && authority == GateAuthority.Diagnostic && item.Gate?.Passed == false
+                => $"DIAGNOSTIC FINDING · no exit authority · {item.Name}",
+            _ when item.Kind == EvaluationProgressKind.GateCompleted
+                && authority == GateAuthority.Diagnostic
+                => $"DIAGNOSTIC OBSERVATION · no exit authority · {item.Name}",
+            _ when item.Kind == EvaluationProgressKind.GateStarted
+                && authority == GateAuthority.Diagnostic
+                => $"DIAGNOSTIC EVALUATION STARTED · no exit authority · {item.Name}",
             _ => item.Name,
         };
         var detail = item.Expectation switch
@@ -358,6 +373,8 @@ public static class VitrineEventAdapters
                 => $"The admitted catalogue gate failed exactly as expected for the isolated planted defect. {item.Detail}",
             EvaluationProgressExpectation.CatalogueDefectDetection
                 => $"The planted catalogue defect was not detected. {item.Detail}",
+            _ when authority == GateAuthority.Diagnostic
+                => $"This diagnostic evaluation is evidence only and cannot change the suite exit. {item.Detail}",
             _ => item.Detail,
         };
         return new(VitrineEventCategory.Evaluation, item.Kind.ToString(), disposition,
@@ -370,6 +387,12 @@ public static class VitrineEventAdapters
     {
         var payload = new StringBuilder()
             .Append("Stage: ").AppendLine(item.Kind.ToString());
+        var authority = item.Gate?.Authority ?? item.Authority;
+        if (authority is { } declaredAuthority)
+            payload.Append("Authority: ").AppendLine(declaredAuthority.ToString())
+                .AppendLine(declaredAuthority == GateAuthority.Diagnostic
+                    ? "Exit effect: none · diagnostic evidence only"
+                    : "Exit effect: mandatory gate controls the suite verdict");
         if (item.Expectation != EvaluationProgressExpectation.None)
             payload.Append("Expected outcome: ").AppendLine(item.Expectation.ToString());
         if (item.Completed.HasValue && item.Total.HasValue)
@@ -380,9 +403,11 @@ public static class VitrineEventAdapters
             payload.Append("Measurement: ").AppendLine(gate.Outcome.ToString())
                 .Append("Verdict: ").AppendLine(gate.Passed switch
                 {
+                    true when gate.Authority == GateAuthority.Diagnostic => "OBSERVED PASS · diagnostic only",
                     true => "PASS",
                     false when item.Expectation == EvaluationProgressExpectation.CatalogueDefectDetection
                         => "FAIL AS EXPECTED · defect detected",
+                    false when gate.Authority == GateAuthority.Diagnostic => "OBSERVED FAIL · diagnostic only",
                     false => "FAIL",
                     null => "NOT MEASURED",
                 })

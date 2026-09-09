@@ -47,7 +47,7 @@ try {
 
     & dotnet run --project $project --configuration $Configuration --no-restore -- @runArguments
     if ($LASTEXITCODE -ne 0) {
-        throw "VITRINE exited with code $LASTEXITCODE. Evaluation exits: gate failure 1, invalid arguments 2, NOT MEASURED 3, infrastructure failure 4; cancellation is 130."
+        throw "VITRINE exited with code $LASTEXITCODE. Evaluation exit 1 means a mandatory-gate or registered-control failure, an admitted-check self-test failure, or expected catalogue-ablation detection; a matched-quality diagnostic finding alone cannot set it. Other exits: invalid arguments 2, NOT MEASURED 3, infrastructure failure 4, cancellation 130."
     }
 }
 finally {

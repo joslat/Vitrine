@@ -283,7 +283,7 @@
       "Name": "CiChainRunsModelFreeEvalsForReal",
       "Category": "cli",
       "Target": "CiProofPolicy.RequiredCiStepsPlanned",
-      "Mutation": "discard the receipt from the real non-recursive offline gate execution",
+      "Mutation": "discard the receipt from the real non-recursive offline check-stage execution",
       "ObservationProducer": "ControlEnvironment.ObserveCiPlanAsync",
       "Evaluator": "CiProofPolicy.RequiredCiStepsPlanned",
       "Tranche": "E02C"

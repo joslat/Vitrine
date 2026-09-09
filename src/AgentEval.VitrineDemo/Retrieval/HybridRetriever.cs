@@ -6,7 +6,7 @@ using Galaxus.RecommendationAgent.Domain;
 namespace Galaxus.RecommendationAgent.Retrieval;
 
 /// <summary>
-/// The three-stage hybrid retriever of design §D.3: a dense leg, a lexical leg, and Reciprocal
+/// A three-stage hybrid retriever: a dense leg, a lexical leg, and Reciprocal
 /// Rank Fusion over the two — with hard pre-filters, a top-k cut, and an honest degraded-mode flag.
 /// </summary>
 /// <remarks>
@@ -24,10 +24,11 @@ namespace Galaxus.RecommendationAgent.Retrieval;
 /// to leak into the fused ordering.
 /// </para>
 /// <para>
-/// <b>Parameters, honestly labelled (§D.3).</b> Retrieve-before-fusion 24 per leg: chosen, not
-/// measured. RRF constant 60: the literature default. Final top-k 8, max 12: chosen. Dense score
-/// floor <see cref="DefaultDenseScoreFloor"/>: <b>TO-CALIBRATE — do not present it as measured.</b>
-/// The defensible answer to "why 0.28?" is the calibration METHOD, not the number.
+/// <b>Parameters, honestly labelled.</b> Retrieve-before-fusion 24 per leg: chosen, not
+/// measured. RRF constant 60: the literature default. Final top-k 8, max 12: chosen. Dense-score
+/// floors are source-specific: the committed concept space uses 0.280 and real vectors use
+/// 0.223 through <see cref="IEmbeddingSource.SuggestedDenseScoreFloor"/>. Their derivation and
+/// held-out limitations are recorded by <see cref="CalibratedThresholds"/>.
 /// </para>
 /// </remarks>
 public sealed class HybridRetriever : IProductRetriever
@@ -39,47 +40,12 @@ public sealed class HybridRetriever : IProductRetriever
     public const int DefaultPerLegCandidates = 24;
 
     /// <summary>
-    /// Dense cosine floor. <b>TO-CALIBRATE — do not present this as measured.</b> The method:
-    /// build a gold set from the four personas (5–8 known-good product ids each, ~26 labelled
-    /// pairs), sweep the floor, pick the value maximising recall@24 subject to precision@8, and
-    /// report both plus the abstention rate it induces. A sweep LOCATES; only a held-out check
-    /// resolves. A floor is also a property of an embedding SPACE, so a value calibrated for
-    /// <c>text-embedding-3-small</c> does not transfer to <see cref="ConceptEmbeddingSource"/> —
-    /// which is why <see cref="IEmbeddingSource.SuggestedDenseScoreFloor"/> exists at all.
+    /// Fallback dense cosine floor from the pre-calibration configuration. A configured embedding
+    /// source supplies its own value: concept <b>0.280</b>, real vectors <b>0.223</b>. This fallback
+    /// remains only for a retriever with no embedding source (and therefore no dense leg) and as the
+    /// transport-rule anchor documented by <see cref="CalibratedThresholds"/>.
     /// <para>
-    /// ⚠ <b>That per-space seam exists but is not USED: both sources return 0.28, and B-21 made the
-    /// number load-bearing on a path where it had barely bitten before.</b> Measured 2026-09-05 over
-    /// the 53 query strings the fourteen personas' interest maps actually issue, dense candidates
-    /// retrieved before the floor versus discarded by it:
-    /// </para>
-    /// <list type="bullet">
-    ///   <item>concept space — 781 kept, <b>166 cut (17.5%)</b>; 10 queries reach the dense leg with
-    ///         nothing to rank (a zero vector) and the run is reported DEGRADED for those.</item>
-    ///   <item><c>--real-vectors</c> — 626 kept, <b>646 cut (50.8%)</b>; 0 queries degraded, but
-    ///         <b>3</b> have every dense hit fall under the floor, so the dense leg contributes
-    ///         nothing for them and NOTHING reports it — the retriever is not degraded, it simply
-    ///         ranked nothing.</item>
-    /// </list>
-    /// <para>
-    /// So one un-recalibrated constant discards half the dense candidates in one space and a sixth
-    /// in the other. It is NOT re-tuned here — the calibration METHOD above is still the honest
-    /// answer, and picking a second number so the two spaces cut alike would be fitting the floor to
-    /// the output. It is written down because a threshold that quietly became the dominant filter on
-    /// a newly working path must not be discovered later. Note also what this does to Eval 03's
-    /// ARM D: "the query embedded to something non-zero" is not "the dense leg ranked something",
-    /// and on the real path those two differ for 3 of the queries.
-    /// </para>
-    /// <para>
-    /// ✅ <b>DERIVED PER SPACE 2026-09-05 — see <see cref="CalibratedThresholds"/>.</b> The per-space
-    /// seam is now USED: concept <b>0.280</b>, real-vectors <b>0.223</b>. This constant survives only
-    /// as the floor for a retriever built with NO embedding source — where there is no dense leg to
-    /// screen — and as the transport rule's anchor. Measured on the fit slice: the old 0.28 admitted
-    /// 0.803 of the concept per-leg lists and only <b>0.377</b> of the real ones, so transporting that
-    /// operating point moved the real floor DOWN, and the dense leg there now contributes more rather
-    /// than less.
-    /// </para>
-    /// <para>
-    /// ⚠ <b>Two things the derivation found that transport does not fix.</b> (1) A chance-tail cut on
+    /// ⚠ <b>Two things the derivation found that transport does not fix.</b> A chance-tail cut on
     /// the same corpus puts the floor at 0.839 (concept) and 0.417 (real): the shipped operating point
     /// is cleared by <b>57 %</b> of ARBITRARY catalogue products in the concept space and 24 % in the
     /// real one, so this floor is a weak filter in both and transport faithfully preserves that.
@@ -95,7 +61,7 @@ public sealed class HybridRetriever : IProductRetriever
     public const string FusionName = "rrf-k60";
 
     /// <summary>
-    /// The exact §D.4 console banner for a degraded run. Kept next to the flag that sets it, so the
+    /// The exact console banner for a degraded provider-embedding run. Kept next to the flag that sets it, so the
     /// renderer and the retriever can never disagree about what "degraded" means.
     /// </summary>
     public const string DegradedBannerText =
@@ -157,7 +123,7 @@ public sealed class HybridRetriever : IProductRetriever
     /// </summary>
     /// <param name="products">The catalogue.</param>
     /// <param name="embeddings">Embedding source. Null builds a lexical-only retriever.</param>
-    /// <param name="options">Tunables. Null uses the §D.3 defaults.</param>
+    /// <param name="options">Tunables. Null uses the hybrid-retrieval defaults.</param>
     /// <param name="onProgress">Optional index-build progress: (index, total, productId).</param>
     /// <param name="cancellationToken">Cancellation.</param>
     public static async ValueTask<HybridRetriever> BuildAsync(
@@ -441,7 +407,7 @@ public sealed class HybridRetriever : IProductRetriever
     }
 }
 
-/// <summary>Tunables for <see cref="HybridRetriever"/>. Every default is the §D.3 table's value.</summary>
+/// <summary>Tunables for <see cref="HybridRetriever"/>. Every default matches the hybrid-retrieval defaults table.</summary>
 public sealed record HybridRetrieverOptions
 {
     /// <summary>Candidates pulled from each leg before fusion. Chosen, not measured.</summary>

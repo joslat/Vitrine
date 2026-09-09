@@ -12,6 +12,7 @@ public static class VitrineEvalCriteria {
     public const int PersonaCount = 14;
     public const int ToolCount = 15;
     public const int ExecutorCount = 5;
+    public const int EdgeCount = 5;
     public const int ConditionalLoopBackEdges = 1;
     public const int NegativeControlCount = 43;
     public const int JudgedPassingScore = 75;

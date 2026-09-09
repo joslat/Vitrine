@@ -2,16 +2,19 @@
 
 # VITRINE documentation
 
-The canonical documentation is the [VITRINE HTML hub](index.html). It presents the project as an
+The canonical documentation is the [live VITRINE HTML hub](https://azuresamurai.blog/Vitrine/).
+Its checked-in source is [docs/index.html](index.html). The hub presents the project as an
 independent Digitec Galaxus job-application sample and routes each audience to one current page:
 
-- [Value proposal](Vitrine-Digitec-Galaxus-Value-Proposal.html) — why this work and AgentEval can
+- [Value proposal](https://azuresamurai.blog/Vitrine/Vitrine-Digitec-Galaxus-Value-Proposal.html) — why this work and AgentEval can
   create value for an e-commerce team.
-- [Operator walkthrough](Vitrine-Walkthrough.html) — what to run, click, and inspect.
-- [Retrieval deep dive](Vitrine-Retrieval-Deep-Dive.html) — retrieval mechanics and evidence.
-- [Architecture](Vitrine-Architecture.html) — ownership, runtime flow, trust, persistence, and replay.
-- [Evaluation protocol](Vitrine-Evaluation-Protocol.html) — the current offline/live evaluation contract.
-- [Verification](Vitrine-Verification.html) — dated build, test, report, and claim-boundary evidence.
+- [One-page summary](https://azuresamurai.blog/Vitrine/Vitrine-One-Page-Summary.html) — the customer problem, approach, evidence,
+  and limitations in plain language for non-technical readers.
+- [Operator walkthrough](https://azuresamurai.blog/Vitrine/Vitrine-Walkthrough.html) — what to run, click, and inspect.
+- [Retrieval deep dive](https://azuresamurai.blog/Vitrine/Vitrine-Retrieval-Deep-Dive.html) — retrieval mechanics and evidence.
+- [Architecture](https://azuresamurai.blog/Vitrine/Vitrine-Architecture.html) — ownership, runtime flow, trust, persistence, and replay.
+- [Evaluation protocol](https://azuresamurai.blog/Vitrine/Vitrine-Evaluation-Protocol.html) — the current offline/live evaluation contract.
+- [Verification](https://azuresamurai.blog/Vitrine/Vitrine-Verification.html) — dated build, test, report, and claim-boundary evidence.
 
 Repository-native Markdown remains only where it is the better maintenance format:
 [MIGRATION.md](../MIGRATION.md) is the AgentEval API/admission ledger; component READMEs explain

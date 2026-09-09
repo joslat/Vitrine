@@ -8,7 +8,7 @@ using Galaxus.RecommendationAgent.Domain;
 namespace Galaxus.RecommendationAgent.Workflows;
 
 /// <summary>
-/// THE §0.5 / D-3 control: a STRUCTURAL constraint on which words may reach query generation.
+/// The structural query-vocabulary control: a hard constraint on which words may reach query generation.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -56,17 +56,14 @@ namespace Galaxus.RecommendationAgent.Workflows;
 /// customer typed is not an injection into their own session.
 /// </para>
 /// <para>
-/// <b>B-9 — the control used to be monolingual, and its own corpus is not.</b> Twenty-seven of
-/// the hundred and two seeded reviews are German, seven French and six Italian, and the personas
-/// speak <c>de</c>, <c>fr</c> and <c>it</c>. An allow-list built only from the catalogue's
-/// English strings therefore refused every LEGITIMATE non-English proposal while leaving the
-/// English attack surface exactly as wide as before — the worst possible split, because the
-/// visible drops were all false positives and the control looked like it was working.
+/// <b>The allow-list must match the corpus's languages.</b> Twenty-seven of the 102 seeded reviews
+/// are German, seven French and six Italian, and the personas speak <c>de</c>, <c>fr</c> and
+/// <c>it</c>. Catalogue-owned translations admit legitimate proposals in those languages without
+/// widening the English attack surface or treating visible false positives as evidence of safety.
 /// </para>
 /// <para>
-/// The fix is deliberately NOT "widen the vocabulary with review text". That is the laundering
-/// channel this class exists to close, and adding the attack channel to the allow-list would
-/// close nothing. Instead the CATALOGUE'S OWN category and attribute vocabulary is given its
+/// Review text never widens the vocabulary: that is the laundering channel this class closes.
+/// Instead the CATALOGUE'S OWN category and attribute vocabulary is given its
 /// de/fr/it forms in <see cref="LocalisedCategoryNames"/> and
 /// <see cref="LocalisedAttributeNames"/> — the same move
 /// <c>SensitiveInferenceBlocklist.SpecialCategoryTerms</c> already makes for the output layer.
@@ -76,8 +73,7 @@ namespace Galaxus.RecommendationAgent.Workflows;
 ///   <item>every localisation KEY must be a real category-path element or attribute key of the
 ///         live catalogue — the table cannot invent vocabulary the catalogue does not have, and
 ///         a department removed from the seed takes its translations with it;</item>
-///   <item>a localised phrase naming a real catalogue leaf must be ACCEPTED — the failure B-9
-///         records;</item>
+///   <item>a localised phrase naming a real catalogue leaf must be ACCEPTED;</item>
 ///   <item>a localised phrase naming something the catalogue does NOT sell must still be
 ///         REFUSED — without this the widening would be indistinguishable from switching the
 ///         control off, which is how it would fail in the flattering direction.</item>
@@ -116,7 +112,7 @@ public sealed class QueryVocabulary
     };
 
     /// <summary>
-    /// German, French and Italian forms of the catalogue's own CATEGORY names (B-9).
+    /// German, French and Italian forms of the catalogue's own category names.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -310,7 +306,7 @@ public sealed class QueryVocabulary
         };
 
     /// <summary>
-    /// German, French and Italian forms of the catalogue's own ATTRIBUTE keys (B-9).
+    /// German, French and Italian forms of the catalogue's own attribute keys.
     /// </summary>
     /// <remarks>
     /// Keyed by the exact attribute key as the category seed spells it, so
@@ -398,7 +394,7 @@ public sealed class QueryVocabulary
     /// </summary>
     /// <remarks>
     /// Rebuild it whenever the MAPPER-origin interest set changes. It is cheap — a few thousand
-    /// short strings over a 76-product catalogue — and rebuilding is the honest thing to do,
+    /// short strings over a 99-product catalogue — and rebuilding is the honest thing to do,
     /// because a stale vocabulary is a vocabulary somebody widened without saying so.
     /// </remarks>
     /// <param name="catalogue">The catalogue. Supplies category names and attribute/tag tokens.</param>
@@ -411,10 +407,9 @@ public sealed class QueryVocabulary
     {
         ArgumentNullException.ThrowIfNull(catalogue);
 
-        // B-9's gate. Runs once per process, on the first vocabulary any path builds — the demo,
-        // the loop, every eval, every dry run — so a broken localisation table stops the run
-        // instead of quietly narrowing or widening the control. Re-entrant by design: SelfCheck
-        // builds a vocabulary of its own.
+        // Validate the localisation tables once per process, on the first vocabulary any path
+        // builds, so an invalid table stops the run instead of silently narrowing or widening the
+        // control. Re-entrant by design: SelfCheck builds a vocabulary of its own.
         EnsureSelfChecked(catalogue);
 
         var tokens = new HashSet<string>(StringComparer.Ordinal);
@@ -433,7 +428,7 @@ public sealed class QueryVocabulary
                 AddLocalisedForms(tokens, LocalisedCategoryNames, element);
             }
 
-            // (a2) B-9 — the de/fr/it forms of the ATTRIBUTE keys this category declares.
+            // (a2) de/fr/it forms of the attribute keys this category declares.
             foreach (var attribute in category.AttributeSchema)
                 AddLocalisedForms(tokens, LocalisedAttributeNames, attribute);
         }
@@ -451,7 +446,7 @@ public sealed class QueryVocabulary
                 AddLocalisedForms(tokens, LocalisedCategoryNames, element);
             }
 
-            // (b2) B-9 — the de/fr/it forms of the spec keys this product actually carries.
+            // (b2) de/fr/it forms of the spec keys this product actually carries.
             foreach (var (key, _) in product.Specs)
                 AddLocalisedForms(tokens, LocalisedAttributeNames, key);
         }
@@ -661,7 +656,7 @@ public sealed class QueryVocabulary
     }
 
     /// <summary>
-    /// B-9's two-sided gate on the localisation tables, run against a LIVE catalogue.
+    /// The two-sided gate on localisation tables, run against the current catalogue.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -674,8 +669,8 @@ public sealed class QueryVocabulary
     ///         a key and this fails — which is what stops the table becoming a second, private
     ///         vocabulary nobody diffed against the seed.</item>
     ///   <item><b>ACCEPTED.</b> Each pinned localised phrase — the de/fr/it name of a real
-    ///         catalogue leaf — must pass <see cref="Accepts"/>. These are the proposals B-9
-    ///         records as wrongly refused, including the design's own Italian "Hiking shoes".</item>
+    ///         catalogue leaf — must pass <see cref="Accepts"/>, including the Italian
+    ///         "Hiking shoes" witness.</item>
     ///   <item><b>STILL REFUSED.</b> Each pinned foreign phrase naming something the catalogue
     ///         does NOT sell must still fail <see cref="Accepts"/>. Without this arm, deleting
     ///         the control entirely would pass arm 2 — the flattering direction.</item>
@@ -733,8 +728,8 @@ public sealed class QueryVocabulary
 
     /// <summary>
     /// Localised names of REAL catalogue leaves. Every one must be accepted (<see cref="SelfCheck"/>
-    /// arm 2). The Italian hiking-shoe phrase is the design's own B-9 witness — Renzo's
-    /// verified-purchase review of GLX-2008 is written in Italian.
+    /// arm 2). The Italian hiking-shoe phrase is anchored by Renzo's verified-purchase review of
+    /// GLX-2008, which is written in Italian.
     /// </summary>
     public static IReadOnlyList<string> LocalisedPhrasesThatMustBeAccepted { get; } =
     [
@@ -794,7 +789,7 @@ public sealed class QueryVocabulary
         if (result.Count == 0) return;
 
         throw new InvalidOperationException(
-            "QueryVocabulary's B-9 localisation tables failed their own gate, so the D-3 control " +
+            "QueryVocabulary's localisation tables failed their own gate, so the vocabulary-containment control " +
             "is not in a state anyone should quote a containment number from:" +
             Environment.NewLine + "  - " + string.Join(Environment.NewLine + "  - ", result));
     }

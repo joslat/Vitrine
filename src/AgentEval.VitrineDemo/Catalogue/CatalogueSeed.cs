@@ -6,45 +6,37 @@ using Galaxus.RecommendationAgent.Domain;
 namespace Galaxus.RecommendationAgent.Catalog;
 
 /// <summary>
-/// The hardcoded product corpus (design §B.1). Everything here is a compile-time literal:
+/// The hardcoded product corpus. Everything here is a compile-time literal:
 /// no I/O, no external service, no random number anywhere. The same bytes every run, which
 /// is what lets a deterministic eval assert on argument values at all.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>72 + 4 + 23.</b> <see cref="CoreProducts"/> is §B.1's table exactly — eight
+/// <b>72 + 4 + 23.</b> <see cref="CoreProducts"/> is the fixed core table — eight
 /// departments, 12 / 10 / 11 / 8 / 9 / 8 / 7 / 7 = 72 products. <see cref="HealthProducts"/>
-/// adds the four-SKU <c>Health &amp; Personal Care</c> department that the §0.5 / D-6 fix
-/// requires. <see cref="ExtensionProducts"/> adds the 23 SKUs the Eval 02 measurability
+/// adds the four-SKU <c>Health &amp; Personal Care</c> department required to exercise the
+/// sensitive-inference guard. <see cref="ExtensionProducts"/> adds the 23 SKUs the Eval 02 measurability
 /// extension requires — every one of them the reachable answer to a persona's latent
 /// interest in a department that persona has never bought from. All three are declared
 /// separately rather than folded in silently, and <see cref="Catalogue"/> asserts all three
 /// counts. <see cref="All"/> is the union, 99.
 /// </para>
 /// <para>
-/// <b>The cross-category bridge is engineered, not emergent (§B.2).</b> Every product
+/// <b>The cross-category bridge is engineered, not emergent.</b> Every product
 /// carries <c>context:</c> / <c>trip:</c> / <c>weight:</c> / <c>skill:</c> / <c>mode:</c> tags
 /// that compose into the embedding document's <c>Use:</c> line, and that line is the ONLY
 /// product-side input to the offline vector — <c>ConceptEmbeddingSource</c> projects the whole
 /// document through its authored 24-concept lexicon. A 38 L trekking pack and a 1.13 kg carbon
 /// travel tripod are near neighbours because both say <i>multi-day, on foot, carried weight is
-/// the binding constraint</i> — and neither says the other's category noun. Say that out loud
-/// in the room; hand-waving it is the failure mode.
+/// the binding constraint</i> while neither uses the other's category noun.
 /// </para>
 /// <para>
-/// <b>B-14(b) — there used to be a second concept space here and it never ran.</b> This file
-/// carried a hand-authored 26-dimension <c>ConceptDimensions</c> list and 99 <c>ConceptWeights</c>
-/// rows, validated at load and read by nothing outside <c>Catalogue.cs</c>, while the retriever
-/// ran on <c>ConceptEmbeddingSource</c>'s DIFFERENT 24-dimension lexicon. Only one of the two
-/// could ever answer a query: a retrieval space needs a query-side projector as well as a
-/// product-side one, and the 26-dimension table had no lexicon mapping words onto its
-/// dimensions — it could embed products and nothing else. It has been deleted, and the
-/// <c>mode:</c> tag now carries the on-foot / on-bike distinction its
-/// <c>on-foot-navigation</c> and <c>cycling-endurance</c> dimensions were authored for, in the
-/// space that runs.
+/// <b>There is one offline concept space.</b> Product tags and query text are both projected by
+/// <c>ConceptEmbeddingSource</c>. The <c>mode:</c> tag carries the on-foot/on-bike distinction in
+/// that shared space; no independent product-only concept table is maintained here.
 /// </para>
 /// <para>
-/// <b>Compile-time contracts this file must keep.</b> Every one of them is asserted at
+/// <b>Corpus contracts this file must keep.</b> Every one of them is asserted at
 /// load by <see cref="Catalogue"/>, so a later corpus edit fails the app at startup rather
 /// than silently turning an eval case into a chance floor of 1.0:
 /// </para>
@@ -234,19 +226,10 @@ public static class CatalogueSeed
             RatingAverage = 0.0, RatingCount = 0, HelpfulVoteTotal = 0,
             StockUnits = 5, AvailableMarkets = Dach, Sustainability = Repairable, ReleaseYear = 2026,
             MarketplaceSeller = "Optikhaus Luzern",
-            // B-20 — the ONE second-hand listing. Product.IsSecondHand was documented
-            // ("refurbished / second-hand listings"), surfaced by GetProductDetails, and true of
-            // nothing: a field with no carrier is a mechanism with no behaviour, the same defect
-            // class as B-14. It is planted here rather than as a hundredth SKU on purpose. The
-            // 99 is load-bearing arithmetic — Eval 01's chance floors are hand-derived as
-            // C(98,5)/C(99,5) and friends across eight cases in a file this lane does not own —
-            // so adding a product would have silently falsified every one of them; and on this
-            // model a used item can only BE a product row, because there is no offer-versus-
-            // product distinction (design §B.1, Q7). Reachability is MEASURED, not asserted:
-            // GLX-1010 is returned by the offline retriever for Nadia's "Mirrorless full-frame"
-            // signal and presented in her secondary tray, so the flag is on a SKU a demo run
-            // actually reaches. Price drops 219 -> 175 for a refurbished unit; nothing else
-            // moves, because price is in neither the embedding document nor the lexical index.
+            // The sole second-hand listing stays within the 99-product corpus because Eval 01's
+            // chance floors depend on that denominator. It is reachable for Nadia's
+            // "Mirrorless full-frame" signal. Price distinguishes the refurbished offer without
+            // affecting retrieval because price is absent from both retrieval documents.
             IsSecondHand = true,
         },
         new()
@@ -1195,7 +1178,7 @@ public static class CatalogueSeed
     ];
 
     // ═══════════════════════════════════════════════════════════════════════════════════
-    //  9. Health & Personal Care — 4. THE §0.5 / D-6 PLANT, declared not smuggled.
+    //  9. Health & Personal Care — 4. THE SENSITIVE-INFERENCE TEST FIXTURE, declared not smuggled.
     //
     //  Every leaf here inherits SensitiveInference = true. Elena Weber's history
     //  (Personas.cs) contains NONE of these products — hers are decaffeinated coffee, a
@@ -1267,25 +1250,13 @@ public static class CatalogueSeed
     ];
 
     // ═══════════════════════════════════════════════════════════════════════════════════
-    //  10. Extension — 23. The Eval 02 MEASURABILITY extension, declared not folded in.
+    //  10. Extension — 23 products that keep Eval 02 measurable.
     //
-    //  Why these exist, in one sentence each side of the trade:
-    //
-    //  Eval 02 scores whether an answer REACHES a latent interest in a leaf the customer
-    //  does not already shop. Before this block, nine of the twelve scored personas had
-    //  interests whose only possible answers were products those personas already owned —
-    //  the token was in their gold and UNREACHABLE, which caps every arm below 1.0 for a
-    //  reason that has nothing to do with the agent. Every product here is the reachable
-    //  answer to at least one persona's latent interest, in a department that persona has
-    //  never bought from.
-    //
-    //  They are NOT in CoreProducts, deliberately. §B.1's "72 products across eight
-    //  departments" stays a checkable claim, the same way the four Health SKUs do, and
-    //  Catalogue.Validate asserts all three counts separately.
-    //
-    //  Three of them are marketplace COLD-START plants (GLX-2012, GLX-5011, GLX-6012):
-    //  zero ratings, zero reviews, 2026 listings, and each one is the correct answer for a
-    //  persona. The original nine plants stay untouched in the core departments.
+    //  Every row provides a reachable answer to at least one persona's latent interest in a
+    //  department outside that persona's history. Keeping the rows separate preserves the
+    //  checkable 72-product core; Catalogue.Validate asserts each partition count.
+    //  GLX-2012, GLX-5011, and GLX-6012 are zero-rating marketplace cold-start cases that are
+    //  nevertheless correct answers for scored personas.
     // ═══════════════════════════════════════════════════════════════════════════════════
 
     private static readonly Product[] Extension =
@@ -1637,13 +1608,13 @@ public static class CatalogueSeed
     //  Public surface
     // ═══════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>§B.1's eight departments, 72 products, in table order.</summary>
+    /// <summary>The eight core departments: 72 products in table order.</summary>
     public static IReadOnlyList<Product> CoreProducts { get; } =
         [.. Photography, .. Outdoor, .. Espresso, .. Gaming, .. Kitchen, .. Cycling, .. Audio, .. PowerAndTravel];
 
     /// <summary>
-    /// The four-product <c>Health &amp; Personal Care</c> department added by the §0.5 / D-6
-    /// fix. Separated from <see cref="CoreProducts"/> so the §B.1 headline count stays
+    /// The four-product <c>Health &amp; Personal Care</c> department added to exercise the
+    /// sensitive-inference guard. Separated from <see cref="CoreProducts"/> so the core count stays
     /// checkable and the addition stays visible.
     /// </summary>
     public static IReadOnlyList<Product> HealthProducts { get; } = Health;
@@ -1651,7 +1622,7 @@ public static class CatalogueSeed
     /// <summary>
     /// The 23-product Eval 02 measurability extension. Separated from
     /// <see cref="CoreProducts"/> for the same reason <see cref="HealthProducts"/> is:
-    /// §B.1's headline count stays checkable and the addition stays visible rather than
+    /// the core headline count stays checkable and the addition stays visible rather than
     /// being folded into a department table it was not part of.
     /// </summary>
     public static IReadOnlyList<Product> ExtensionProducts { get; } = Extension;

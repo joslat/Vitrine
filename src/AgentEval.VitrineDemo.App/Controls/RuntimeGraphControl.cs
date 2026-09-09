@@ -238,7 +238,7 @@ public sealed class RuntimeGraphControl : Control
     // An even column count leaves the centre lane clear for Robin's model boundary.
     private static int Demo01ToolColumnCount(double width) => width >= 760 ? 4 : 2;
 
-    private static bool IsDemo01Surface(GraphViewModel model) =>
+    internal static bool IsDemo01Surface(GraphViewModel model) =>
         model.Nodes.Any(static node => node.Id == "customer")
         && model.Nodes.Any(static node => node.Id == "model")
         && model.Nodes.Any(static node => node.Id == "guardrails")

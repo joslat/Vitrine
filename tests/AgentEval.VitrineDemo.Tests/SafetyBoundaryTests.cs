@@ -137,4 +137,53 @@ public sealed class SafetyBoundaryTests
         Assert.True(workflow.State.CustomerAnswerSafety!.IsSafe);
         Assert.Equal(workflow.State.CustomerAnswerSafety.Answer, workflow.State.FinalAnswer);
     }
+
+    [Fact]
+    public async Task RunReportLabelsConfidenceAndScopesTheOfflineEvalCommandPrecisely()
+    {
+        var result = await RecommendationRunEngine.RunAsync(new(
+            Personas.NadiaUserId,
+            Arm: RecommendationExecutionArm.ZeroModelBaseline));
+        Assert.NotNull(result.Profile);
+        Assert.NotNull(result.Prompt);
+        Assert.NotNull(result.InterestMap);
+        Assert.NotNull(result.Outcome);
+
+        var reportPath = Path.Combine(
+            Path.GetTempPath(),
+            $"vitrine-run-report-{Guid.NewGuid():N}.html");
+        try
+        {
+            RunReportHtml.Write(
+                reportPath,
+                "Demo 01",
+                "zero-model baseline",
+                result.Prompt!,
+                result.Profile!.User,
+                result.InterestMap!,
+                result.ClassifiedPurchases,
+                result.Outcome!.Cleaned,
+                result.Outcome.VerifiedPrices,
+                result.Outcome.Ledger,
+                Catalogue.Default);
+
+            var html = await File.ReadAllTextAsync(reportPath);
+
+            Assert.Contains("code-derived routing heuristic; uncalibrated", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("self-reported by the selector", html, StringComparison.Ordinal);
+            Assert.Contains(
+                "runs the deterministic offline gates, benchmark and registered negative controls",
+                html,
+                StringComparison.Ordinal);
+            Assert.Contains("does not run the paid multi-scenario or repeated-model plans", html, StringComparison.Ordinal);
+            Assert.Contains("--confirm-paid", html, StringComparison.Ordinal);
+            Assert.Contains("do not manufacture a per-arm chance floor", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("over the whole persona set", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("chance floor per arm", html, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (File.Exists(reportPath)) File.Delete(reportPath);
+        }
+    }
 }

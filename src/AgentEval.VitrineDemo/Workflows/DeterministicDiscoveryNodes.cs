@@ -228,12 +228,9 @@ public static class CoverageReviewGate
 
         foreach (var interest in starved)
         {
-            // ⚠ THE LINE NAMES THE REASON THIS INTEREST IS STARVED, not the only reason there used
-            //   to be. Since the coverage gate stopped keying on the retriever's ranking there are
-            //   two, and they have two different answers: an interest that NAMES NOTHING is starved
-            //   with candidates well above the floor, and printing "no candidate above the score
-            //   floor (0.0120)" beside two candidates at 0.5 sends the reader to the threshold —
-            //   which is exactly the fix that must not be made.
+            // Name the actual starvation condition. An unnameable interest can be starved even
+            // with high-scoring candidates, so describing that case as a score-floor failure would
+            // point remediation at the wrong control.
             var starvedCoverage = state.CoverageFor(interest.Id);
             lines.Add(starvedCoverage.AttributionVocabularyEmpty
                 ? $"{interest.Id} \"{interest.Label}\" NAMES NOTHING a product could be matched against — no attribute "
@@ -372,11 +369,9 @@ public sealed class DeterministicRanker(
         // RRF scores are small positive numbers with no upper bound of interest; squashing keeps
         // the second operand inside 0..1 without pretending it is a probability.
         //
-        // ⚠ THE CONSTANT BELOW IS THE SHAPE PARAMETER, NEVER THE COVERAGE CUT. They were one
-        //   constant until 2026-09-06 and they still carry the same value, which is why the split
-        //   moved no number — but a cut has an admit rate and a half-saturation constant does not,
-        //   so calibrating one through the other was a silent coupling into `ConfidenceBands`.
-        //   Eval 03's gating row `CoverageCutIsNotTheConfidenceShapeParameter` holds them apart.
+        // This is the confidence transform's half-saturation parameter, never the coverage cut.
+        // A cut has an admit rate and a shape parameter does not; Eval 03's
+        // CoverageCutIsNotTheConfidenceShapeParameter gate keeps those roles separate.
         double retrieval = candidate.SearchScore <= 0
             ? 0.0
             : calibration.ShapeRetrievalConfidence(candidate.SearchScore);
@@ -494,7 +489,7 @@ public static class DiscoveryPresentation
         var outcome = GuardrailPipeline.Apply(raw, context);
 
         outcome.Ledger.Note(GuardrailStage.AbstentionGate, GuardrailReasons.ArmInapplicable, "—",
-            "the §F.8 abstention gate is a PRE-SEARCH control and does not apply to a loop that has already " +
+            "the abstention gate is a PRE-SEARCH control and does not apply to a loop that has already " +
             "retrieved. The loop's equivalent is its stop reason, printed in the run summary");
 
         // The arms below can only fail on a claim a MODEL wrote. Which claims those are depends on
@@ -541,9 +536,8 @@ public static class DiscoveryPresentation
         }
 
         // One authoritative delivered artifact: downstream judging, the UI, exports, and the
-        // text-channel answer all receive the composition made from the screened set above.
-        // The model draft is retained separately; letting unscreened prose replace this value
-        // allowed the customer to see one artifact while the eval graded another.
+        // text-channel answer all receive the composition made from the screened set above. The
+        // model draft remains diagnostic and never replaces the screened customer answer.
         state.PresenterDraft = string.IsNullOrWhiteSpace(modelProse) ? null : modelProse.Trim();
         var composedAnswer = ComposeAnswer(state, catalogue, outcome);
         state.CustomerAnswerSafety = CustomerAnswerScreen.Screen(composedAnswer, state.SessionRequest);
@@ -678,13 +672,9 @@ public static class DiscoveryPresentation
             builder.AppendLine();
         }
 
-        // ⚠ THE FOOTNOTE IS A FOOTNOTE TO A TRAY, and with no tray there is nothing for it to be a
-        //   footnote to. When the loop presents nothing, the customer-facing account of that is the
-        //   shortfall section — the interest, why it could not be served, and a handover to a human
-        //   — not a bare list of rejected SKUs. Emitting the list alone would turn an abstention
-        //   into a several-hundred-character answer, which is the shape plan item 8.18 exists to
-        //   remove: a customer who named nothing must be shown nothing, and "shown nothing" has to
-        //   be measurable as a zero-length answer rather than as a shorter one.
+        // A rejection list is a footnote to a tray. With no presented item, the shortfall section
+        // carries the customer-facing explanation and handoff; emitting only rejected SKUs would
+        // turn an abstention into a non-empty recommendation answer.
         if (state.DroppedSkus.Count > 0 && builder.Length > 0)
         {
             builder.AppendLine("Deliberately not shown");

@@ -3,6 +3,7 @@
 using AgentEval.Core;
 using AgentEval.Evals;
 using AgentEval.Evals.Meta;
+using AgentEval.VitrineDemo.Evals;
 using AgentEval.VitrineDemo.Evals.Live;
 using Galaxus.RecommendationAgent.Catalog;
 using Galaxus.RecommendationAgent.Guardrails;
@@ -39,6 +40,24 @@ public sealed class LiveUseCaseEvalTests
         });
         Assert.Equal("Eval 01 · Agent", VitrineEvaluationPlans.Require(
             VitrineEvaluationPlan.LiveEval01Agent).ToString());
+        Assert.DoesNotContain(typeof(LiveSubjectRequest).GetProperties(), property =>
+            property.PropertyType == typeof(LiveUseCaseScenario));
+        Assert.DoesNotContain(typeof(LiveSubjectRequest).GetProperties(), property =>
+            property.Name is "ExpectedBehavior" or "GroundTruthFacts" or "Criteria");
+    }
+
+    [Fact]
+    public async Task ProgrammaticPaidBoundaryRejectsAnUnconfirmedPlanBeforeSubjectExecution()
+    {
+        var agent = FakeSubject.Agent(MeasuredAgent("unused"));
+        var workflow = FakeSubject.Workflow(MeasuredWorkflow("unused"));
+        var services = new LiveEvalServices(agent, workflow, new FakeJudge());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            LiveEvaluationPlanRunner.RunAsync(VitrineEvaluationPlan.LiveEval01Agent,
+                paidExecutionConfirmed: false, services: services));
+        Assert.Empty(agent.Requests);
+        Assert.Empty(workflow.Requests);
     }
 
     [Fact]
@@ -124,7 +143,7 @@ public sealed class LiveUseCaseEvalTests
                 PassThreshold: 0.8,
                 ScenarioIds: [LiveUseCaseScenarios.All[0].Id]);
 
-            var result = await Eval03_Comparison.RunAsync(
+            var result = await Eval03_Comparison.RunAsync(true,
                 options, new(agent, workflow, judge), progress);
 
             Assert.Equal(LiveEvalTerminalStatus.Passed, result.TerminalStatus);
@@ -201,7 +220,7 @@ public sealed class LiveUseCaseEvalTests
         try
         {
             var judgeNotCalled = new FakeJudge();
-            var subjectFailure = await Eval01_Agent.RunAsync(
+            var subjectFailure = await Eval01_Agent.RunAsync(true,
                 OneScenario(subjectWorkspace),
                 new(FakeSubject.Agent(LiveSubjectObservation.NotMeasured()),
                     FakeSubject.Workflow(MeasuredWorkflow("unused")), judgeNotCalled));
@@ -216,7 +235,7 @@ public sealed class LiveUseCaseEvalTests
                 item.Key == LiveUseCaseBenchmark.UseCaseQualityCheckKey).Measurement);
 
             var failedJudge = new FakeJudge(fail: true);
-            var judgeFailure = await Eval01_Agent.RunAsync(
+            var judgeFailure = await Eval01_Agent.RunAsync(true,
                 OneScenario(judgeWorkspace),
                 new(FakeSubject.Agent(MeasuredAgent("A measured response.")),
                     FakeSubject.Workflow(MeasuredWorkflow("unused")), failedJudge));
@@ -277,27 +296,284 @@ public sealed class LiveUseCaseEvalTests
         var workspace = TemporaryWorkspace();
         try
         {
-            var agent = FakeSubject.Agent(request => MeasuredAgent("answer", request.Scenario.PersonaId));
+            var agent = FakeSubject.Agent(request => MeasuredAgent("answer", request.PersonaId));
             var workflow = FakeSubject.Workflow(MeasuredWorkflow("unused"));
             var judge = new FakeJudge();
-            var result = await Eval04_StochasticAgent.RunAsync(
-                new LiveEvalOptions(workspace, Repetitions: 3,
+            var result = await Eval04_StochasticAgent.RunAsync(true,
+                new LiveEvalOptions(workspace, Repetitions: 4,
                     ScenarioIds: [LiveUseCaseScenarios.All[1].Id]),
                 new(agent, workflow, judge));
 
-            Assert.Equal(new LiveEvalWorkload(1, 1, 3, 3, 3), result.Workload);
-            Assert.Equal(3, agent.Requests.Count);
+            Assert.Equal(LiveEvalTerminalStatus.Passed, result.TerminalStatus);
+            Assert.Equal(new LiveEvalWorkload(1, 1, 4, 4, 4), result.Workload);
+            Assert.Equal(4, agent.Requests.Count);
             Assert.All(agent.Requests, request => Assert.Equal(
-                LiveUseCaseScenarios.All[1].Id, request.Scenario.Id));
+                LiveUseCaseScenarios.All[1].Id, request.ScenarioId));
+            Assert.All(agent.Requests, request => Assert.Equal(
+                LiveUseCaseScenarios.All[1].Query, request.Query));
             var quality = result.Arms.Single().Checks.Single(item =>
                 item.Key == LiveUseCaseBenchmark.UseCaseQualityCheckKey);
             Assert.Equal(MeasurementState.Measured, quality.Reliability.Measurement);
-            Assert.Equal((3, 3), (quality.Reliability.Successes, quality.Reliability.Total));
+            Assert.Equal((4, 4), (quality.Reliability.Successes, quality.Reliability.Total));
+            Assert.Equal(LiveTerminalAcceptancePolicy.WilsonLowerBoundPerScenario,
+                result.Configuration.Acceptance.Policy);
+            Assert.Equal(0.95, result.Configuration.Acceptance.ConfidenceLevel);
+            Assert.Equal(0.50, result.Configuration.Acceptance.MinimumLowerBound);
 
-            await Assert.ThrowsAsync<ArgumentException>(() => Eval01_Agent.RunAsync(
+            await Assert.ThrowsAsync<ArgumentException>(() => Eval01_Agent.RunAsync(true,
                 new LiveEvalOptions(workspace, ScenarioIds: ["unknown-scenario"]),
                 new(agent, workflow, judge)));
-            Assert.Equal(3, agent.Requests.Count);
+            Assert.Equal(4, agent.Requests.Count);
+        }
+        finally
+        {
+            DeleteTemporaryWorkspace(workspace);
+        }
+    }
+
+    [Fact]
+    public async Task StochasticTerminalUsesPerScenarioWilsonLowerBoundInsteadOfZeroFailureRule()
+    {
+        var passingWorkspace = TemporaryWorkspace();
+        var failingWorkspace = TemporaryWorkspace();
+        try
+        {
+            var passingCall = 0;
+            var passingSubject = FakeSubject.Agent(request =>
+                MeasuredAgent(++passingCall == 1 ? "bad" : "good", request.PersonaId));
+            var passing = await Eval04_StochasticAgent.RunAsync(true,
+                new(passingWorkspace, Repetitions: 8,
+                    ScenarioIds: [LiveUseCaseScenarios.All[0].Id]),
+                new(passingSubject,
+                    FakeSubject.Workflow(MeasuredWorkflow("unused")),
+                    new RoutedScoreJudge(request => ResultFor(
+                        request, request.Output == "bad" ? 0 : 100))));
+
+            var call = 0;
+            var failingSubject = FakeSubject.Agent(request =>
+                MeasuredAgent(++call == 1 ? "bad" : "good", request.PersonaId));
+            var failing = await Eval04_StochasticAgent.RunAsync(true,
+                new(failingWorkspace, Repetitions: 4,
+                    ScenarioIds: [LiveUseCaseScenarios.All[0].Id]),
+                new(failingSubject, FakeSubject.Workflow(MeasuredWorkflow("unused")),
+                    new RoutedScoreJudge(request => ResultFor(
+                        request, request.Output == "bad" ? 0 : 100))));
+
+            Assert.Equal(LiveEvalTerminalStatus.Passed, passing.TerminalStatus);
+            Assert.Equal(LiveEvalTerminalStatus.QualityFailed, failing.TerminalStatus);
+            var passingQuality = passing.Arms.Single().Checks.Single(check =>
+                check.Key == LiveUseCaseBenchmark.UseCaseQualityCheckKey);
+            Assert.Equal((7, 8),
+                (passingQuality.Reliability.Successes, passingQuality.Reliability.Total));
+            Assert.True(passingQuality.Reliability.Lower >=
+                VitrineEvaluationPlans.StochasticMinimumWilsonLowerBound);
+            var quality = failing.Arms.Single().Checks.Single(check =>
+                check.Key == LiveUseCaseBenchmark.UseCaseQualityCheckKey);
+            Assert.Equal((3, 4), (quality.Reliability.Successes, quality.Reliability.Total));
+            Assert.True(quality.Reliability.Lower <
+                VitrineEvaluationPlans.StochasticMinimumWilsonLowerBound);
+            var persisted = File.ReadAllText(failing.Persistence.OutcomePath);
+            Assert.Contains("\"policy\": \"wilsonLowerBoundPerScenario\"", persisted,
+                StringComparison.Ordinal);
+            Assert.Contains("\"minimumLowerBound\": 0.5", persisted, StringComparison.Ordinal);
+
+            await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+                Eval04_StochasticAgent.RunAsync(true,
+                    new(TemporaryWorkspace(), Repetitions: 3,
+                        ScenarioIds: [LiveUseCaseScenarios.All[0].Id]),
+                    new(FakeSubject.Agent(MeasuredAgent("unused")),
+                        FakeSubject.Workflow(MeasuredWorkflow("unused")), new FakeJudge())));
+        }
+        finally
+        {
+            DeleteTemporaryWorkspace(passingWorkspace);
+            DeleteTemporaryWorkspace(failingWorkspace);
+        }
+    }
+
+    [Fact]
+    public async Task StochasticWorkflowPersistsEachScenarioDecisionWhenPooledReliabilityWouldHideFailure()
+    {
+        var workspace = TemporaryWorkspace();
+        try
+        {
+            var failedScenario = LiveUseCaseScenarios.All[^1];
+            var result = await Eval05_StochasticWorkflow.RunAsync(true,
+                new LiveEvalOptions(workspace, Repetitions: 4),
+                new(
+                    FakeSubject.Agent(MeasuredAgent("unused")),
+                    FakeSubject.Workflow(MeasuredWorkflow("workflow-output")),
+                    new RoutedScoreJudge(request => ResultFor(
+                        request,
+                        string.Equals(request.ScenarioId, failedScenario.Id, StringComparison.Ordinal)
+                            ? 0
+                            : 100))));
+
+            Assert.Equal(LiveEvalTerminalStatus.QualityFailed, result.TerminalStatus);
+            Assert.Equal(LiveUseCaseScenarios.All.Count, result.ScenarioAcceptances.Count);
+            Assert.All(result.ScenarioAcceptances, decision =>
+                Assert.Equal((4, 4), (decision.Census.Measured, decision.Census.Total)));
+            Assert.All(result.ScenarioAcceptances.Where(decision =>
+                    !string.Equals(decision.ScenarioId, failedScenario.Id, StringComparison.Ordinal)),
+                static decision => Assert.True(decision.Passed));
+            var failedDecision = Assert.Single(result.ScenarioAcceptances, decision =>
+                string.Equals(decision.ScenarioId, failedScenario.Id, StringComparison.Ordinal));
+            Assert.False(failedDecision.Passed);
+            Assert.Equal((0, 4),
+                (failedDecision.Reliability.Successes, failedDecision.Reliability.Total));
+
+            var pooledQuality = result.Arms.Single().Checks.Single(check =>
+                check.Key == LiveUseCaseBenchmark.UseCaseQualityCheckKey);
+            Assert.Equal((12, 16),
+                (pooledQuality.Reliability.Successes, pooledQuality.Reliability.Total));
+            Assert.True(pooledQuality.Reliability.Lower >=
+                VitrineEvaluationPlans.StochasticMinimumWilsonLowerBound);
+
+            var persisted = File.ReadAllText(result.Persistence.OutcomePath);
+            Assert.Contains("\"scenarioAcceptances\"", persisted, StringComparison.Ordinal);
+            Assert.Contains(failedScenario.Id, persisted, StringComparison.Ordinal);
+            using var writer = new StringWriter();
+            ConsoleReport.Print(result, writer);
+            Assert.Contains($"Scenario acceptance: fake-workflow · {failedScenario.Id}",
+                writer.ToString(), StringComparison.Ordinal);
+            Assert.Contains("· FAIL", writer.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTemporaryWorkspace(workspace);
+        }
+    }
+
+    [Fact]
+    public async Task StochasticWholeTrialRequiresArchitectureSpecificJournalOrTraceEvenWhenQualityPasses()
+    {
+        var agentWorkspace = TemporaryWorkspace();
+        var workflowWorkspace = TemporaryWorkspace();
+        try
+        {
+            var scenario = LiveUseCaseScenarios.All[0];
+            var invalidAgent = MeasuredAgent("agent-output", scenario.PersonaId) with
+            {
+                Tools = ValidAgentTools(scenario.PersonaId) with { JournalObserved = false },
+            };
+            var agentResult = await Eval04_StochasticAgent.RunAsync(true,
+                new(agentWorkspace, Repetitions: 4, ScenarioIds: [scenario.Id]),
+                new(FakeSubject.Agent(invalidAgent),
+                    FakeSubject.Workflow(MeasuredWorkflow("unused")), new FakeJudge()));
+
+            var invalidWorkflow = MeasuredWorkflow("workflow-output");
+            invalidWorkflow = invalidWorkflow with
+            {
+                Workflow = invalidWorkflow.Workflow! with { FailureCount = 1 },
+            };
+            var workflowResult = await Eval05_StochasticWorkflow.RunAsync(true,
+                new(workflowWorkspace, Repetitions: 4, ScenarioIds: [scenario.Id]),
+                new(FakeSubject.Agent(MeasuredAgent("unused")),
+                    FakeSubject.Workflow(invalidWorkflow), new FakeJudge()));
+
+            AssertArchitectureSpecificFailure(
+                agentResult, LiveUseCaseBenchmark.AgentToolJournalCheckKey);
+            AssertArchitectureSpecificFailure(
+                workflowResult, LiveUseCaseBenchmark.WorkflowTraceCheckKey);
+        }
+        finally
+        {
+            DeleteTemporaryWorkspace(agentWorkspace);
+            DeleteTemporaryWorkspace(workflowWorkspace);
+        }
+
+        static void AssertArchitectureSpecificFailure(LiveEvalResult result, string requiredCheckKey)
+        {
+            Assert.Equal(LiveEvalTerminalStatus.QualityFailed, result.TerminalStatus);
+            Assert.Equal(EvaluationExitCodes.GateFailed, result.ExitCode);
+            Assert.All(result.Trials, static trial =>
+            {
+                Assert.Equal(MeasurementState.Measured, trial.Measurement);
+                Assert.False(trial.Passed);
+            });
+            var quality = result.Arms.Single().Checks.Single(check =>
+                check.Key == LiveUseCaseBenchmark.UseCaseQualityCheckKey);
+            Assert.Equal((4, 4), (quality.Reliability.Successes, quality.Reliability.Total));
+            var required = result.Arms.Single().Checks.Single(check => check.Key == requiredCheckKey);
+            Assert.Equal((0, 4), (required.Reliability.Successes, required.Reliability.Total));
+            var decision = Assert.Single(result.ScenarioAcceptances);
+            Assert.Equal((4, 4), (decision.Census.Measured, decision.Census.Total));
+            Assert.Equal((0, 4),
+                (decision.Reliability.Successes, decision.Reliability.Total));
+            Assert.False(decision.Passed);
+        }
+    }
+
+    [Fact]
+    public async Task StochasticAllUnmeasuredTrialsReturnNotMeasuredExitThree()
+    {
+        var workspace = TemporaryWorkspace();
+        try
+        {
+            var scenario = LiveUseCaseScenarios.All[0];
+            var judge = new FakeJudge();
+            var result = await Eval04_StochasticAgent.RunAsync(true,
+                new(workspace, Repetitions: 4, ScenarioIds: [scenario.Id]),
+                new(FakeSubject.Agent(LiveSubjectObservation.NotMeasured()),
+                    FakeSubject.Workflow(MeasuredWorkflow("unused")), judge));
+
+            Assert.Equal(LiveEvalTerminalStatus.NotMeasured, result.TerminalStatus);
+            Assert.Equal(EvaluationExitCodes.NotMeasured, result.ExitCode);
+            Assert.Empty(judge.Requests);
+            Assert.All(result.Trials, static trial =>
+            {
+                Assert.Equal(MeasurementState.NotMeasured, trial.Measurement);
+                Assert.Null(trial.Passed);
+            });
+            var decision = Assert.Single(result.ScenarioAcceptances);
+            Assert.Equal((0, 0, 4, 4),
+                (decision.Census.Measured, decision.Census.NotApplicable,
+                    decision.Census.NotMeasured, decision.Census.Total));
+            Assert.Equal(MeasurementState.NotMeasured, decision.Reliability.Measurement);
+            Assert.Equal((0, 0),
+                (decision.Reliability.Successes, decision.Reliability.Total));
+            Assert.Null(decision.Reliability.Estimate);
+            Assert.Null(decision.Reliability.Lower);
+            Assert.Null(decision.Reliability.Upper);
+            Assert.Null(decision.Passed);
+        }
+        finally
+        {
+            DeleteTemporaryWorkspace(workspace);
+        }
+    }
+
+    [Fact]
+    public async Task StochasticPartialMeasurementReturnsInfrastructureErrorExitFour()
+    {
+        var workspace = TemporaryWorkspace();
+        try
+        {
+            var scenario = LiveUseCaseScenarios.All[0];
+            var calls = 0;
+            var judge = new FakeJudge();
+            var result = await Eval04_StochasticAgent.RunAsync(true,
+                new(workspace, Repetitions: 4, ScenarioIds: [scenario.Id]),
+                new(FakeSubject.Agent(request => ++calls == 1
+                        ? MeasuredAgent("measured", request.PersonaId)
+                        : LiveSubjectObservation.NotMeasured()),
+                    FakeSubject.Workflow(MeasuredWorkflow("unused")), judge));
+
+            Assert.Equal(LiveEvalTerminalStatus.InfrastructureError, result.TerminalStatus);
+            Assert.Equal(EvaluationExitCodes.InfrastructureFailure, result.ExitCode);
+            Assert.Single(judge.Requests);
+            Assert.Equal(1, result.Trials.Count(static trial =>
+                trial.Measurement == MeasurementState.Measured && trial.Passed == true));
+            Assert.Equal(3, result.Trials.Count(static trial =>
+                trial.Measurement == MeasurementState.NotMeasured && trial.Passed is null));
+            var decision = Assert.Single(result.ScenarioAcceptances);
+            Assert.Equal((1, 0, 3, 4),
+                (decision.Census.Measured, decision.Census.NotApplicable,
+                    decision.Census.NotMeasured, decision.Census.Total));
+            Assert.Equal(MeasurementState.Measured, decision.Reliability.Measurement);
+            Assert.Equal((1, 1),
+                (decision.Reliability.Successes, decision.Reliability.Total));
+            Assert.Null(decision.Passed);
         }
         finally
         {
@@ -316,7 +592,7 @@ public sealed class LiveUseCaseEvalTests
             var judge = new RoutedScoreJudge(request =>
                 ResultFor(request, request.Output == "agent-output" ? 80 : 70));
 
-            var result = await Eval03_Comparison.RunAsync(
+            var result = await Eval03_Comparison.RunAsync(true,
                 new LiveEvalOptions(workspace, PassThreshold: 0.75,
                     ScenarioIds: [LiveUseCaseScenarios.All[0].Id]),
                 new(agent, workflow, judge));
@@ -465,14 +741,14 @@ public sealed class LiveUseCaseEvalTests
         var calls = 0;
         var agent = FakeSubject.Agent(request =>
         {
-            if (++calls == 1) return MeasuredAgent("first", request.Scenario.PersonaId);
+            if (++calls == 1) return MeasuredAgent("first", request.PersonaId);
             cancellation.Cancel();
             throw new OperationCanceledException(cancellation.Token);
         });
         try
         {
-            var result = await Eval04_StochasticAgent.RunAsync(
-                new(workspace, Repetitions: 2, ScenarioIds: [LiveUseCaseScenarios.All[0].Id]),
+            var result = await Eval04_StochasticAgent.RunAsync(true,
+                new(workspace, Repetitions: 4, ScenarioIds: [LiveUseCaseScenarios.All[0].Id]),
                 new(agent, FakeSubject.Workflow(MeasuredWorkflow("unused")), new FakeJudge()),
                 cancellationToken: cancellation.Token);
             Assert.Equal(LiveEvalTerminalStatus.Cancelled, result.TerminalStatus);
@@ -491,10 +767,10 @@ public sealed class LiveUseCaseEvalTests
         try
         {
             var judge = new FakeJudge();
-            await Assert.ThrowsAsync<ArgumentException>(() => Eval01_Agent.RunAsync(OneScenario(workspace),
+            await Assert.ThrowsAsync<ArgumentException>(() => Eval01_Agent.RunAsync(true, OneScenario(workspace),
                 new(new FakeSubject("wrong", LiveSubjectArchitecture.Workflow, _ => MeasuredAgent("x")),
                     FakeSubject.Workflow(MeasuredWorkflow("x")), judge)));
-            await Assert.ThrowsAsync<ArgumentException>(() => Eval01_Agent.RunAsync(OneScenario(workspace),
+            await Assert.ThrowsAsync<ArgumentException>(() => Eval01_Agent.RunAsync(true, OneScenario(workspace),
                 new(new FakeSubject("same", LiveSubjectArchitecture.Agent, _ => MeasuredAgent("x")),
                     new FakeSubject("same", LiveSubjectArchitecture.Workflow, _ => MeasuredWorkflow("x")), judge)));
             Assert.Empty(judge.Requests);
@@ -511,7 +787,7 @@ public sealed class LiveUseCaseEvalTests
         File.WriteAllText(index, "{not-json");
         try
         {
-            await Assert.ThrowsAsync<InvalidDataException>(() => Eval01_Agent.RunAsync(
+            await Assert.ThrowsAsync<InvalidDataException>(() => Eval01_Agent.RunAsync(true,
                 OneScenario(workspace), new(FakeSubject.Agent(MeasuredAgent("answer")),
                     FakeSubject.Workflow(MeasuredWorkflow("unused")), new FakeJudge())));
             Assert.Equal("{not-json", File.ReadAllText(index));
@@ -535,7 +811,7 @@ public sealed class LiveUseCaseEvalTests
             new("measured", 4, 40, 20, 60, 0.001), LiveUsageEvidence.NotReported));
         try
         {
-            var result = await LiveEvaluationPlanRunner.RunAsync(VitrineEvaluationPlan.LiveEval06SafetyProbes,
+            var result = await LiveEvaluationPlanRunner.RunAsync(VitrineEvaluationPlan.LiveEval06SafetyProbes, true,
                 new(workspace, SafetyMaxProbesPerAttack: 2, SafetyTimeoutSeconds: 15),
                 new(FakeSubject.Agent(MeasuredAgent("unused")),
                     FakeSubject.Workflow(MeasuredWorkflow("unused")), new FakeJudge(), safety: safety));
@@ -611,7 +887,7 @@ public sealed class LiveUseCaseEvalTests
             4, resisted: 3, compromised: 0, inconclusive: 1, skipped: 0, errored: 1));
         try
         {
-            var result = await LiveEvaluationPlanRunner.RunAsync(VitrineEvaluationPlan.LiveEval06SafetyProbes,
+            var result = await LiveEvaluationPlanRunner.RunAsync(VitrineEvaluationPlan.LiveEval06SafetyProbes, true,
                 new(workspace, SafetyMaxProbesPerAttack: 2),
                 new(FakeSubject.Agent(MeasuredAgent("unused")),
                     FakeSubject.Workflow(MeasuredWorkflow("unused")), new FakeJudge(), safety: safety));
@@ -630,7 +906,7 @@ public sealed class LiveUseCaseEvalTests
             Assert.NotNull(erroredProbe.Failure);
 
             var json = File.ReadAllText(result.Persistence.OutcomePath);
-            Assert.Contains("\"schemaVersion\": \"1.2\"", json, StringComparison.Ordinal);
+            Assert.Contains("\"schemaVersion\": \"1.3\"", json, StringComparison.Ordinal);
             Assert.Contains("\"diagnostic\": \"An unexpected probe execution fault occurred;", json,
                 StringComparison.Ordinal);
             Assert.Contains("\"stage\": \"probe-execution\"", json, StringComparison.Ordinal);
@@ -658,7 +934,7 @@ public sealed class LiveUseCaseEvalTests
         var safety = new FakeSafetyEvaluator(SafetySummary(4, 4, 0, 0, 0));
         try
         {
-            var result = await LiveEvaluationPlanRunner.RunAsync(VitrineEvaluationPlan.LiveEval06SafetyProbes,
+            var result = await LiveEvaluationPlanRunner.RunAsync(VitrineEvaluationPlan.LiveEval06SafetyProbes, true,
                 new(workspace), new(FakeSubject.Agent(MeasuredAgent("unused")),
                     FakeSubject.Workflow(MeasuredWorkflow("unused")), new FakeJudge(),
                     readiness: () => new(false, "missing"), safety: safety), progress);

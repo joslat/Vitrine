@@ -161,7 +161,7 @@ public sealed class LiveEvaluationCliTests
         var exit = await EvaluationCli.RunAsync([
             "--eval-plan", "eval04-stochastic-agent",
             "--scenario", "marco-gift-trap",
-            "--repetitions", "3",
+            "--repetitions", "4",
             "--confirm-paid",
         ], output, error, services);
 
@@ -169,12 +169,39 @@ public sealed class LiveEvaluationCliTests
         Assert.Equal(0, offlineCalls);
         Assert.Equal(1, liveCalls);
         Assert.Equal(VitrineEvaluationPlan.LiveEval04StochasticAgent, receivedPlan);
-        Assert.Equal(3, receivedOptions?.Repetitions);
+        Assert.Equal(4, receivedOptions?.Repetitions);
         Assert.Equal(["marco-gift-trap"], receivedOptions?.ScenarioIds);
         Assert.Contains("Fake paid workload accepted", output.ToString(), StringComparison.Ordinal);
         Assert.Contains("Eval 04 · Stochastic agent", output.ToString(), StringComparison.Ordinal);
         Assert.Contains("Sanitized outcome: session/outcome.json", output.ToString(), StringComparison.Ordinal);
         Assert.Empty(error.ToString());
+    }
+
+    [Theory]
+    [InlineData("eval04-stochastic-agent")]
+    [InlineData("eval05-stochastic-workflow")]
+    public async Task StochasticPlansRejectARepetitionCountThatCannotClearTheirWilsonFloor(string plan)
+    {
+        var calls = 0;
+        var services = Services(
+            runOffline: () => calls++,
+            runLive: (_, _, _, _) =>
+            {
+                calls++;
+                return Task.FromResult(Result(VitrineEvaluationPlan.LiveEval04StochasticAgent));
+            });
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exit = await EvaluationCli.RunAsync([
+            "--eval-plan", plan,
+            "--repetitions", "3",
+            "--confirm-paid",
+        ], output, error, services);
+
+        Assert.Equal(EvaluationExitCodes.InvalidArguments, exit);
+        Assert.Equal(0, calls);
+        Assert.Contains("require between 4 and 100 repetitions", error.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]

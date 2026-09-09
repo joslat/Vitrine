@@ -7,7 +7,7 @@ using Microsoft.Extensions.AI;
 namespace Galaxus.RecommendationAgent.Retrieval;
 
 /// <summary>
-/// The LIVE embedding path (design §D.4): real <c>text-embedding-3-small</c> vectors from the
+/// The LIVE embedding path: real <c>text-embedding-3-small</c> vectors from the
 /// configured Azure OpenAI deployment.
 /// </summary>
 /// <remarks>
@@ -97,10 +97,9 @@ public sealed class AzureEmbeddingSource : IEmbeddingSource, IDisposable
     /// <summary>
     /// Prompt tokens billed so far, summed from each response's own usage block. This is the
     /// number an invoice is computed from, so it is READ FROM THE RESPONSE rather than estimated
-    /// from character counts — a four-characters-per-token rule of thumb forecast 13 278 tokens for
-    /// the B-6 rebuild against a billed 13 383 (0.8 % low over 170 calls, 7 % low on the single
-    /// document it was checked against), and an estimate presented as a cost is a fabricated
-    /// measurement.
+    /// from character counts. In a representative 170-call rebuild, a four-characters-per-token
+    /// estimate was 0.8 % below the billed total and 7 % low on one document; an estimate presented
+    /// as a cost is therefore a fabricated measurement.
     /// </summary>
     public long PromptTokens => Interlocked.Read(ref _promptTokens);
 

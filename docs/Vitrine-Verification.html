@@ -8,6 +8,13 @@
 and test evidence, offline results, Eval06 diagnostic coverage,
 incidents, and claim boundaries.">
   <title>Verification · VITRINE</title>
+  <meta name="author" content="José Luis Latorre Millas">
+  <link rel="canonical" href="https://azuresamurai.blog/Vitrine/Vitrine-Verification.html">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Verification · VITRINE">
+  <meta property="og:description" content="Dated build, test, offline evidence, incident, and claim-boundary receipts for VITRINE.">
+  <meta property="og:url" content="https://azuresamurai.blog/Vitrine/Vitrine-Verification.html">
+  <meta property="og:image" content="https://azuresamurai.blog/Vitrine/images/vitrine-control-room.png">
   <link rel="stylesheet" href="assets/vitrine-doc-page.css">
 </head>
 <body>
@@ -21,6 +28,7 @@ deliberately not claimed in the current repository state.</p>
 <nav class="topnav" aria-label="VITRINE documentation">
   <div class="wrap">
     <a href="index.html">VITRINE docs</a>
+    <a href="Vitrine-One-Page-Summary.html">Plain-language summary</a>
     <a href="Vitrine-Digitec-Galaxus-Value-Proposal.html">Value proposal</a>
     <a href="Vitrine-Walkthrough.html">Walkthrough</a>
     <a href="Vitrine-Retrieval-Deep-Dive.html">Retrieval</a>
@@ -39,6 +47,9 @@ id="toc-restored-offline-evidence">Restored offline evidence</a></li>
 <li><a href="#package-and-ownership-boundary"
 id="toc-package-and-ownership-boundary">Package and ownership
 boundary</a></li>
+<li><a href="#stochastic-acceptance-verification"
+id="toc-stochastic-acceptance-verification">Stochastic acceptance
+verification</a></li>
 <li><a href="#eval06-diagnostic-verification"
 id="toc-eval06-diagnostic-verification">Eval06 diagnostic
 verification</a></li>
@@ -77,27 +88,35 @@ safety scan.</p>
 </tr>
 <tr>
 <td>Full <code>Category!=LiveModel</code> test lane</td>
-<td>PASS · 336/336 · 0 failed · 0 skipped · 5m 10s</td>
+<td>PASS · 361/361 · 0 failed · 0 skipped or inconclusive · 4m 48s</td>
 </tr>
 <tr>
-<td>Eval06 hardening focus</td>
-<td>PASS · 101/101 synthetic/credential-free tests</td>
+<td>Changed-seam regression focus</td>
+<td>PASS · 165/165 credential-free graph, artifact/replay, live-plan, stochastic, gate-authority, and safety tests</td>
 </tr>
 <tr>
 <td>Artifact compatibility</td>
-<td>Schema 8 creation; integrity-valid schema 7 read compatibility</td>
+<td>Schema 9 creation; integrity-valid schema 7 and 8 read compatibility</td>
 </tr>
 <tr>
 <td>Documentation integrity</td>
-<td>Local links, fragments, duplicate IDs, and HTML structure checked
-before commit</td>
+<td>PASS · 25 Markdown/HTML files · local links, fragments, unique IDs, and standalone HTML envelopes</td>
+</tr>
+<tr>
+<td>Publication boundary</td>
+<td>PASS · 246 tracked files · exactly one deny-by-default public classification per path</td>
+</tr>
+<tr>
+<td>Live-evidence exporter</td>
+<td>PASS · synthetic Eval03/Eval06 fixtures, missingness, malformed-measurement rejection, escaping, and deployment-sentinel exclusion</td>
 </tr>
 </tbody>
 </table>
 <div class="sourceCode" id="cb1"><pre
-class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>dotnet build AgentEval<span class="op">.</span><span class="fu">VitrineDemo</span><span class="op">.</span><span class="fu">slnx</span> <span class="op">--</span>configuration Release <span class="op">--</span>no-restore</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>dotnet test tests\AgentEval<span class="op">.</span><span class="fu">VitrineDemo</span><span class="op">.</span><span class="fu">Tests</span>\AgentEval<span class="op">.</span><span class="fu">VitrineDemo</span><span class="op">.</span><span class="fu">Tests</span><span class="op">.</span><span class="fu">csproj</span> `</span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  <span class="op">--</span>configuration Release <span class="op">--</span>no-build <span class="op">--</span>no-restore <span class="op">--</span>filter <span class="st">&quot;Category!=LiveModel&quot;</span></span></code></pre></div>
+class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>dotnet restore AgentEval<span class="op">.</span><span class="fu">VitrineDemo</span><span class="op">.</span><span class="fu">slnx</span> <span class="op">--</span>locked-mode</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>dotnet build AgentEval<span class="op">.</span><span class="fu">VitrineDemo</span><span class="op">.</span><span class="fu">slnx</span> <span class="op">--</span>configuration Release <span class="op">--</span>no-restore <span class="op">-warnaserror</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>dotnet test tests\AgentEval<span class="op">.</span><span class="fu">VitrineDemo</span><span class="op">.</span><span class="fu">Tests</span>\AgentEval<span class="op">.</span><span class="fu">VitrineDemo</span><span class="op">.</span><span class="fu">Tests</span><span class="op">.</span><span class="fu">csproj</span> `</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>  <span class="op">--</span>configuration Release <span class="op">--</span>no-build <span class="op">--</span>no-restore <span class="op">--</span>filter <span class="st">&quot;Category!=LiveModel&quot;</span></span></code></pre></div>
 <h2 id="restored-offline-evidence">Restored offline evidence</h2>
 <p>The final restored offline acceptance completed without provider
 calls:</p>
@@ -120,8 +139,8 @@ evidence and failed their declared ablations</td>
 physical run directories · ten native paired comparisons</td>
 </tr>
 <tr>
-<td>Product gates</td>
-<td>Exit 0 · 6/6 measured pass</td>
+<td>Offline authority</td>
+<td>Exit 0 · 5/5 mandatory evaluation gates measured pass; matched-quality diagnostic reported separately</td>
 </tr>
 <tr>
 <td>Registered diagnostic controls</td>
@@ -130,12 +149,12 @@ physical run directories · ten native paired comparisons</td>
 <tr>
 <td>Catalogue integrity self-test</td>
 <td>Expected exit 1 after isolated 99→98 defect; subsequent restored run
-exit 0 with 6/6 gates</td>
+exit 0 with all five mandatory gates passing and the matched-quality diagnostic reported</td>
 </tr>
 <tr>
 <td>Generated report</td>
 <td>Process-equivalent exit 0 · canonical benchmark run
-<code>2026-09-09_07-33-47_d9bcf6ef</code></td>
+<code>2026-09-09_20-10-02_45788ceb</code></td>
 </tr>
 </tbody>
 </table>
@@ -155,17 +174,27 @@ vendored substitute API.</li>
 application.</li>
 <li>The offline and paid source lanes are explicit:
 <code>Evals/Offline</code> and <code>Evals/Live</code>.</li>
-<li>Eleven admitted domain checks enter through native AgentEval
-admission; the 43 mutation rows are separately labelled diagnostics and
-do not inflate the six product gates.</li>
+<li>Eleven admitted domain checks enter through native AgentEval admission: five benchmark
+predicates plus six offline production checks. One of those six is the matched-quality diagnostic;
+only five are mandatory evaluation gates. The 43 mutation rows remain a separate diagnostic panel.</li>
 </ul>
+<h2 id="stochastic-acceptance-verification">Stochastic acceptance verification</h2>
+<p>Credential-free fixtures verify that Eval04/05 require at least four repetitions, keep each
+arm/scenario decision separate, and use a 95% Wilson lower-bound floor of 0.50 over fully measured
+whole trials. A whole-trial success requires quality, response-observed, and the applicable
+architecture check—agent tool journal or workflow trace—to all be measured and pass.</p>
+<p>The boundary cases are executable: 7/8 successes clear the policy while 3/4 do not; a failing
+required journal or trace makes that trial a failure; zero measured trials produce
+<code>NotMeasured</code>/exit 3; partial measurement produces
+<code>InfrastructureError</code>/exit 4. Schema validation recomputes the Wilson interval and rejects
+tampered, pooled, undersampled, or internally inconsistent acceptance facts.</p>
 <h2 id="eval06-diagnostic-verification">Eval06 diagnostic
 verification</h2>
 <p>Credential-free fixtures verify all safety states without calling a
 provider: complete resistance, known compromise, clean inconclusive
 measurement, timeout/transport/execution errors, malformed or truncated
 census, cancellation, persistence, replay, and tamper rejection.</p>
-<p>Schema 8 and live-session schema 1.2 retain only allow-listed
+<p>Schema 9 and live-session schema 1.3 retain only allow-listed
 per-probe outcome and failure facts: attack, probe id, stage, code, safe
 detail, severity, fidelity, and technique. The board, timeline, console,
 inspector, and HTML report distinguish a red

@@ -3,6 +3,7 @@
 using System.Globalization;
 using System.Net;
 using System.Text;
+using AgentEval.VitrineDemo.App.Controls;
 using AgentEval.VitrineDemo.App.Models;
 using AgentEval.VitrineDemo.App.Runtime;
 using AgentEval.VitrineDemo.App.ViewModels;
@@ -32,7 +33,8 @@ public static class VitrineHtmlReport
             .Append("<p class=\"muted\">No hidden chain-of-thought. No API key or endpoint URL. Missing measurements remain missing.</p>")
             .Append("<section class=\"card grid\">")
             .Append(Metric("Mode", ModeLabel(artifact.Mode)))
-            .Append(Metric("Persona", artifact.PersonaId))
+            .Append(Metric("Persona scope", PersonaScopeLabel(artifact)))
+            .Append(Metric("Personalization", PersonalizationLabel(artifact)))
             .Append(Metric("Arm", artifact.ExecutionArm))
             .Append(Metric("Status", artifact.Result.Status))
             .Append(Metric("Failure", Missing(artifact.Result.FailureKind)))
@@ -59,9 +61,10 @@ public static class VitrineHtmlReport
 
         if (artifact.Result.Gates.Count > 0)
         {
-            html.Append("<section class=\"card\"><h2>Evaluation gates</h2><p class=\"muted\">The null/chance baseline is descriptive comparison evidence, not a pass threshold.</p><table><thead><tr><th>Gate</th><th>Status</th><th>Score</th><th>Null / chance baseline</th><th>Evidence</th><th>AgentEval provenance</th></tr></thead><tbody>");
+            html.Append("<section class=\"card\"><h2>Mandatory gates and diagnostic evaluations</h2><p class=\"muted\">Mandatory gates control the process-equivalent exit. Diagnostic rows are visible evidence but cannot fail the suite. The null/chance baseline is descriptive comparison evidence, not a pass threshold.</p><table><thead><tr><th>Evaluation</th><th>Status</th><th>Authority</th><th>Score</th><th>Null / chance baseline</th><th>Evidence</th><th>AgentEval provenance</th></tr></thead><tbody>");
             foreach (var gate in artifact.Result.Gates)
                 html.Append("<tr><td>").Append(H(gate.Name)).Append("</td><td>").Append(H(GateStatus(gate)))
+                    .Append("</td><td>").Append(H(gate.EffectiveAuthority.ToString()))
                     .Append("</td><td>").Append(H(Number(gate.Score))).Append("</td><td class=\"floor\">")
                     .Append(H(Floor(gate.ChanceFloor))).Append("</td><td>")
                     .Append(H(gate.Evidence)).Append("</td><td>")
@@ -135,6 +138,23 @@ public static class VitrineHtmlReport
     private static string ModeLabel(VitrineRunMode mode) => mode == VitrineRunMode.Ablation
         ? "Catalogue integrity self-test"
         : mode.ToString();
+
+    private static string PersonaScopeLabel(VitrineRunArtifact artifact) => artifact.PersonaId switch
+    {
+        VitrineRunRequest.MultiplePersonasScope => "MULTIPLE PERSONAS",
+        VitrineRunRequest.NotApplicablePersonaScope => "NOT APPLICABLE",
+        _ => artifact.PersonaId,
+    };
+
+    private static string PersonalizationLabel(VitrineRunArtifact artifact) =>
+        artifact.Mode is VitrineRunMode.Evals or VitrineRunMode.Ablation
+            ? "NOT APPLICABLE · evaluation-defined"
+            : artifact.PersonalizationDisabled switch
+            {
+                true => "disabled",
+                false => "enabled",
+                null => "NOT APPLICABLE",
+            };
 
     private static void RenderRunOutcome(StringBuilder html, VitrineResultSnapshot result)
     {
@@ -353,9 +373,28 @@ public static class VitrineHtmlReport
             html.Append("</details>");
         }
 
+        if (live.ScenarioAcceptances is { Count: > 0 } acceptances)
+        {
+            html.Append("<h3>Terminal per-scenario Wilson decisions</h3>")
+                .Append("<p class=\"muted\">These per-arm, per-scenario decisions are the exact stochastic acceptance facts used for the terminal verdict. Every planned trial must be fully measured. A whole-trial success means its three required checks passed: use-case quality, response observed, and the arm-specific agent tool journal or workflow trace. Each scenario independently requires its 95% Wilson lower bound to clear 0.500. Pooled per-check summaries below are diagnostic and do not replace this policy.</p>")
+                .Append("<table><thead><tr><th>Scenario · arm</th><th>Architecture</th><th>Measurement census</th><th>Whole-trial successes</th><th>Wilson interval</th><th>Policy</th><th>Decision</th></tr></thead><tbody>");
+            foreach (var decision in acceptances)
+                html.Append("<tr><td><code>").Append(H(decision.ScenarioId)).Append("</code><br>")
+                    .Append(H($"{decision.PersonaId} · {decision.ArmId}"))
+                    .Append("</td><td>").Append(H(decision.Architecture))
+                    .Append("</td><td>").Append(H($"measured {decision.Census.Measured}; N/A {decision.Census.NotApplicable}; not measured {decision.Census.NotMeasured}; total {decision.Census.Total}"))
+                    .Append("</td><td>").Append(H($"{decision.Reliability.Successes}/{decision.Reliability.Total} · {decision.Reliability.Measurement}"))
+                    .Append("</td><td>").Append(H(decision.Reliability.Lower.HasValue && decision.Reliability.Upper.HasValue
+                        ? $"[{Number(decision.Reliability.Lower)}, {Number(decision.Reliability.Upper)}]"
+                        : "NOT MEASURED"))
+                    .Append("</td><td>").Append(H($"{decision.ConfidenceLevel:P0} confidence · lower bound >= {decision.MinimumLowerBound:0.000}"))
+                    .Append("</td><td>").Append(H(Bool(decision.Passed))).Append("</td></tr>");
+            html.Append("</tbody></table>");
+        }
+
         if (live.Arms.Count > 0)
         {
-            html.Append("<h3>Per-check census and Wilson reliability</h3><p class=\"muted\">Every denominator and interval below is copied from the evaluator-owned arm summary.</p>");
+            html.Append("<h3>Per-check census and Wilson reliability · diagnostic rollups</h3><p class=\"muted\">Every denominator and interval below is copied from the evaluator-owned arm summary. For stochastic plans these pooled check rows explain behaviour, but only the fully measured whole-trial scenario decisions above control acceptance.</p>");
             foreach (var arm in live.Arms)
             {
                 html.Append("<h4>").Append(H(arm.ArmId)).Append(" · ").Append(H(arm.Architecture))
@@ -412,6 +451,12 @@ public static class VitrineHtmlReport
             .Append(Metric("Subject / judge output limits", $"{configuration.SubjectMaxOutputTokens} / {configuration.JudgeMaxOutputTokens}"))
             .Append(Metric("Response preview characters", configuration.ResponsePreviewCharacters.ToString(CultureInfo.InvariantCulture)))
             .Append("</div>");
+        if (configuration.Acceptance is { } acceptance)
+            html.Append("<h4>Terminal acceptance policy</h4><div class=\"grid\">")
+                .Append(Metric("Policy", acceptance.Policy))
+                .Append(Metric("Confidence level", Number(acceptance.ConfidenceLevel)))
+                .Append(Metric("Minimum Wilson lower bound", Number(acceptance.MinimumLowerBound)))
+                .Append("</div>");
         RenderStringList(html, "Subject provenance", configuration.Subjects.Select(subject =>
             $"{subject.ArmId} · {subject.Architecture} · model {subject.ModelId} · judge relation {subject.JudgeSubjectRelation}"));
         if (configuration.Safety is { } safety)
@@ -692,7 +737,8 @@ public static class VitrineHtmlReport
         replay.Load(artifact.Graph);
         foreach (var item in artifact.Events) replay.Apply(item);
         const double width = 1100;
-        var positions = Layout(nodes, width, out var height);
+        var height = RuntimeGraphControl.RequiredHeightForLayout(replay, width);
+        var positions = RuntimeGraphControl.Layout(replay, width, height);
         var svg = new StringBuilder("<svg viewBox=\"0 0 1100 ").Append(D(height))
             .Append("\" role=\"img\" aria-label=\"Runtime graph\"><defs><marker id=\"arrow\" viewBox=\"0 0 10 10\" refX=\"8\" refY=\"5\" markerWidth=\"5\" markerHeight=\"5\" orient=\"auto-start-reverse\"><path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"#405675\"/></marker></defs>");
         foreach (var edge in artifact.Graph.Edges)
@@ -707,9 +753,20 @@ public static class VitrineHtmlReport
                         .Append(D(target.X)).Append(' ').Append(D(controlY)).Append(" L ")
                         .Append(D(target.X)).Append(' ').Append(D(target.Y - 30)).Append("\"/>");
                 }
+                else if (RuntimeGraphControl.IsDemo01Surface(replay)
+                         && replay.Nodes.Single(node => node.Id == edge.SourceId).Kind == "agent"
+                         && replay.Nodes.Single(node => node.Id == edge.TargetId).Kind == "tool")
+                {
+                    var route = RuntimeGraphControl.Demo01ToolRoute(source, target);
+                    svg.Append("<path class=\"edge demo-tool-route\" fill=\"none\" marker-end=\"url(#arrow)\" d=\"M ")
+                        .Append(D(route[0].Start.X)).Append(' ').Append(D(route[0].Start.Y));
+                    foreach (var leg in route)
+                        svg.Append(" L ").Append(D(leg.End.X)).Append(' ').Append(D(leg.End.Y));
+                    svg.Append("\"/>");
+                }
                 else
                 {
-                    var segment = TrimmedSegment(source, target);
+                    var segment = RuntimeGraphControl.TrimmedSegment(source, target, 110, 48, 110, 48);
                     svg.Append("<line class=\"edge\" marker-end=\"url(#arrow)\" x1=\"").Append(D(segment.Start.X)).Append("\" y1=\"").Append(D(segment.Start.Y))
                         .Append("\" x2=\"").Append(D(segment.End.X)).Append("\" y2=\"").Append(D(segment.End.Y)).Append("\"/>");
                 }
@@ -722,7 +779,9 @@ public static class VitrineHtmlReport
         foreach (var pair in positions)
         {
             var projected = replay.Nodes.Single(node => node.Id == pair.Key);
-            svg.Append("<rect class=\"node\" x=\"").Append(D(pair.Value.X - 55)).Append("\" y=\"").Append(D(pair.Value.Y - 24)).Append("\" width=\"110\" height=\"48\" rx=\"8\"/>")
+            svg.Append("<rect class=\"node\" data-node-id=\"").Append(H(pair.Key))
+                .Append("\" data-center-x=\"").Append(D(pair.Value.X)).Append("\" data-center-y=\"").Append(D(pair.Value.Y))
+                .Append("\" x=\"").Append(D(pair.Value.X - 55)).Append("\" y=\"").Append(D(pair.Value.Y - 24)).Append("\" width=\"110\" height=\"48\" rx=\"8\"/>")
                 .Append("<text class=\"label\" x=\"").Append(D(pair.Value.X)).Append("\" y=\"").Append(D(pair.Value.Y - 2)).Append("\" text-anchor=\"middle\">")
                 .Append(H(Clip(pair.Key, 16))).Append("</text><text class=\"trace\" x=\"").Append(D(pair.Value.X)).Append("\" y=\"").Append(D(pair.Value.Y + 15)).Append("\" text-anchor=\"middle\">")
                 .Append(H($"{projected.CanvasStateText} · {projected.ExecutionBadgeText}")).Append("</text>");
@@ -734,69 +793,6 @@ public static class VitrineHtmlReport
         foreach (var edge in replay.Edges)
             svg.Append("<tr><td>").Append(H($"{edge.SourceId} → {edge.TargetId} · {edge.Label}")).Append("</td><td>").Append(edge.TraversalCount).Append("</td></tr>");
         return svg.Append("</tbody></table>").ToString();
-    }
-
-    private static Dictionary<string, (double X, double Y)> Layout(
-        IReadOnlyList<VitrineGraphNode> nodes,
-        double width,
-        out double height)
-    {
-        var positions = new Dictionary<string, (double X, double Y)>(StringComparer.OrdinalIgnoreCase);
-        var tools = nodes.Where(node => string.Equals(node.Kind, "tool", StringComparison.OrdinalIgnoreCase)).ToArray();
-        if (tools.Length > 0)
-        {
-            var principals = nodes.Where(node => !string.Equals(node.Kind, "tool", StringComparison.OrdinalIgnoreCase)).ToArray();
-            PlaceRow(principals, 60, width, positions);
-            const int toolColumns = 5;
-            for (var index = 0; index < tools.Length; index++)
-            {
-                var row = index / toolColumns;
-                var column = index % toolColumns;
-                var countInRow = Math.Min(toolColumns, tools.Length - row * toolColumns);
-                var spacing = (width - 180) / Math.Max(1, countInRow - 1);
-                positions[tools[index].Id] = (90 + column * spacing, 150 + row * 76);
-            }
-            height = 210 + Math.Max(0, (tools.Length - 1) / toolColumns) * 76;
-            return positions;
-        }
-
-        const int columns = 7;
-        var rows = Math.Max(1, (nodes.Count + columns - 1) / columns);
-        for (var row = 0; row < rows; row++)
-        {
-            var rowNodes = nodes.Skip(row * columns).Take(columns).ToArray();
-            PlaceRow(rowNodes, 70 + row * 82, width, positions);
-        }
-        height = Math.Max(210, 130 + (rows - 1) * 82);
-        return positions;
-    }
-
-    private static void PlaceRow(
-        IReadOnlyList<VitrineGraphNode> nodes,
-        double y,
-        double width,
-        IDictionary<string, (double X, double Y)> positions)
-    {
-        var spacing = (width - 180) / Math.Max(1, nodes.Count - 1);
-        for (var index = 0; index < nodes.Count; index++)
-            positions[nodes[index].Id] = (nodes.Count == 1 ? width / 2 : 90 + index * spacing, y);
-    }
-
-    private static ((double X, double Y) Start, (double X, double Y) End) TrimmedSegment(
-        (double X, double Y) source,
-        (double X, double Y) target)
-    {
-        var dx = target.X - source.X;
-        var dy = target.Y - source.Y;
-        var length = Math.Sqrt(dx * dx + dy * dy);
-        if (length < 0.001) return (source, target);
-        var ux = dx / length;
-        var uy = dy / length;
-        var edgeDistance = Math.Min(
-            Math.Abs(ux) < 0.001 ? double.MaxValue : 55 / Math.Abs(ux),
-            Math.Abs(uy) < 0.001 ? double.MaxValue : 24 / Math.Abs(uy));
-        return ((source.X + ux * (edgeDistance + 2), source.Y + uy * (edgeDistance + 2)),
-            (target.X - ux * (edgeDistance + 7), target.Y - uy * (edgeDistance + 7)));
     }
 
     private static string Metric(string label, string value) => $"<div><div class=\"muted\">{H(label)}</div><div class=\"metric\">{H(value)}</div></div>";
@@ -819,7 +815,7 @@ public static class VitrineHtmlReport
     };
     private static string Floor(VitrineChanceFloorSnapshot? floor) => floor switch
     {
-        null => "NO CHANCE COMPARISON · diagnostic/meta gate",
+        null => "NO CHANCE COMPARISON · diagnostic/meta evaluation",
         { State: "NotDerivable" } => $"NOT DERIVABLE · {floor.Derivation}",
         _ => $"{floor.Kind} · bar {Number(floor.ComparisonBar)} · {floor.Derivation}",
     };

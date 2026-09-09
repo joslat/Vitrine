@@ -210,8 +210,9 @@ public static class RunReportHtml
 
     private static void AppendHeader(StringBuilder sb, string demoTitle, string arm, InterestMap map)
     {
-        sb.Append("<header class=\"top\">\n")
-          .Append("  <div class=\"brand\">Galaxus · <b>Robin</b>, the recommendation agent</div>\n")
+        sb.Append("<nav class=\"tour\"><a href=\"https://azuresamurai.blog/Vitrine/\">← Back to the VITRINE tour</a></nav>\n")
+          .Append("<header class=\"top\">\n")
+          .Append("  <div class=\"brand\">VITRINE · <b>Robin</b>, the recommendation agent</div>\n")
           .Append("  <div class=\"top-meta\"><span class=\"pill\">").Append(E(demoTitle)).Append("</span>")
           .Append("<span class=\"pill\">").Append(E(arm)).Append("</span>");
 
@@ -359,7 +360,7 @@ public static class RunReportHtml
                   ? " · " + E(string.Join(" › ", product.CategoryPath))
                   : string.Empty)
               .Append(" · <span class=\"mono\">").Append(E(item.ProductId)).Append("</span></div>\n        </div>\n")
-              .Append("        <div class=\"conf\" title=\"self-reported by the selector; uncalibrated, it routes between trays\">")
+              .Append("        <div class=\"conf\" title=\"code-derived routing heuristic; uncalibrated, it routes between trays\">")
               .Append("conf ").Append(item.Confidence.ToString("0.00", CultureInfo.InvariantCulture)).Append("</div>\n")
               .Append("      </div>\n");
 
@@ -683,9 +684,13 @@ public static class RunReportHtml
           .Append("  <p class=\"note\">Everything above is <b>one turn</b>. The claims that need more than one turn — "
                 + "does the loop cover more of a customer's interests than the single agent, does a hostile product "
                 + "review change what gets recommended, is the answer stable when the same turn is repeated — cannot be "
-                + "read off this page in either direction. They are measured separately, over the whole persona set, "
-                + "with negative controls and a chance floor per arm:</p>\n")
-          .Append("  <pre class=\"cmd\">dotnet run --project src/AgentEval.VitrineDemo.Evals -- --all</pre>\n");
+                + "read off this page in either direction. The credential-free <span class=\"mono\">--all</span> command "
+                + "runs the deterministic offline gates, benchmark and registered negative controls; it does not run "
+                + "the paid multi-scenario or repeated-model plans:</p>\n")
+          .Append("  <pre class=\"cmd\">dotnet run --project src/AgentEval.VitrineDemo.Evals -- --all</pre>\n")
+          .Append("  <p class=\"note\">For those claims, select the corresponding live eval plan and pass "
+                + "<span class=\"mono\">--confirm-paid</span>. Live plans declare their actual scenario and repetition "
+                + "scope and do not manufacture a per-arm chance floor where none is derivable.</p>\n");
 
     private static void AppendFooter(StringBuilder sb) =>
         sb.Append("<footer class=\"foot\">\n")
@@ -760,6 +765,7 @@ public static class RunReportHtml
     @media (max-width:1000px){.split{grid-template-columns:1fr}
       .col-side .card{margin-left:24px}.col-main .card{margin-right:24px}}
 
+    .tour{margin:14px 24px 0;font-size:13px}.tour a{color:#1d4ed8;text-underline-offset:3px}
     .oneline{margin:0 0 12px;font-size:15px}
     .said{margin:0 0 16px;padding:12px 16px;background:#f7f8fa;border-left:3px solid #16181d;
           border-radius:0 6px 6px 0;font-size:15px;color:#2c3038}

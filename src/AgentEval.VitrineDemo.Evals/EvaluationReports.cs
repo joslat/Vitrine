@@ -44,6 +44,7 @@ public static class EvaluationReportJson {
                 Evidence = EvaluationReportPortableProjection.ProjectText(
                     gate.Evidence, result.OfflineBenchmark?.WorkspaceRoot),
                 gate.Outcome,
+                gate.Authority,
                 gate.AgentEval,
                 gate.HonestInterpretation,
                 gate.AgentEvalMeasurementState,
@@ -118,11 +119,12 @@ public static class EvaluationReportHtml {
                 ? $"<section class=\"card\"><h2>Subject and judge execution</h2><p><strong>{H(execution.Profile.ToString())}</strong> · {H(execution.DemoScope)}</p><p>{H(execution.SubjectEngine)}</p><p>{H(execution.EvaluatorEngine)}</p><p class=\"muted\">Deployment {H(execution.DeploymentName ?? "none · offline deterministic")} · Demo01/Demo02/judge calls {H(execution.Demo01SubjectModelCalls?.ToString(CultureInfo.InvariantCulture) ?? "NOT MEASURED")}/{H(execution.Demo02SubjectModelCalls?.ToString(CultureInfo.InvariantCulture) ?? "NOT MEASURED")}/{H(execution.JudgeModelCalls?.ToString(CultureInfo.InvariantCulture) ?? "NOT MEASURED")} · tokens {H(execution.Demo01SubjectTokens?.ToString(CultureInfo.InvariantCulture) ?? "NOT MEASURED")}/{H(execution.Demo02SubjectTokens?.ToString(CultureInfo.InvariantCulture) ?? "NOT MEASURED")}/{H(execution.JudgeTokens?.ToString(CultureInfo.InvariantCulture) ?? "NOT MEASURED")} · estimated USD {H(execution.EstimatedCostUsd?.ToString("0.000000", CultureInfo.InvariantCulture) ?? "NOT MEASURED")}</p></section>"
                 : string.Empty)
             .Append(RenderBenchmark(portableBenchmark))
-            .Append("<section class=\"card\"><h2>Gates</h2><p class=\"muted\">The null/chance baseline is descriptive comparison evidence, not a pass threshold.</p><table><tr><th>Gate</th><th>Status</th><th>Score</th><th>Null / chance baseline</th><th>Evidence</th></tr>");
+            .Append("<section class=\"card\"><h2>Mandatory gates and diagnostic evaluations</h2><p class=\"muted\">Mandatory gates control the process-equivalent exit. Diagnostic rows remain visible evidence but cannot fail the suite. The null/chance baseline is descriptive comparison evidence, not a pass threshold.</p><table><tr><th>Evaluation</th><th>Status</th><th>Score</th><th>Authority</th><th>Null / chance baseline</th><th>Evidence</th></tr>");
         foreach (var gate in result.Gates) {
             var display = projectGate(gate);
             html.Append("<tr><td>").Append(H(gate.Name)).Append("</td><td class=\"").Append(display.Css).Append("\">").Append(display.Status)
                 .Append("</td><td class=\"score\">").Append(display.Score?.ToString("0.000", CultureInfo.InvariantCulture) ?? "—")
+                .Append("</td><td>").Append(H(gate.Authority.ToString()))
                 .Append("</td><td class=\"floor\">").Append(H(FormatFloor(gate.ChanceFloor)))
                 .Append("</td><td>").Append(H(EvaluationReportPortableProjection.ProjectText(
                     gate.Evidence, result.OfflineBenchmark?.WorkspaceRoot))).Append("</td></tr>");

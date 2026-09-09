@@ -23,8 +23,8 @@ namespace Galaxus.RecommendationAgent.Guardrails;
 /// <b>Why the guardrails take this and not the catalogue façade.</b> Depending on a bundle of
 /// plain domain collections keeps this layer compilable and testable on its own, lets the eval
 /// project drive the identical pipeline without constructing a catalogue, and means the
-/// catalogue lane adapts to the guardrails rather than the guardrails to the catalogue. Design
-/// §F writes the signature as <c>Apply(raw, catalogue, user, map)</c>; <see cref="Create"/> is
+/// catalogue lane adapts to the guardrails rather than the guardrails to the catalogue. The
+/// pipeline contract uses <c>Apply(raw, catalogue, user, map)</c>; <see cref="Create"/> is
 /// the two-line adapter for exactly that call.
 /// </para>
 /// </remarks>
@@ -36,7 +36,7 @@ public sealed record GuardrailContext
     /// <summary>The customer this answer is for. Their market gates availability; their opt-out gates history.</summary>
     public required User User { get; init; }
 
-    /// <summary>The CODE-derived interest map. A recommendation may only cite a label present here (§F.3).</summary>
+    /// <summary>The CODE-derived interest map. A recommendation may only cite a label present here.</summary>
     public required InterestMap InterestMap { get; init; }
 
     /// <summary>
@@ -57,7 +57,7 @@ public sealed record GuardrailContext
 
     /// <summary>
     /// SKUs the intent classifier routed to the REPLENISHMENT lane — consumables this customer
-    /// buys on a cadence (§8.1 B-16).
+    /// buys on a cadence (the replenishment-before-ownership rule).
     /// </summary>
     /// <remarks>
     /// A subset of <see cref="OwnedProductIds"/>, checked BEFORE it, so Sofia's cartridges leave a
@@ -69,15 +69,15 @@ public sealed record GuardrailContext
     public IReadOnlySet<string> ReplenishmentProductIds { get; init; } = Empty;
 
     /// <summary>
-    /// The <c>compat:</c> values the customer's own non-gift hardware declares, indexed by family
-    /// (§8.1 B-7). Empty when they own nothing that constrains an accessory, and
+    /// The <c>compat:</c> values the customer's own non-gift hardware declares, indexed by family.
+    /// Empty when they own nothing that constrains an accessory, and
     /// <see cref="CompatibilityFilter"/> reports itself inapplicable in that case.
     /// </summary>
     public IReadOnlyDictionary<string, IReadOnlySet<string>> OwnedCompatValuesByFamily { get; init; } = NoFamilies;
 
     /// <summary>
     /// Every product id a retrieval route returned in this turn — the set the model was allowed
-    /// to choose from (§8.1 B-6a).
+    /// to choose from.
     /// </summary>
     /// <remarks>
     /// ⚠ NULL AND EMPTY MEAN DIFFERENT THINGS, and conflating them would turn a wiring fault into
@@ -91,7 +91,7 @@ public sealed record GuardrailContext
     /// <summary>
     /// Leaf categories in which the customer owns a durable that is still inside its typical
     /// service life. Recommending another one is the "similar to your Vitamix ⇒ three more
-    /// blenders" failure (§B.3).
+    /// blenders" failure.
     /// </summary>
     public IReadOnlySet<string> OwnedDurableLeafCategories { get; init; } = Empty;
 
@@ -117,7 +117,7 @@ public sealed record GuardrailContext
     /// <summary>
     /// Special-category terms the CUSTOMER used in their own words this session. "I need a
     /// larger cuff for the blood-pressure monitor I already have" puts <c>blood pressure</c>
-    /// here, and that is what turns a blocked inference into a served request (§F.5).
+    /// here, and that is what turns a blocked inference into a served request (the sensitive-category screen).
     /// </summary>
     public IReadOnlySet<string> SensitiveTopicsStatedInSession { get; init; } = Empty;
 
@@ -132,7 +132,7 @@ public sealed record GuardrailContext
 
     /// <summary>
     /// True when the customer stated a need in this session — the second half of the
-    /// abstention gate's condition (§F.8). Derived from the map rather than from the mere
+    /// abstention gate's condition. Derived from the map rather than from the mere
     /// presence of an utterance: "Hi — what do you recommend for me?" is an utterance, not a
     /// need, which is precisely why Luca Ferrari abstains.
     /// </summary>
@@ -169,7 +169,7 @@ public sealed record GuardrailContext
 
     /// <summary>
     /// Builds a context from the pieces the catalogue façade already has. This is the adapter
-    /// for design §F's <c>Apply(raw, catalogue, user, map)</c> call shape.
+    /// for the pipeline's <c>Apply(raw, catalogue, user, map)</c> call shape.
     /// </summary>
     /// <param name="productsBySku">The catalogue, keyed by <see cref="Product.Id"/>.</param>
     /// <param name="user">The customer.</param>
@@ -213,7 +213,7 @@ public sealed record GuardrailContext
         var compatByFamily   = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
 
         // The map routes PURCHASE ids; the guardrails screen PRODUCT ids. Resolving the one into
-        // the other here keeps the lookup out of every stage that needs it (§8.1 B-16).
+        // the other here keeps the lookup out of every stage that needs it (the replenishment-before-ownership rule).
         var routed = new HashSet<string>(interestMap.RoutedToReplenishment, StringComparer.Ordinal);
 
         foreach (var line in lines)
@@ -273,14 +273,13 @@ public sealed record GuardrailContext
         // The suppression arm walks a product's whole CategoryPath, so an exemption that covers
         // only the element whose words match the stated topic exempts nothing: GLX-9002 sits at
         // "Health & Personal Care > Blood pressure > Cuffs" and all three elements are tree-flagged,
-        // while "blood pressure" matches only the middle one. MEASURED before this expansion:
-        // Elena's stated need for a larger cuff still produced kept = 0.
+        // while "blood pressure" matches only the middle one.
         //
         // So a stated topic that matches ANY element of a category's path puts EVERY element of
         // that path in play. It is still narrow — it is the customer's own sentence that opened
         // the subtree, and a turn in which nothing was stated derives nothing here.
         //
-        // ⚠ BLAST RADIUS, stated rather than discovered later. Elena's "I need a larger cuff for
+        // ⚠ BLAST RADIUS. Elena's "I need a larger cuff for
         // the blood-pressure monitor I already have" opens the WHOLE Blood-pressure subtree:
         // "Health & Personal Care", "Blood pressure", "Cuffs" AND "Upper-arm monitors". The
         // monitor becomes presentable too, because she named it. MEASURED over every authored
@@ -329,7 +328,7 @@ public sealed record GuardrailContext
 /// <param name="Ledger">Every drop, demotion and inapplicable arm.</param>
 /// <param name="VerifiedPrices">
 /// Price and stock read from the catalogue at render time, keyed by product id. The RENDERER
-/// prints these; the model never states a price (§F.4).
+/// prints these; the model never states a price.
 /// </param>
 public sealed record GuardrailOutcome(
     RecommendationSet Cleaned,
@@ -364,15 +363,15 @@ public sealed record PresentationVerdict(PresentationDecision Decision, string R
 }
 
 /// <summary>
-/// The ordered composition of every guardrail (§F). Mechanical, not prompted: the system prompt
+/// The ordered composition of every guardrail. Mechanical, not prompted: the system prompt
 /// restates these rules for cooperation, this pipeline enforces them for correctness.
 /// </summary>
 /// <remarks>
 /// <para>Stage order, and why it is this order:</para>
 /// <list type="number">
 ///   <item><see cref="CatalogueGroundingFilter"/> — an id that does not exist cannot be checked for anything else.</item>
-///   <item><see cref="CandidateContainmentFilter"/> — the id exists; did retrieval actually return it? (§8.1 B-6a).</item>
-///   <item><see cref="CompatibilityFilter"/> — does it fit the customer's own hardware? (§8.1 B-7). Both mechanical
+///   <item><see cref="CandidateContainmentFilter"/> — the id exists; did retrieval actually return it?</item>
+///   <item><see cref="CompatibilityFilter"/> — does it fit the customer's own hardware? Both mechanical
 ///         checks run before the semantic ones, because a physical fact is cheaper and more certain than an
 ///         embedding comparison.</item>
 ///   <item><see cref="EvidenceRequiredFilter"/> — the two-sided check needs a resolved product.</item>
@@ -415,13 +414,13 @@ public static class GuardrailPipeline
     }
 
     /// <summary>
-    /// Runs the abstention gate (§F.8) and then, only if it did not fire, the pipeline.
+    /// Runs the abstention gate and then, only if it did not fire, the pipeline.
     /// </summary>
     /// <remarks>
     /// <para>
     /// ⚠ <b>THIS METHOD CANNOT SAVE A TOKEN, AND ITS DOCUMENTATION USED TO CLAIM IT COULD.</b>
     /// It runs on an answer that has ALREADY been assembled, so by the time it is called the
-    /// model has run and the spend is gone. The version of this remark shipped before §8.1 B-1
+    /// model has run and the spend is gone. The version of this remark shipped before the pre-spend abstention gate
     /// read "when it fires, no search has run and no tokens have been spent" — a sentence that
     /// was false at every call site, and the console printed the same claim to the customer.
     /// </para>
@@ -468,7 +467,7 @@ public static class GuardrailPipeline
     }
 
     /// <summary>
-    /// The abstention condition (§F.8): fewer than
+    /// The abstention condition: fewer than
     /// <see cref="InterestMap.MinimumSignalsToProceed"/> independent signals AND no need stated
     /// in this session.
     /// </summary>
@@ -509,7 +508,7 @@ public static class GuardrailPipeline
 
     /// <summary>
     /// Screens ONE <c>PresentRecommendation</c> tool call, at the moment the model makes it.
-    /// Same rules as the pipeline, applied to the single sanctioned channel (§0.5 / D-1), so a
+    /// Same rules as the pipeline, applied to the single sanctioned channel, so a
     /// phantom SKU can be refused inside the tool instead of filtered out afterwards.
     /// </summary>
     /// <param name="presented">The tool call's arguments.</param>
@@ -551,7 +550,7 @@ public static class GuardrailPipeline
               + "returned it. Present only ids you were actually shown — existence is not containment");
         }
 
-        // BEFORE already_owned, and that order is the whole fix (§8.1 B-16): a consumable the
+        // BEFORE already_owned, and that order is the whole fix (the replenishment-before-ownership rule): a consumable the
         // customer buys on a cadence is not "something they own", it is a repeat buy that belongs
         // in the other tray. Dropping it as already_owned was true but useless — it named the
         // wrong mechanism and left the replenishment lane invisible.

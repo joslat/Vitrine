@@ -2,8 +2,9 @@
 
 # AgentEval 0.35 evaluation migration
 
-This record describes the current VITRINE evaluation layer after reviewing AgentEval ADR-030
-through ADR-032. VITRINE adopts ADR-030 and ADR-032 and records ADR-031's rejected scope below.
+This record describes the current VITRINE evaluation layer after adopting AgentEval 0.35's native
+neutral-meta, benchmark, arm, runner, score, and output-store contracts. It also records why this
+repository does not add a parallel eval-pack abstraction.
 It is an implementation inventory, not a claim that a passing predicate establishes product
 quality. The project consumes the published `AgentEval` `0.35.0-beta` NuGet
 package from `Directory.Packages.props`; the eval project has no `ProjectReference` to the
@@ -22,7 +23,9 @@ tracked instead of inferred from a polished demo response.
 Every one of the eleven decision checks is an `AtomicCodeEval` with an externally supplied native
 `ChanceFloor`:
 
-- The six production checks are constructed by `VitrineProductionChecks`. Catalogue, topology,
+- The six production checks are constructed by `VitrineProductionChecks`: catalogue, topology,
+  injection, recall, and honesty have mandatory evaluation-gate authority; `matched-quality` has
+  diagnostic authority and cannot determine the suite exit. Catalogue, topology,
   and honesty are admitted directly through `AgentEvalBuilder.AddEval(eval, floor)`; judged
   quality, injection, and recall are admitted through `BenchmarkRunner` once per variant arm. The
   registry/self-test also exercises all six directly and refuses duplicate/mismatched keys or a
@@ -65,15 +68,15 @@ observation is measured as `1.0` or `0.0`; absence is never coerced to `0.0`.
 | Eval key | Measured contract and external authority | Native floor and derivation | Deleted/replaced machinery | Deliberate ablation and evidence |
 |---|---|---|---|---|
 | `catalogue-shape` | Product/persona/tool counts must equal the independently authored `VitrineEvalCriteria` cardinalities. No calibration verdict is embedded in the observation. | `ChanceFloor.NotDerivable`: inspected cardinalities are facts, not choices from a random population. | Deleted the bundled production-calibration contract and generic expected/observed wrapper; only three independently observed counts cross the boundary. | `CatalogueContractSnapshot.WithOneProductRemoved()` changes the observed product count while the authored count stays fixed. The same admitted check must report measured fail. |
-| `workflow-shape` | Reflected executor and review-to-discovery loop-back counts must equal evaluator-owned topology constants; edge count is retained as evidence. | `ChanceFloor.NotDerivable`: graph cardinalities are deterministic facts, not a uniform choice among topologies. | Replaced the generic topology contract string/boolean with a typed observation and one domain-specific leaf. | The fixture removes one executor (`5 → 4`) while preserving a complete observation; the check reports measured fail. |
-| `matched-quality` | Each arm must preserve the authored request and matched `k=1`, invoke its evaluator exactly once, return a finite `0..100` overall score plus the exact four-criterion census, and meet the external score threshold. | `ChanceFloor.NotDerivable`: each arm emits unbounded language and an authored rubric is applied; there is no finite random answer pool. | Removed the prior judged-result adapter and the two-subject aggregate verdict. The public `IEvaluator` result projects directly into one arm observation. | The leaf ablation changes a complete arm score from `100` to `0` while preserving its four-criterion census, judge call, and matched-k fields; the check reports measured fail. The normal Demo02 arm is also compared with Demo01 through the native paired scorer. |
+| `workflow-shape` | Reflected executor, edge, and review-to-discovery loop-back counts must equal evaluator-owned topology constants. | `ChanceFloor.NotDerivable`: graph cardinalities are deterministic facts, not a uniform choice among topologies. | Replaced the generic topology contract string/boolean with a typed observation and one domain-specific leaf. | Independent fixtures remove one executor or one edge while preserving a complete observation; the check reports measured fail. |
+| `matched-quality` | **Diagnostic authority.** Each arm must preserve the authored request and matched `k=1`, invoke its evaluator exactly once, return a finite `0..100` overall score plus the exact four-criterion census, and meet the external score threshold. Its result is reported and self-tested but cannot change the suite exit. | `ChanceFloor.NotDerivable`: each arm emits unbounded language and an authored rubric is applied; there is no finite random answer pool. | Removed the prior judged-result adapter and the two-subject aggregate verdict. The public `IEvaluator` result projects directly into one arm observation. | The leaf ablation changes a complete arm score from `100` to `0` while preserving its four-criterion census, judge call, and matched-k fields; the check reports measured fail without becoming a mandatory gate. The normal Demo02 arm is also compared with Demo01 through the native paired scorer. |
 | `injection` | A complete arm must have positive, internally consistent direct-text and tool-output probe counts, no inconclusive probes, and behavioral evidence for every reported tool compromise. The safe arm must resist every probe. | `ChanceFloor.NotDerivable`: generated attack outcomes have no authored uniform attack-outcome population. | Replaced one aggregate safe/vulnerable contract and runner-owned outcome labels with per-arm raw counts plus a dedicated atomic leaf. | The admitted leaf's ablation changes one direct-text and one tool-output result from resisted to succeeded, including matching behavioral evidence; it reports measured fail. The normal vulnerable-boundary arm separately demonstrates a conclusive poison-dependent loss against the safe reference. |
 | `recall` | A complete arm must return exactly one result for the one authored query and meet the evaluator-owned recall threshold. | `ChanceFloor.NotDerivable`: an unbounded natural-language recall answer is not a forced choice over authored alternatives. | Replaced one healthy/ablated aggregate contract with per-arm query/result/score observations and native reference comparison. | The admitted leaf's complete score is changed from `100` to `0`; it reports measured fail. The normal provider-ablation arm is separately expected to lose against the healthy reference. |
 | `honesty` | `HonestyInterpretation` recomputes exact-test and disclosure claims from the committed evidence and evaluator-owned constants. | `ChanceFloor.NotDerivable`: schema validation and exact-test interpretation are deterministic, not random choices. | Deleted the local exact-sign/binomial policy layer; native `ExactTests` owns the recomputation used by this leaf. | The evidence baseline score is changed from `1.0` to `0.5`; recomputation rejects it and the admitted check reports measured fail. |
 
 ### Production variant benchmarks
 
-The three production questions that compare system configurations also use ADR-032's arm model,
+The three production questions that compare system configurations also use AgentEval's native arm model,
 not case-name tricks or arrays hidden inside one observation:
 
 - `vitrine-production-judged-quality@3.0.0` compares the Demo02 workflow arm with the Demo01 agent
@@ -87,12 +90,13 @@ Each definition contains one stable stimulus and one admitted production leaf. E
 separate `BenchmarkRunner` run persisted through `FileSystemOutputStore`;
 `BenchmarkScore.Census` establishes a positive observation count before a value is read, and
 `BenchmarkScore.AgainstReference(..., RepCollapse.All)` owns wins/losses/ties. The admitted result
-of the declared reference arm is the corresponding product-gate authority. Comparison direction
-and the deliberately degraded arm are diagnostic/self-test evidence, not a second product verdict.
+of the declared reference arm is the stage result. Injection and recall retain mandatory
+evaluation-gate authority; matched quality remains diagnostic. Comparison direction and the
+deliberately degraded arm are diagnostic/self-test evidence, not a second product verdict.
 
 ## Benchmark definition, runs, and scores
 
-`vitrine-offline-recommendations@2.0.0` follows the ADR-032 split:
+`vitrine-offline-recommendations@2.0.0` follows the native definition/arm/run/score split:
 
 - **Definition:** the Nadia and Sofia prompts are cases (stimuli); the five admitted predicates are
   checks. The definition contains neither a result nor a pass threshold.
@@ -110,7 +114,7 @@ and the deliberately degraded arm are diagnostic/self-test evidence, not a secon
   facts, not a second gate.
 - **Persistence:** `FileSystemOutputStore` writes below the gitignored `.agenteval/Vitrine` root.
   Run IDs, subject kind/name, repetition number, and resolved directory are also projected into
-  schema-v8 application artifacts (with integrity-valid v7 read compatibility), JSON/HTML, the
+  schema-v9 application artifacts (with integrity-valid v7/v8 read compatibility), JSON/HTML, the
   inspector, and the evaluation board.
 
 ## Direct evaluation and tool-call projection
@@ -147,13 +151,14 @@ The migration also introduced dynamic live benchmark identity, direct `AtomicLlm
 scenario-aware deterministic tool and workflow checks, native Wilson/reference-comparison facts,
 and a separate real `RedTeamRunner` path for Eval 06. Standard live benchmark runs and sanitized
 session outcomes are written below `.agenteval/live`; Eval 06 writes a session receipt without
-inventing a `BenchmarkRunner` run. New application artifacts use schema 8 with integrity-valid
-schema-7 read compatibility, and new live-session receipts use schema 1.2 with allow-listed Eval 06
-diagnostic and typed failure stage/code/detail fields.
+inventing a `BenchmarkRunner` run. Schema 8 added allow-listed Eval 06 diagnostics and typed
+failure stage/code/detail. Schema 9 adds explicit evaluation-gate authority plus typed stochastic
+acceptance and trial-consistency validation. New application artifacts use schema 9 with
+integrity-valid schema-7/schema-8 read compatibility; new live-session receipts use schema 1.3.
 
 The current plan matrix, canonical cases, thresholds, statistics, safety classification, paid-run
 guardrails, and persistence contract are intentionally defined only in the
-[HTML evaluation protocol](docs/Vitrine-Evaluation-Protocol.html). This ledger records the package
+[HTML evaluation protocol](https://azuresamurai.blog/Vitrine/Vitrine-Evaluation-Protocol.html). This ledger records the package
 and API migration rather than duplicating that reader-facing contract.
 
 ## Native replacements and deleted local machinery
@@ -200,9 +205,9 @@ them only after the build, non-live tests, self-test, and restored full run agre
 `--ablate-catalogue` remains a separate process-level catalogue integrity demonstration. It is not
 a substitute for `--self-test`, because `--self-test` exercises every admitted check.
 
-## ADR-031 decision
+## Eval-pack scope decision
 
-ADR-031 is **rejected as scoped** for this repository. VITRINE ships no `pack.json`, eval-pack
+VITRINE deliberately ships no `pack.json`, eval-pack
 loader, pack-specific CLI, subject template, or parallel store. The definition and results stay
 ordinary application code and standard AgentEval output. A future portable pack would require a
 separate approved scope and a real second consumer; this migration does not pre-empt that design.

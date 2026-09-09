@@ -16,6 +16,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Galaxus.RecommendationAgent.Agents;
+using Galaxus.RecommendationAgent.Catalog;
 using Galaxus.RecommendationAgent.Demos;
 using System.Security.Cryptography;
 using System.Text;
@@ -42,6 +43,58 @@ public sealed class AppUiHardeningTests
         Assert.False(viewModel.Setup.PaidEvaluationAcknowledged);
         viewModel.SelectedMode = VitrineRunMode.Evals;
         Assert.False(viewModel.Setup.PaidEvaluationAcknowledged);
+    }
+
+    [Fact]
+    public async Task EvaluationArtifactsUseTheSelectedPersonaScopeAndMarkPersonalizationNotApplicable()
+    {
+        await using var viewModel = new MainWindowViewModel();
+        viewModel.SelectedMode = VitrineRunMode.Demo02;
+        viewModel.Setup.PersonalizationEnabled = false;
+        var hiddenDemoPersona = viewModel.Setup.SelectedPersona.Id;
+
+        viewModel.SelectedMode = VitrineRunMode.Evals;
+        viewModel.Setup.SelectedEvaluationPlan = VitrineEvaluationPlans.Require(
+            VitrineEvaluationPlan.LiveEval01Agent);
+        viewModel.Setup.SelectedLiveScenario = viewModel.Setup.LiveScenarios.Single(option =>
+            option.Id == "nadia-cross-category");
+
+        var single = viewModel.CaptureRunRequestForExecution();
+        var expectedPersona = LiveUseCaseScenarios.Require("nadia-cross-category").PersonaId;
+        Assert.NotEqual(hiddenDemoPersona, expectedPersona);
+        Assert.Equal(expectedPersona, single.UserId);
+        Assert.Null(single.PersonalizationEnabled);
+        AssertEvaluationMetadata(single, expectedPersona);
+
+        viewModel.Setup.SelectedLiveScenario = viewModel.Setup.LiveScenarios.Single(option => option.Id is null);
+        var all = viewModel.CaptureRunRequestForExecution();
+        Assert.Equal(VitrineRunRequest.MultiplePersonasScope, all.UserId);
+        Assert.Null(all.PersonalizationEnabled);
+        AssertEvaluationMetadata(all, VitrineRunRequest.MultiplePersonasScope);
+
+        viewModel.Setup.SelectOfflineEvaluationPlan();
+        var offline = viewModel.CaptureRunRequestForExecution();
+        Assert.Equal(VitrineRunRequest.MultiplePersonasScope, offline.UserId);
+        Assert.Null(offline.PersonalizationEnabled);
+        AssertEvaluationMetadata(offline, VitrineRunRequest.MultiplePersonasScope);
+
+        static void AssertEvaluationMetadata(VitrineRunRequest request, string expectedScope)
+        {
+            var graph = request.EvaluationPlan == VitrineEvaluationPlan.OfflineSuite
+                ? VitrineGraphFactory.ForRunningEvaluationSuite()
+                : VitrineGraphFactory.ForRunningLiveEvaluation(request.EvaluationPlan);
+            var artifact = VitrineArtifactSerializer.Create(new(
+                Guid.NewGuid(), request, graph, []));
+            var json = VitrineArtifactSerializer.Serialize(artifact);
+            var html = VitrineHtmlReport.Render(artifact);
+
+            Assert.Equal(expectedScope, artifact.PersonaId);
+            Assert.Null(artifact.PersonalizationDisabled);
+            Assert.Contains("\"personalizationDisabled\": null", json, StringComparison.Ordinal);
+            Assert.Contains("Persona scope", html, StringComparison.Ordinal);
+            Assert.Contains("NOT APPLICABLE", html, StringComparison.Ordinal);
+            Assert.Contains("evaluation-defined", html, StringComparison.Ordinal);
+        }
     }
 
     [Fact]
@@ -210,7 +263,7 @@ public sealed class AppUiHardeningTests
         Assert.All(graph.Nodes.Where(static node => node.Kind == "tool"),
             tool => Assert.True(positions[tool.Id].Y >= 230));
 
-        foreach (var toolId in new[] { "ListDepartments", "GetProductDetails" })
+        foreach (var toolId in graph.Nodes.Where(static node => node.Kind == "tool").Select(static node => node.Id))
         {
             var target = positions[toolId];
             var route = RuntimeGraphControl.Demo01ToolRoute(positions[agent.Id], target);
@@ -222,6 +275,50 @@ public sealed class AppUiHardeningTests
             Assert.All(nonTargets, rectangle => Assert.DoesNotContain(route,
                 leg => SegmentIntersectsInterior(leg.Start, leg.End, rectangle)));
         }
+    }
+
+    [Fact]
+    public void ArtifactHtmlUsesTheLiveDemoRoutesAndSerpentineEvaluationLayout()
+    {
+        var demoGraph = VitrineGraphFactory.FromRegisteredDemo01Functions();
+        var demoArtifact = VitrineArtifactSerializer.Create(new VitrineRunOutcome(
+            Guid.NewGuid(),
+            new(VitrineRunMode.Demo01, Personas.NadiaUserId,
+                Demo01Arm: RecommendationExecutionArm.ScriptedAgent),
+            demoGraph,
+            []));
+
+        var demoHtml = VitrineHtmlReport.Render(demoArtifact);
+        Assert.Equal(demoGraph.Nodes.Count(static node => node.Kind == "tool"),
+            demoHtml.Split("demo-tool-route", StringSplitOptions.None).Length - 1);
+
+        var evaluationGraph = VitrineGraphFactory.ForEvaluationSuite();
+        var projected = new GraphViewModel();
+        projected.Load(evaluationGraph);
+        const double width = 1100;
+        var height = RuntimeGraphControl.RequiredHeightForLayout(projected, width);
+        var positions = RuntimeGraphControl.Layout(projected, width, height);
+        foreach (var edge in evaluationGraph.Edges)
+        {
+            var source = positions[edge.SourceId];
+            var target = positions[edge.TargetId];
+            if (target.Y > source.Y)
+                Assert.Equal(source.X, target.X, 6);
+        }
+
+        var evaluationArtifact = VitrineArtifactSerializer.Create(new VitrineRunOutcome(
+            Guid.NewGuid(),
+            new(VitrineRunMode.Evals, "evaluation-suite"),
+            evaluationGraph,
+            []));
+        var evaluationHtml = VitrineHtmlReport.Render(evaluationArtifact);
+        foreach (var pair in positions)
+            Assert.Contains($"data-node-id=\"{pair.Key}\" data-center-x=\"" +
+                            pair.Value.X.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) +
+                            "\" data-center-y=\"" +
+                            pair.Value.Y.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "\"",
+                evaluationHtml,
+                StringComparison.Ordinal);
     }
 
     [Fact]
@@ -346,6 +443,68 @@ public sealed class AppUiHardeningTests
                 VitrineEventAdapters.FromLiveEvaluation(targetProgress).Disposition);
     }
 
+    [Theory]
+    [InlineData(LiveEvalTerminalStatus.Passed, "#63D391")]
+    [InlineData(LiveEvalTerminalStatus.QualityFailed, "#F07076")]
+    [InlineData(LiveEvalTerminalStatus.InfrastructureError, "#F07076")]
+    [InlineData(LiveEvalTerminalStatus.NotMeasured, "#F6C55C")]
+    [InlineData(LiveEvalTerminalStatus.Cancelled, "#F6C55C")]
+    public void Eval06OverallColorUsesSafetySemanticsForLiveAndReplay(
+        LiveEvalTerminalStatus terminal,
+        string expectedColor)
+    {
+        var result = SafetyResult(terminal);
+        var liveBoard = new EvaluationBoardViewModel();
+        liveBoard.LoadLive(result);
+
+        var artifact = VitrineArtifactSerializer.Create(new VitrineRunOutcome(Guid.NewGuid(),
+            new(VitrineRunMode.Evals, VitrineRunRequest.NotApplicablePersonaScope,
+                PersonalizationEnabled: null, EvaluationPlan: result.Plan,
+                PaidEvaluationConfirmed: true),
+            VitrineGraphFactory.ForRunningLiveEvaluation(result.Plan), [], LiveEvaluation: result));
+        var replayArtifact = VitrineArtifactSerializer.Deserialize(VitrineArtifactSerializer.Serialize(artifact));
+        var replayBoard = new EvaluationBoardViewModel();
+        replayBoard.LoadLiveSnapshot(Assert.IsType<VitrineLiveEvaluationSnapshot>(
+            replayArtifact.Result.LiveEvaluation));
+
+        Assert.Equal(expectedColor, liveBoard.OverallStatusColor);
+        Assert.Equal(expectedColor, replayBoard.OverallStatusColor);
+        Assert.Equal(expectedColor, liveBoard.LiveSafetyStatusColor);
+        Assert.Equal(expectedColor, replayBoard.LiveSafetyStatusColor);
+    }
+
+    [Fact]
+    public async Task SafetyCoordinatorStoresTheSessionTerminalAfterRedactedResultEvents()
+    {
+        var result = SafetyResult(LiveEvalTerminalStatus.Passed);
+        await using var coordinator = new VitrineRunCoordinator(
+            (request, _) => VitrineGraphFactory.ForRunningLiveEvaluation(request.EvaluationPlan),
+            (plan, paidExecutionConfirmed, _, progress, _) =>
+            {
+                Assert.True(paidExecutionConfirmed);
+                progress?.Report(new(plan, LiveEvalProgressPhase.SessionStarting,
+                    null, null, null, null, null, null, "start"));
+                progress?.Report(new(plan, LiveEvalProgressPhase.Persisting,
+                    null, null, null, null, null, null, "persist"));
+                progress?.Report(new(plan, LiveEvalProgressPhase.SessionCompleted,
+                    null, null, null, null, result.Safety?.Measurement, result.Safety?.Passed, "complete"));
+                return Task.FromResult(result);
+            });
+
+        var outcome = await coordinator.RunAsync(new(
+            VitrineRunMode.Evals,
+            VitrineRunRequest.NotApplicablePersonaScope,
+            PersonalizationEnabled: null,
+            EvaluationPlan: VitrineEvaluationPlan.LiveEval06SafetyProbes,
+            PaidEvaluationConfirmed: true));
+
+        Assert.Equal("LiveSessionCompleted", outcome.Events[^1].Kind);
+        var safetyTerminal = Assert.Single(outcome.Events, item =>
+            item.Kind == "LiveSafetyTerminalObserved");
+        Assert.True(safetyTerminal.Sequence < outcome.Events[^1].Sequence);
+        Assert.Single(outcome.Events, item => item.Kind == "LiveSessionCompleted");
+    }
+
     [Fact]
     public void SafetyArtifactUsesNullableQualityBarAndReplaysRedactedCensusEverywhere()
     {
@@ -364,6 +523,8 @@ public sealed class AppUiHardeningTests
         var board = new EvaluationBoardViewModel();
         board.LoadLiveSnapshot(live);
 
+        Assert.Equal(VitrineRunRequest.NotApplicablePersonaScope, roundTrip.PersonaId);
+        Assert.Null(roundTrip.PersonalizationDisabled);
         Assert.Null(live.PassThreshold);
         Assert.Contains("\"passThreshold\": null", json, StringComparison.Ordinal);
         Assert.Contains("\"compromised\": 1", json, StringComparison.Ordinal);
@@ -403,7 +564,7 @@ public sealed class AppUiHardeningTests
         ConsoleReport.Print(result, console);
         var events = VitrineEventAdapters.FromLiveSafetyResult(result);
 
-        Assert.Equal(8, roundTrip.SchemaVersion);
+        Assert.Equal(VitrineRunArtifact.CurrentSchemaVersion, roundTrip.SchemaVersion);
         Assert.Contains("\"diagnostic\": \"An unexpected probe execution fault occurred;", json,
             StringComparison.Ordinal);
         Assert.Contains("\"stage\": \"probe-execution\"", json, StringComparison.Ordinal);
@@ -463,6 +624,8 @@ public sealed class AppUiHardeningTests
             {
                 LiveEvaluation = live with
                 {
+                    Configuration = live.Configuration! with { Acceptance = null },
+                    ScenarioAcceptances = null,
                     Safety = safety with
                     {
                         Probes = [safety.Probes[0] with { Diagnostic = forbiddenRawDetail }, .. safety.Probes.Skip(1)],
@@ -486,10 +649,13 @@ public sealed class AppUiHardeningTests
         var unsigned = artifact with
         {
             SchemaVersion = 7,
+            PersonalizationDisabled = false,
             Result = artifact.Result with
             {
                 LiveEvaluation = live with
                 {
+                    Configuration = live.Configuration! with { Acceptance = null },
+                    ScenarioAcceptances = null,
                     Safety = safety with
                     {
                         Probes = safety.Probes.Select(static probe => probe with
@@ -516,6 +682,8 @@ public sealed class AppUiHardeningTests
         board.LoadLiveSnapshot(restoredLive);
 
         Assert.Equal(7, restored.SchemaVersion);
+        Assert.DoesNotContain("\"acceptance\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"scenarioAcceptances\"", json, StringComparison.Ordinal);
         Assert.DoesNotContain("\"diagnostic\"", json, StringComparison.Ordinal);
         Assert.DoesNotContain("probe-execution", json, StringComparison.Ordinal);
         Assert.Contains(board.LiveSafetyProbes, probe =>
@@ -524,6 +692,86 @@ public sealed class AppUiHardeningTests
             && probe.FailureStage == "probe-execution"
             && probe.FailureCode == nameof(LiveSafetyProbeErrorKind.Execution)
             && probe.FailureDetail == LiveSafetyProbeDiagnostics.Execution);
+    }
+
+    [Theory]
+    [InlineData(7)]
+    [InlineData(8)]
+    public void LegacySchemaIntegrityPayloadOmitsSchemaNineFieldsAndStillVerifies(int schemaVersion)
+    {
+        var result = SafetyResult(LiveEvalTerminalStatus.InfrastructureError);
+        var current = VitrineArtifactSerializer.Create(new VitrineRunOutcome(Guid.NewGuid(),
+            new(VitrineRunMode.Evals, "persona", EvaluationPlan: result.Plan,
+                PaidEvaluationConfirmed: true),
+            VitrineGraphFactory.ForRunningLiveEvaluation(result.Plan), [], LiveEvaluation: result));
+        var live = Assert.IsType<VitrineLiveEvaluationSnapshot>(current.Result.LiveEvaluation);
+        var safety = Assert.IsType<VitrineLiveSafetySnapshot>(live.Safety);
+        if (schemaVersion == 7)
+            safety = safety with
+            {
+                Probes = safety.Probes.Select(static probe => probe with
+                {
+                    Diagnostic = null,
+                    Failure = null,
+                }).ToArray(),
+            };
+        var unsigned = current with
+        {
+            SchemaVersion = schemaVersion,
+            PersonalizationDisabled = false,
+            Result = current.Result with
+            {
+                Gates =
+                [
+                    new("Matched Demo01/Demo02 quality · shared criteria", true, 1, null,
+                        "legacy matched-quality evidence"),
+                    new("Legacy mandatory gate", true, 1, null, "legacy mandatory evidence"),
+                ],
+                LiveEvaluation = live with
+                {
+                    Configuration = live.Configuration! with { Acceptance = null },
+                    ScenarioAcceptances = null,
+                    Safety = safety,
+                },
+            },
+            IntegritySha256 = string.Empty,
+        };
+        var payload = VitrineArtifactSerializer.SerializeIntegrityPayload(unsigned);
+        var signed = unsigned with
+        {
+            IntegritySha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)))
+                .ToLowerInvariant(),
+        };
+
+        var json = VitrineArtifactSerializer.Serialize(signed);
+        var restored = VitrineArtifactSerializer.Deserialize(json);
+
+        Assert.Equal(schemaVersion, restored.SchemaVersion);
+        Assert.False(restored.PersonalizationDisabled);
+        Assert.Contains("\"personalizationDisabled\": false", json, StringComparison.Ordinal);
+        Assert.True(VitrineArtifactSerializer.Verify(restored));
+        Assert.DoesNotContain("\"authority\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"acceptance\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"scenarioAcceptances\"", json, StringComparison.Ordinal);
+        var matched = Assert.Single(restored.Result.Gates, gate =>
+            gate.Name.StartsWith("Matched Demo01", StringComparison.Ordinal));
+        var mandatory = Assert.Single(restored.Result.Gates, gate =>
+            gate.Name == "Legacy mandatory gate");
+        Assert.Equal(GateAuthority.Mandatory, matched.Authority);
+        Assert.Equal(GateAuthority.Diagnostic, matched.EffectiveAuthority);
+        Assert.Equal(GateAuthority.Mandatory, mandatory.EffectiveAuthority);
+        Assert.True(VitrineArtifactSerializer.Verify(restored));
+        Assert.DoesNotContain("\"authority\"", VitrineArtifactSerializer.Serialize(restored),
+            StringComparison.Ordinal);
+        var html = VitrineHtmlReport.Render(restored);
+        var (_, inspector) = VitrineOutcomeInspector.Describe(restored);
+        Assert.Contains("<th>Authority</th>", html, StringComparison.Ordinal);
+        Assert.Contains("Diagnostic", html, StringComparison.Ordinal);
+        Assert.Contains("authority Diagnostic", inspector, StringComparison.Ordinal);
+        Assert.StartsWith("Diagnostic only · ", GateResultViewModel.From(matched).Scope);
+        var restoredLive = Assert.IsType<VitrineLiveEvaluationSnapshot>(restored.Result.LiveEvaluation);
+        Assert.Null(restoredLive.Configuration?.Acceptance);
+        Assert.Null(restoredLive.ScenarioAcceptances);
     }
 
     [Fact]
@@ -587,7 +835,10 @@ public sealed class AppUiHardeningTests
         var result = new LiveEvalResult(VitrineEvaluationPlan.LiveEval01Agent,
             LiveEvalTerminalStatus.Cancelled, "partial", now, now, new(4, 1, 1, 4, 4), 0.75,
             LiveUseCaseScenarios.All.Select(static scenario => scenario.ToDefinition()).ToArray(),
-            new("definition", "1", "judge", "prompt", "rubric", 256, 256, 320, []),
+            new("definition", "1", "judge", "prompt", "rubric", 256, 256, 320, [])
+            {
+                Acceptance = new(LiveTerminalAcceptancePolicy.EveryTrialMustPass, null, null),
+            },
             [], [], [], [], [new(LiveEvalFailureCode.Cancelled, "cancelled")],
             new("workspace", "session", "outcome.json", "index.json"));
         var artifact = VitrineArtifactSerializer.Create(new VitrineRunOutcome(Guid.NewGuid(),

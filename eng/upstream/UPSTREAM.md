@@ -15,7 +15,6 @@
 The subject began as a same-author contribution to the AgentEval sample tree and has since been
 substantially revised for VITRINE. Its bespoke historical eval machinery was not copied. VITRINE
 references the published `AgentEval` `0.35.0-beta` package so it remains a standalone repository
-rather than depending on a sibling checkout. The 0.35 adoption follows ADR-030's neutral meta lane
-and ADR-032's benchmark/arm/runner/score plus standard output-store contracts. ADR-031's pack scope
-was rejected; VITRINE does not copy the older TravelDemo snapshot/store pattern or create its own
-pack format.
+rather than depending on a sibling checkout. It uses the native neutral-meta,
+benchmark/arm/runner/score, and standard output-store contracts. VITRINE does not copy the older
+TravelDemo snapshot/store pattern or create its own pack format.

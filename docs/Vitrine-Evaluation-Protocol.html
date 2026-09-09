@@ -8,6 +8,13 @@
 contract: offline and live plans, scenarios, criteria, measurement
 states, statistics, controls, persistence, and exit codes.">
   <title>Evaluation protocol · VITRINE</title>
+  <meta name="author" content="José Luis Latorre Millas">
+  <link rel="canonical" href="https://azuresamurai.blog/Vitrine/Vitrine-Evaluation-Protocol.html">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Evaluation protocol · VITRINE">
+  <meta property="og:description" content="The normative offline, live, stochastic, comparison, safety, missingness, and evidence contract for VITRINE.">
+  <meta property="og:url" content="https://azuresamurai.blog/Vitrine/Vitrine-Evaluation-Protocol.html">
+  <meta property="og:image" content="https://azuresamurai.blog/Vitrine/images/vitrine-control-room.png">
   <link rel="stylesheet" href="assets/vitrine-doc-page.css">
 </head>
 <body>
@@ -22,6 +29,7 @@ and evidence are reported.</p>
 <nav class="topnav" aria-label="VITRINE documentation">
   <div class="wrap">
     <a href="index.html">VITRINE docs</a>
+    <a href="Vitrine-One-Page-Summary.html">Plain-language summary</a>
     <a href="Vitrine-Digitec-Galaxus-Value-Proposal.html">Value proposal</a>
     <a href="Vitrine-Walkthrough.html">Walkthrough</a>
     <a href="Vitrine-Retrieval-Deep-Dive.html">Retrieval</a>
@@ -114,8 +122,9 @@ with local deterministic providers and invokes no external subject or
 judge model. The resulting offline provenance is
 <code>OfflineDeterministic</code>, the sole remaining
 <code>EvaluationExecutionProfile</code> value; there is no live
-execution profile. A valid run executes six admitted production checks
-and projects them as gates, persists the canonical recommendation
+execution profile. A valid run executes six admitted production checks: five are mandatory
+evaluation gates and <code>matched-quality</code> is a separately labelled diagnostic that cannot
+change the process exit. The run also persists the canonical recommendation
 benchmark, attests the baseline-healthy/defect-detected/recovery
 sequence for all 43 registered controls, and exits 0.</p>
 <p>The canonical benchmark uses the public 0.35 pipeline
@@ -130,9 +139,9 @@ duplicate rows inside one run. Manifests, scenario results, and
 summaries are written below the gitignored
 <code>.agenteval/Vitrine</code>; all arm identities, repetitions, run
 IDs/directories, and ten Demo01-reference comparisons appear in console,
-JSON, HTML, artifact schema v8, and the evaluation board.</p>
-<p>The evaluation preview/runtime graph has 14 nodes: six admitted
-production-check gates, five recommendation predicates, native
+JSON, HTML, artifact schema v9, and the evaluation board; schema-7 and schema-8 artifacts remain readable.</p>
+<p>The evaluation preview/runtime graph has 14 nodes: five mandatory evaluation gates,
+the matched-quality diagnostic, five recommendation predicates, native
 persistence/score, a separate 43-control diagnostic node, and the suite
 terminal. Real <code>BenchmarkCheckCompleted</code> facts mark predicate
 execution complete without turning descriptive benchmark scores or
@@ -168,7 +177,7 @@ and report lane.</p>
 <td style="text-align: right;">Local scripted/baseline/degraded
 arms</td>
 <td style="text-align: right;">Fixed by the offline definitions</td>
-<td>Six production gates, five-predicate recommendation benchmark, and
+<td>Five mandatory evaluation gates, one matched-quality diagnostic, a five-predicate recommendation benchmark, and
 43 diagnostics; zero provider calls. The admitted-check self-test is a
 separate <code>--self-test</code> command.</td>
 </tr>
@@ -201,15 +210,15 @@ case-paired comparison facts.</td>
 <td>Eval 04 · Stochastic agent</td>
 <td><code>eval04-stochastic-agent</code></td>
 <td style="text-align: right;">Robin agent</td>
-<td style="text-align: right;">5, configurable</td>
-<td>Repeat the agent arm and report per-check reliability.</td>
+<td style="text-align: right;">5, configurable; minimum 4</td>
+<td>Repeat the agent arm; persist per-scenario whole-trial Wilson acceptance and separate per-check reliability.</td>
 </tr>
 <tr>
 <td>Eval 05 · Stochastic workflow</td>
 <td><code>eval05-stochastic-workflow</code></td>
 <td style="text-align: right;">Discovery workflow</td>
-<td style="text-align: right;">5, configurable</td>
-<td>Repeat the workflow arm and report per-check reliability.</td>
+<td style="text-align: right;">5, configurable; minimum 4</td>
+<td>Repeat the workflow arm under the same per-scenario acceptance rule and retain per-check evidence.</td>
 </tr>
 <tr>
 <td>Eval 06 · Safety probes</td>
@@ -316,9 +325,18 @@ kinds. A terminal provider failure remains <code>NotMeasured</code> even
 if this path produced a fallback response.</p>
 <h3 id="reliability-and-comparison">Reliability and comparison</h3>
 <p>For every arm and check, the result reports measured/N/A/not-measured
-census and a Wilson interval over measured pass/fail facts. The
-stochastic plans make that interval useful by defaulting to five
-repetitions; a zero denominator has no estimate or bounds. Eval 03
+census and a Wilson interval over measured pass/fail facts; these are diagnostic check-level
+facts. Eval 04 and Eval 05 use a separate terminal rule at the whole-trial level. For every
+selected <code>(arm, scenario)</code>, they persist the successful execution count, measured
+denominator, 95% Wilson interval, required lower-bound floor, and decision. The persisted key also
+retains the corresponding architecture and persona. Every scenario must be
+fully measured and its lower bound must be at least <code>0.50</code>. These stochastic plans
+default to five repetitions and require at least four—the mathematical minimum for an all-success
+sample to clear that floor. A whole-trial success means quality, screened-response, and the
+architecture-specific deterministic trace all measured and passed: agent trials require the tool
+journal; workflow trials require the workflow trace. Zero measured trials yields
+<code>NotMeasured</code>/exit 3; a partial measured/missing set is an incomplete session and yields
+<code>InfrastructureError</code>/exit 4. A zero denominator has no estimate or bounds. Eval 03
 additionally calls native
 <code>BenchmarkScore.AgainstReference(..., RepCollapse.All)</code> with
 the agent as reference and workflow as challenger. It treats paired
@@ -335,8 +353,9 @@ as <code>selected scenarios × selected arms × repetitions</code>; at
 most one judge evaluation follows each measurable subject trial. Tool
 use and provider retries can make low-level model request counts larger
 than the displayed subject count. Eval 01 and Eval 02 reject any
-repetition value other than one. The CLI accepts 1–100 for configurable
-plans; the interactive selector bounds its input to 1–30.
+repetition value other than one. Eval 03 accepts 1–100; Eval 04 and Eval 05 accept 4–100.
+The interactive selector bounds configurable input to 1–30 generally and raises the minimum to
+four for the stochastic plans.
 <code>LiveEvalOptions</code> defaults each subject response ceiling to
 4,000 output tokens and each judge response ceiling to 1,200. Those are
 per-request bounds, not a whole-session price cap; the separately
@@ -347,7 +366,7 @@ instead.</p>
 <code>FileSystemOutputStore</code> writes one standard AgentEval run
 directory per arm/repetition below <code>.agenteval/live</code>. For
 every paid plan, the live session store writes the bounded, sanitized
-schema-1.2 receipt to
+schema-1.3 receipt to
 <code>.agenteval/live/live-sessions/&lt;session-id&gt;/outcome.json</code>
 and updates <code>.agenteval/live/live-sessions/index.json</code>; the
 receipt refers to each AgentEval run directory by relative path. It
@@ -387,8 +406,9 @@ with an inconclusive probe is <code>NotMeasured</code>; only complete
 resistance passes. The <code>0.75</code> use-case quality threshold is
 not used to classify this plan.</p>
 <h3 id="paid-run-guardrails">Paid-run guardrails</h3>
-<p>Every paid plan selected through an operator surface requires
-explicit confirmation and ready model services:</p>
+<p>Every paid plan requires explicit confirmation and ready model services. The CLI and app gate
+their operator flows, and the public programmatic runner separately requires
+<code>paidExecutionConfirmed: true</code> before it can reach the executor:</p>
 <div class="sourceCode" id="cb1"><pre
 class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>dotnet run <span class="op">--</span>project src<span class="op">/</span>AgentEval<span class="op">.</span><span class="fu">VitrineDemo</span><span class="op">.</span><span class="fu">Evals</span> <span class="op">--</span> <span class="op">--</span>eval-plan eval01-agent <span class="op">--</span>scenario nadia-cross-category <span class="op">--</span>confirm-paid</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>dotnet run <span class="op">--</span>project src<span class="op">/</span>AgentEval<span class="op">.</span><span class="fu">VitrineDemo</span><span class="op">.</span><span class="fu">Evals</span> <span class="op">--</span> <span class="op">--</span>eval-plan eval02-workflow <span class="op">--</span>scenario all <span class="op">--</span>confirm-paid</span>
@@ -419,7 +439,7 @@ catalogue ablation</h2>
 for the credential-free migration proof. It checks exact positive
 registration/run/observation counts before reading any score, then
 requires healthy measured-pass and ablated measured-fail from all five
-benchmark and all six production checks. It also requires Demo02 to tie
+benchmark and all six production checks, including the diagnostic leaf. It also requires Demo02 to tie
 the Demo01 reference, the degraded arm to lose both cases on every
 predicate, and <code>ToolCalls</code> null/empty/non-empty to remain
 distinct. Any failed expectation exits 1.</p>
@@ -436,7 +456,7 @@ controls</h2>
 <p>The completed E-02 row ledger records target, observation producer,
 independent evaluator, tranche, and honest scope for each of the 43
 registered controls. Manifest v2 is structurally coherent—43 sequential
-IDs, 16/8/19 rows across E02A/B/C, and a typed <code>ScopeClass</code>
+IDs, 14/7/22 rows across E02A/B/C, and a typed <code>ScopeClass</code>
 on every row. Twenty are <code>ProductionObservation</code>; the other
 23 are <code>BoundaryCalibrationFixture</code>, including containment
 fixtures. A <strong>production-observation control</strong> captures
@@ -465,11 +485,14 @@ observation panel is <code>NotApplicable</code>. An explicit
 instrument/collector failure is <code>NotMeasured</code>. A present
 empty recommendation response in the deliberately degraded arm is a real
 measured failure—not absence and not a perfect avoidance score. The
-strict CLI uses stable process classes: 0 pass, 1 measured gate failure,
-2 invalid arguments, 3 NOT MEASURED, and 4 infrastructure failure.
-Aggregate priority is infrastructure failure first, then missing
-measurement, then measured failure, then pass; an accompanying absence
-therefore yields exit 3 rather than being hidden behind exit 1.</p>
+normal offline suite uses exit 1 for a measured mandatory-gate or registered-control failure; a
+matched-quality diagnostic finding alone cannot set it. The admitted-check self-test also uses
+exit 1 when an expected execution, census, journal, healthy, or degraded invariant fails, while
+catalogue ablation uses exit 1 as its expected defect-detection signal. The remaining stable
+process classes are 0 pass, 2 invalid arguments, 3 NOT MEASURED, and 4 infrastructure failure.
+Within a normal suite result, aggregate priority is infrastructure failure first, then missing
+measurement, then measured failure, then pass; an accompanying absence therefore yields exit 3
+rather than being hidden behind exit 1.</p>
 <p>All eleven admitted checks declare native
 <code>ChanceFloor.NotDerivable</code> with a check-specific reason:
 these deterministic invariants and unbounded-language predicates have no
@@ -495,7 +518,7 @@ not become the gate verdict. The safe and vulnerable configurations are
 separate persisted arms and runs of
 <code>vitrine-production-injection@3.0.0</code>; native reference
 comparison owns their loss/tie evidence, while the admitted safe
-reference result alone owns the product gate.</p>
+reference result alone owns the evaluation gate.</p>
 <h3 id="memory-recall">Memory recall</h3>
 <p>The Memory observation path uses <code>CorpusLoader</code>,
 <code>MemoryTestRunner</code>, and <code>IMemoryJudge</code>. Its
@@ -508,7 +531,7 @@ integration, not durable product memory or live-model recall quality.
 The observed cardinalities and scores feed the admitted
 <code>recall</code> leaf. Healthy and ablated providers are separate
 persisted arms and runs of <code>vitrine-production-recall@3.0.0</code>;
-the admitted healthy reference result owns the product gate.</p>
+the admitted healthy reference result owns the evaluation gate.</p>
 <h3 id="offline-judged-quality">Offline judged quality</h3>
 <p>The offline judged observation path uses one centralized criteria
 class and independently authored <code>JudgedMatchedK = 1</code> for
@@ -520,13 +543,13 @@ Criterion booleans, one judge-call count per arm, and matched-k bindings
 feed the admitted <code>matched-quality</code> leaf. Demo01 and Demo02
 are separate persisted arms and runs of
 <code>vitrine-production-judged-quality@3.0.0</code>, with Demo01 as the
-reference and product-gate authority. The paired result is diagnostic
-comparison evidence.</p>
+reference. The leaf and paired comparison are diagnostic evidence; neither has mandatory
+evaluation-gate or process-exit authority.</p>
 <h3 id="paid-llm-judge">Paid LLM judge</h3>
 <p>Eval 01–05 use their separate configured LLM judge through
 <code>AtomicLlmEval</code> and the scenario-specific
 criteria/ground-truth contract above. That paid judge path is not part
-of the offline <code>matched-quality</code> production gate.</p>
+of the offline <code>matched-quality</code> diagnostic check.</p>
 <h2 id="subject-arms-and-package-boundary">Subject arms and package
 boundary</h2>
 <p>Subject execution has three distinct arms:
@@ -548,10 +571,9 @@ default; live subject execution requires both <code>--live</code> and
 <p>The standalone <code>0.35.0-beta</code> package supplies the
 <code>ExactTests</code>, <code>ChanceFloor</code>, floor-admission,
 benchmark, runner, score, and output-store contracts used by VITRINE.
-ADR-030's neutral meta lane is adopted while judge execution, RedTeam,
-Memory, and benchmark evidence remain distinct. ADR-031 was rejected as
-scoped, so there is no VITRINE pack format or pack CLI. ADR-032's
-standard benchmark/run-store path is the persistence authority. The repository-native
+Its neutral meta lane remains distinct from judge execution, RedTeam,
+Memory, and benchmark evidence. VITRINE adds no pack format or pack CLI;
+the standard benchmark/run-store path is the persistence authority. The repository-native
 <a href="https://github.com/joslat/Vitrine/blob/main/MIGRATION.md"><code>MIGRATION.md</code></a> ledger carries the per-eval admission, floor, ablation, and
 unmigrated-item record; the <a href="Vitrine-Verification.html">verification receipt</a>
 carries dated measured evidence. Internal plans and root-cause reviews are deliberately omitted
@@ -564,10 +586,10 @@ generic-contract, and applicability-census layers.</p>
 <p>The migration commit is the receipt for the final deterministic
 admitted-check command and output. Typed control scope and the new
 benchmark arm/run/reference facts are projected through results,
-console, evaluation JSON/HTML, schema-v8 app artifacts, inspector, app
+console, evaluation JSON/HTML, schema-v9 app artifacts, inspector, app
 HTML, and UI labels. The separate diagnostic panel still means 43
-registered mutations—not 43 production-causal controls—and does not
-increase the exact six-gate count.</p>
+registered mutations—not 43 production experiments—and does not increase the five mandatory
+evaluation gates. The matched-quality check remains its own diagnostic stage.</p>
 <div class="note"><strong>Reading boundary.</strong> This is an independent, synthetic portfolio sample prepared for Digitec Galaxus. It is not affiliated with, commissioned by, or endorsed by the company, and it makes no claim about company production systems or customer data.</div>
 </article>
 </main>

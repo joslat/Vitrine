@@ -224,7 +224,7 @@ public static class DiscoveryTerminationProbe
             new LoopDirectionFacts(run.Looped, run.State.DiscoveryRound, run.State.StopReason));
     }
 
-    // ── 6. THE D-3 VOCABULARY CONSTRAINT, IN BOTH DIRECTIONS ─────────────────
+    // ── 6. QUERY-VOCABULARY CONSTRAINT, IN BOTH DIRECTIONS ─────────────────
 
     /// <summary>
     /// Feeds the shipped <see cref="QueryVocabulary"/> one injected term and one legitimate
@@ -266,7 +266,7 @@ public static class DiscoveryTerminationProbe
         bool passed = injectedKept.Count == 0 && legitimateKept.Count == 1;
 
         return new TerminationProbeResult(
-            "6. §0.5 / D-3 vocabulary constraint, both directions",
+            "6. Query-vocabulary constraint, both directions",
             passed,
             "the injected term is REFUSED and the catalogue term is ACCEPTED",
             $"injected kept = {injectedKept.Count}, catalogue term kept = {legitimateKept.Count}, " +

@@ -104,7 +104,7 @@ internal sealed class TopologyProductionEval()
     internal const string EvalKey = "workflow-shape";
     internal const string CaseIdentity = "production.workflow-topology";
     internal static ChanceFloor DeclaredFloor => ChanceFloor.NotDerivable(
-        "executor and loop-back cardinalities are deterministic graph facts; the workflow is not choosing uniformly among alternative topologies.");
+        "executor, edge and loop-back cardinalities are deterministic graph facts; the workflow is not choosing uniformly among alternative topologies.");
     internal static EvalInput Input(TopologyProductionObservation? observation) =>
         Input(CaseIdentity, "Inspect the prepared workflow topology.", observation);
     internal static EvalInput FailedInput(string reason) =>
@@ -114,6 +114,7 @@ internal sealed class TopologyProductionEval()
             observation.EdgeCount is null)
             return NotApplicable("the prepared workflow graph or one of its cardinalities is absent.");
         var passed = observation.ExecutorCount == VitrineEvalCriteria.ExecutorCount &&
+            observation.EdgeCount == VitrineEvalCriteria.EdgeCount &&
             observation.ConditionalLoopBackCount == VitrineEvalCriteria.ConditionalLoopBackEdges;
         return Measured(passed,
             $"observed {observation.ExecutorCount} executors, {observation.EdgeCount} edges, and {observation.ConditionalLoopBackCount} review-to-discovery loop-back edges.",
@@ -297,9 +298,11 @@ internal static class VitrineProductionChecks {
         static () => new TopologyProductionEval(),
         TopologyProductionEval.DeclaredFloor,
         static () => TopologyProductionEval.Input(new(
-            VitrineEvalCriteria.ExecutorCount, VitrineEvalCriteria.ConditionalLoopBackEdges, 6)),
+            VitrineEvalCriteria.ExecutorCount, VitrineEvalCriteria.ConditionalLoopBackEdges,
+            VitrineEvalCriteria.EdgeCount)),
         static () => TopologyProductionEval.Input(new(
-            VitrineEvalCriteria.ExecutorCount - 1, VitrineEvalCriteria.ConditionalLoopBackEdges, 5)));
+            VitrineEvalCriteria.ExecutorCount, VitrineEvalCriteria.ConditionalLoopBackEdges,
+            VitrineEvalCriteria.EdgeCount - 1)));
     internal static VitrineProductionCheck JudgedQuality { get; } = new(
         JudgedQualityProductionEval.EvalKey,
         "Matched recommendation quality per arm",

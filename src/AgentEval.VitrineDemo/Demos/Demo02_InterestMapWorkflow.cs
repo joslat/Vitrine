@@ -28,7 +28,7 @@ namespace Galaxus.RecommendationAgent.Demos;
 /// query discovers, named rather than counted; the deterministic pre-gate rejecting before a token
 /// is spent; the coverage ledger, which is the artifact a human verifies; the loop-back arrow with
 /// its round number; round 2's queries speaking the CATALOGUE's vocabulary instead of the
-/// customer's; the SAME guardrail pipeline Demo 1 runs, with its ledger; and the D-3 vocabulary
+/// customer's; the SAME guardrail pipeline Demo 1 runs, with its ledger; and the structural query-vocabulary control
 /// panel, which prints whether or not it fired.
 /// </para>
 /// <para>
@@ -55,7 +55,7 @@ public static class Demo02_InterestMapWorkflow
     /// Runs one loop end to end.
     /// </summary>
     /// <param name="userId">One of <see cref="Personas.AllPersonaIds"/>. Null selects <see cref="DefaultUserId"/>.</param>
-    /// <param name="personalizationDisabled">The §F.6 opt-out: history is not read at all.</param>
+    /// <param name="personalizationDisabled">The personalization opt-out: history is not read at all.</param>
     /// <param name="offline">Skip every model call and run the deterministic arm.</param>
     /// <param name="maxRounds">
     /// The round cap. Lower it to watch the round-cap termination fire — the guard is only a
@@ -394,7 +394,7 @@ public static class Demo02_InterestMapWorkflow
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine("    from the CATALOGUE's vocabulary: NONE. The loop exited before a second round, so");
             Console.WriteLine("    on this run it bought nothing that a single retrieval pass could not have bought.");
-            Console.WriteLine("    That is a RESULT, not an omission — it is the rubber-stamp shape (design §D.3) and");
+            Console.WriteLine("    That is a RESULT, not an omission — it is the rubber-stamp failure shape and");
             Console.WriteLine("    it is exactly what the eval lane's rounds-taken distribution exists to catch.");
             Console.ResetColor();
         }
@@ -429,7 +429,7 @@ public static class Demo02_InterestMapWorkflow
     }
 
     /// <summary>
-    /// The §0.5 / D-3 panel: what the structural vocabulary constraint refused.
+    /// The structural query-vocabulary control panel: what the structural vocabulary constraint refused.
     /// </summary>
     /// <remarks>
     /// Printed even when it is EMPTY, and labelled as such. A control that leaves no trace when
@@ -439,7 +439,7 @@ public static class Demo02_InterestMapWorkflow
     private static void PrintInjectionLedger(DiscoveryState state)
     {
         Console.ForegroundColor = ConsoleColor.DarkCyan;
-        Console.WriteLine("  ─── Query-vocabulary constraint (§0.5 / D-3) ────────────────────────────");
+        Console.WriteLine("  ─── Query-vocabulary constraint ────────────────────────────────────────");
         Console.ResetColor();
 
         // The DENOMINATOR first. An empty drop ledger beside zero proposals means the control was
@@ -606,7 +606,7 @@ public static class Demo02_InterestMapWorkflow
   │  OFFLINE — no model call was made.                                       │
   │  The five stages ran with deterministic stand-ins. This exercises the     │
   │  LOOP'S MECHANICS — its query plan, its ledger, its three terminations    │
-  │  and its D-3 vocabulary constraint — at zero cost. It is a BASELINE, not  │
+  │  its query-vocabulary constraint — at zero cost. It is a BASELINE, not    │
   │  a simulation of the agent: do not read an offline number as a claim      │
   │  about what the model would have done.                                   │
   └──────────────────────────────────────────────────────────────────────────┘");

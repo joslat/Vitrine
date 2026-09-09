@@ -6,7 +6,8 @@ public enum EvaluationProgressExpectation { None, CatalogueDefectDetection, Cata
 public sealed record EvaluationProgressEvent(EvaluationProgressKind Kind, string Id, string Name, string Detail,
     bool? Passed = null, GateResult? Gate = null, ControlResult? Control = null, int? Completed = null,
     int? Total = null, DateTimeOffset? OccurredAtUtc = null, bool IncludesDiagnosticControls = false,
-    EvaluationProgressExpectation Expectation = EvaluationProgressExpectation.None) {
+    EvaluationProgressExpectation Expectation = EvaluationProgressExpectation.None,
+    GateAuthority? Authority = null) {
     public DateTimeOffset TimestampUtc { get; } = OccurredAtUtc ?? DateTimeOffset.UtcNow;
 }
 public interface IEvaluationProgressSink

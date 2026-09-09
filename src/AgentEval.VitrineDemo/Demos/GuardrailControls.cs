@@ -12,22 +12,21 @@ using Galaxus.RecommendationAgent.Tools;
 namespace Galaxus.RecommendationAgent.Demos;
 
 /// <summary>
-/// The scripted controls for Demo 1's guardrails — nine rows, each one an assertion that CAN
+/// The scripted controls for Demo 1's guardrails — twelve rows, each one an assertion that CAN
 /// FAIL, run at the end of every Demo 1 turn and printed as a table.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Why this exists at all.</b> There is no test project for this sample, and every fix in
-/// design §8.1 carries a named test. A guardrail with no control is a claim, not a mechanism:
+/// <b>Why this exists at all.</b> This executable control matrix complements the xUnit tests and
+/// keeps every guardrail observable in the demo. A guardrail with no control is a claim, not a mechanism:
 /// nothing on screen changes when it stops working, so nobody notices. Each row below therefore
 /// scripts an input the guardrail must reject AND, where the failure mode is over-rejection, the
 /// twin input it must accept. A row that could only ever be green would prove nothing and is not
 /// worth the line it prints on.
 /// </para>
 /// <para>
-/// <b>Every row was RED before the §8.1 fix it guards.</b> That is the property that makes them
-/// controls rather than decoration, and it is stated per row in <c>WasRedBefore</c>. A control
-/// added after the fact that has never been observed to fail is a control nobody has calibrated.
+/// <b>Every row has a known red witness.</b> <c>WasRedBefore</c> records the failing behavior that
+/// calibrates the control, so a permanently green assertion cannot masquerade as coverage.
 /// </para>
 /// <para>
 /// <b>The bar never comes from the artifact.</b> Candidate sets, purchase ids and compatibility
@@ -52,11 +51,11 @@ public static class GuardrailControls
 
     /// <summary>One control row: what it asserts, and what actually happened.</summary>
     /// <param name="Id">Stable row id, printed.</param>
-    /// <param name="Row">The design §8.1 row this control is the test for.</param>
+    /// <param name="Row">The guardrail-control row this control is the test for.</param>
     /// <param name="What">One line naming the assertion, in the language of the failure it catches.</param>
     /// <param name="Passed">Whether the assertion held on this run.</param>
     /// <param name="Observed">What was actually seen — printed on both outcomes, so a green row is checkable too.</param>
-    /// <param name="WasRedBefore">What made this row fail before the §8.1 fix landed.</param>
+    /// <param name="WasRedBefore">What made this row fail before its guardrail fix landed.</param>
     public sealed record Control(
         string Id,
         string Row,
@@ -142,7 +141,7 @@ public static class GuardrailControls
         ToolSchemaExposesTheFifthArgument
     ];
 
-    // ══ B-1 — the abstention gate runs before any spend ═══════════════════════════
+    // ══ Pre-spend abstention ══════════════════════════════════════════════════════
 
     /// <summary>
     /// The retriever binding is the WITNESS. Demo 1 binds it between the gate and the first
@@ -192,7 +191,7 @@ public static class GuardrailControls
             "GREEN before and after — the discrimination twin for C-1, which a blanket refuser would pass"));
     }
 
-    /// <summary>The console half of B-1: the panel may not claim a pre-spend gate it did not run.</summary>
+    /// <summary>The panel may not claim a pre-spend gate unless that gate actually ran.</summary>
     private static Task<Control> ConsoleCannotClaimAPreSpendGateItDidNotRun()
     {
         const string Claim = "ran BEFORE any model spend";
@@ -211,19 +210,16 @@ public static class GuardrailControls
             "RED: the sentence was unconditional, and the only caller ran the gate AFTER the model"));
     }
 
-    // ══ B-5 — the user side of the evidence ═══════════════════════════════════════
+    // ══ User-side evidence ════════════════════════════════════════════════════════
 
     /// <summary>
     /// Cites one of the customer's OWN purchase ids for an interest it does not evidence, through
     /// the real tool → assemble → pipeline path, and requires the drop.
     /// </summary>
     /// <remarks>
-    /// ⚠ The §8.1 B-5 row words this as "Nadia's coffee purchase for a photography SKU". Nadia has
-    /// no coffee purchase — her five lines are a camera, a trekking pack, a power bank, a headlamp
-    /// and a base layer — and a purchase belonging to a DIFFERENT customer already failed on
-    /// <c>foreign_purchase_id</c> before this fix, so it cannot be the case the row means by "today
-    /// it is presented". The discriminating case, and the one built here, is one of Nadia's own ids
-    /// cited for an interest the code-derived map does not rest on that id.
+    /// The discriminating case uses one of Nadia's own purchase ids for an interest whose evidence
+    /// does not include that id. A foreign purchase would exercise <c>foreign_purchase_id</c>
+    /// instead and would not test this arm.
     /// </remarks>
     private static Task<Control> OwnPurchaseCitedForTheWrongInterestIsDropped()
     {
@@ -271,7 +267,7 @@ public static class GuardrailControls
           + "comparison was x ⊆ x"));
     }
 
-    // ══ B-6a — candidate-set containment ══════════════════════════════════════════
+    // ══ Candidate-set containment ═════════════════════════════════════════════════
 
     /// <summary>
     /// The widening, checked first: <c>BrowseCategory</c> and <c>GetProductDetails</c> must land in
@@ -336,18 +332,16 @@ public static class GuardrailControls
             "RED: Demo 1 had no containment stage at all — existence was the only test"));
     }
 
-    // ══ B-7 — compatibility against the customer's own hardware ═══════════════════
+    // ══ Compatibility against owned hardware ══════════════════════════════════════
 
     /// <summary>
     /// A 54 mm portafilter for Marco's 58 mm group must drop; a 58 mm accessory must not.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// ⚠ §8.1 B-7 names <c>GLX-3004</c> as "(54 mm)". It is not: GLX-3004 is the Normcore V4 WDT
-    /// tool and it declares <c>compat:58mm-portafilter</c>, so on Marco it is COMPATIBLE and must
-    /// survive. The 54 mm item in the seed is <c>GLX-3006</c>, the Bezzera bottomless portafilter.
-    /// This control therefore uses GLX-3006 as the drop case and GLX-3004 as the twin the rule must
-    /// leave alone — which also catches an over-eager rule, the failure Demo 2 measured.
+    /// The seed's incompatible 54 mm item is <c>GLX-3006</c>; <c>GLX-3004</c> declares
+    /// <c>compat:58mm-portafilter</c> and is the compatible twin that must survive. This pairing
+    /// catches both under-enforcement and over-rejection.
     /// </para>
     /// <para>
     /// ⚠ <b>The durable arm pre-empts this one on the shipped corpus, and the control isolates it
@@ -364,7 +358,7 @@ public static class GuardrailControls
     private static Task<Control> IncompatiblePortafilterIsDropped()
     {
         const string Incompatible = "GLX-3006";   // 54 mm — the seed's actual 54 mm portafilter
-        const string Compatible = "GLX-3004";     // 58 mm — the SKU §8.1 B-7 mislabels as 54 mm
+        const string Compatible = "GLX-3004";     // 58 mm — the SKU the owned-hardware compatibility rule mislabels as 54 mm
 
         var catalogue = Catalogue.Default;
         var context = ContextFor(Personas.MarcoUserId) with { SuppressDurableUpgrades = false };
@@ -395,7 +389,7 @@ public static class GuardrailControls
             "RED: compatibility was enforced only inside FindComplements — one of five retrieval routes"));
     }
 
-    // ══ B-16 — the replenishment lane names itself ════════════════════════════════
+    // ══ Replenishment is distinct from ownership ══════════════════════════════════
 
     /// <summary>Sofia's cartridges must leave the ledger as a replenishment item, not as ownership.</summary>
     private static Task<Control> ReplenishmentIsNamedBeforeOwnership()
@@ -424,7 +418,7 @@ public static class GuardrailControls
             "RED: the reason did not exist; the cartridges dropped as already_owned and the lane was invisible"));
     }
 
-    // ══ B-13 — the tool's warnings come from Screen ═══════════════════════════════
+    // ══ Tool warnings share the pipeline's screen ═════════════════════════════════
 
     /// <summary>
     /// Presents a SKU the customer already owns and requires the tool to say so. Ownership is a
@@ -465,17 +459,15 @@ public static class GuardrailControls
             "RED: Screen had no call site; the tool hand-rolled four warnings and knew nothing about ownership");
     }
 
-    // ══ B-17 — the customer's market reaches the semantic query ═══════════════════
+    // ══ Customer market reaches the semantic query ════════════════════════════════
 
     /// <summary>
     /// A recording retriever is the witness: the query the tool builds must carry the BOUND market.
     /// </summary>
     /// <remarks>
-    /// ⚠ The §8.1 B-17 row's stated test — "no <c>market_unavailable</c> drop on any offline
-    /// persona run" — is VACUOUS on the shipped corpus: every one of the 99 seeded products is
-    /// available in CH and DE, and all four personas are in one of those two, so no persona could
-    /// produce that drop before the fix either. The defect is real but invisible at the output, so
-    /// the control asserts the wiring instead of a symptom the corpus cannot express.
+    /// Every seeded product is available in both CH and DE, so output-level absence of a
+    /// <c>market_unavailable</c> drop cannot witness the binding. The control therefore asserts the
+    /// query wiring directly with a recording retriever.
     /// </remarks>
     private static async Task<Control> SemanticSearchCarriesTheBoundMarketAsync()
     {
@@ -496,7 +488,7 @@ public static class GuardrailControls
             $"RED: RetrievalQuery.For leaves Market at \"{RetrievalQuery.DefaultMarket}\" and nothing overwrote it");
     }
 
-    // ══ B-15 — the three counters reach the panel ═════════════════════════════════
+    // ══ Upstream counters reach the panel ═════════════════════════════════════════
 
     /// <summary>The ledger panel must print the values the control put into the ledger.</summary>
     private static Task<Control> LedgerRendersTheThreeCounters()
@@ -517,7 +509,7 @@ public static class GuardrailControls
             "RED: all three were populated and read by nothing — the shape that hides a dead arm"));
     }
 
-    // ══ B-5 — the wire contract the model and the eval lane both read ════════════
+    // ══ Shared presentation wire contract ═════════════════════════════════════════
 
     /// <summary>
     /// Builds the shipped read-only tool surface and asserts that the function schema the model is
@@ -531,10 +523,8 @@ public static class GuardrailControls
     /// so a rename is a contract break even when the code still compiles.
     /// </para>
     /// <para>
-    /// All five names now come from <c>PresentRecommendationArguments</c>, so the row checks the
-    /// property that actually matters: <b>constant equals parameter</b>. The fifth constant was
-    /// owed by the cross-lane contract file and is now in place, closing the one argument whose
-    /// name was pinned only by a literal here.
+    /// All five names come from <c>PresentRecommendationArguments</c>, so the row checks the
+    /// cross-lane invariant that each shared constant equals the function parameter name.
     /// </para>
     /// </remarks>
     private static Task<Control> ToolSchemaExposesTheFifthArgument()
@@ -646,10 +636,9 @@ public static class GuardrailControls
             evidence = GalaxusTools.UserEvidenceInCurrentRun;
         }
 
-        // Blocking on the assembler, exactly as the PresentRecommendation call above blocks: these
-        // scripted controls are a synchronous harness around an async pipeline. AssembleAsync
-        // became async at B-21 because the confidence arithmetic now embeds in whichever space the
-        // run resolved, and on the real-vector path that reaches the network.
+        // These scripted controls are a synchronous harness around an async pipeline. The assembler
+        // embeds confidence in the run's resolved space, which can reach the network on the
+        // real-vector path.
         var (raw, _, _) = Demo01_RecommendationAgent.AssembleAsync(
             presented, evidence,
             new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal),
@@ -665,9 +654,8 @@ public static class GuardrailControls
     /// market.
     /// </summary>
     /// <remarks>
-    /// The rows that test a LATE stage need an input that survives the EARLY ones, or they silently
-    /// measure the wrong arm — the first cut of C-6 picked Nadia's own camera and its "kept" twin
-    /// failed on <c>already_owned</c>, which had nothing to do with containment.
+    /// Rows that test a late stage need an input that survives every earlier stage; otherwise a
+    /// failure such as <c>already_owned</c> would mask the containment behavior under test.
     /// </remarks>
     /// <param name="context">The customer's bar.</param>
     /// <param name="exclude">A product id to skip, so two calls give two different products.</param>

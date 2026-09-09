@@ -6,13 +6,13 @@ using Galaxus.RecommendationAgent.Domain;
 namespace Galaxus.RecommendationAgent.Guardrails;
 
 /// <summary>
-/// Stage 2 of <see cref="GuardrailPipeline"/>. Grounds every presented product id in the two
+/// The catalogue-grounding stage of <see cref="GuardrailPipeline"/>. Grounds every presented product id in the two
 /// things the structured data layer is authoritative about: <b>what exists</b> and
 /// <b>what the customer already has</b>.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Existence (§F.2).</b> Every product id must resolve in the catalogue. Non-resolving ids
+/// <b>Existence.</b> Every product id must resolve in the catalogue. Non-resolving ids
 /// are REMOVED, not down-ranked, and counted as <see cref="GuardrailReasons.Ungrounded"/>.
 /// Combined with "the model may only pick from retrieved candidates", a hallucinated SKU stops
 /// being statistically unlikely and becomes structurally impossible. This check is possible
@@ -20,7 +20,7 @@ namespace Galaxus.RecommendationAgent.Guardrails;
 /// against, "no hallucinated SKUs" is a hope rather than a filter.
 /// </para>
 /// <para>
-/// <b>Ownership (§B.3, Sofia).</b> Two traps that are ordinary in production and embarrassing
+/// <b>Ownership (Sofia).</b> Two traps that are ordinary in production and embarrassing
 /// in a demo:
 /// </para>
 /// <list type="number">
@@ -126,13 +126,8 @@ public static class CatalogueGroundingFilter
                 continue;
             }
 
-            // ── §8.1 B-16: the replenishment lane, checked BEFORE ownership ─────────────
-            //
-            // Sofia's cartridges used to leave the ledger as `already_owned`. That was true and
-            // useless: it named the wrong mechanism, and the lane that actually handles them —
-            // the repeat-buy tray with its cadence and due date — was never seen working on any
-            // run. A consumable on a cadence is not "something she owns"; it is something she is
-            // about to buy again, and the ledger now says which of the two happened.
+            // Replenishment is classified before ownership: a consumable on a cadence belongs in
+            // the repeat-buy tray with its due date, not in discovery and not under `already_owned`.
             if (context.ReplenishmentProductIds.Contains(item.ProductId))
             {
                 ledger.Drop(GuardrailStage.CatalogueGrounding, GuardrailReasons.ReplenishmentNotDiscovery, item.ProductId,

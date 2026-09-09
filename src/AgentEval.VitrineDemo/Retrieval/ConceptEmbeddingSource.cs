@@ -136,28 +136,17 @@ public sealed class ConceptEmbeddingSource : IEmbeddingSource
     /// into an index built by a later, differently-authored lexicon.
     /// </summary>
     /// <remarks>
-    /// Bumped to <c>v2</c> by the B-8 fix, which added the <c>"on bike"</c> phrase. The dimension
-    /// list and its order are unchanged — only the query-side lexicon grew — but a vector cached
-    /// under <c>v1</c> was computed by a lexicon that projected <c>mode:on-bike</c> onto nothing,
-    /// so it is not interchangeable with one computed now.
-    /// <para>
-    /// Bumped to <c>v3</c> by D-v's lexicon closure (plan item 8.11), for the same reason and by
-    /// the same rule: the dimension list and its order are untouched, and the lexicon grew by the
-    /// closable half of the authored phrases that embedded to zero. ⚠ <b>No cached concept vector
-    /// exists in this repository to invalidate</b> — the committed
-    /// <c>catalogue.embeddings.json</c> is keyed on <c>text-embedding-3-small</c>, not on this
-    /// source — so the bump costs nothing today and is made anyway, because the version suffix is
-    /// only worth having if it moves when the lexicon does.
-    /// </para>
+    /// The current <c>v3</c> stamp covers the fixed dimension order and the complete authored
+    /// lexicon, including <c>mode:on-bike</c> and the context-coverage entries below. Any change to
+    /// either must advance the stamp. The shipped committed asset uses
+    /// <c>text-embedding-3-small</c>, but the rule still protects any future concept-vector asset.
     /// </remarks>
     public const string ModelIdentifier = "galaxus-concept-v3";
 
     /// <summary>
-    /// Dense cosine floor suggested for this concept space.
-    /// <b>TO-CALIBRATE — do not present this as measured.</b> It deliberately matches
-    /// <see cref="AzureEmbeddingSource.UncalibratedDenseScoreFloor"/> so the two paths are
-    /// comparable out of the box, and that equality is itself an unverified assumption: a floor is
-    /// a property of an embedding space, and a value calibrated in one does not transfer to the other.
+    /// Legacy uncalibrated baseline retained for explicit comparisons. Production retrieval uses
+    /// <see cref="CalibratedThresholds.Concept"/> through <see cref="SuggestedDenseScoreFloor"/>;
+    /// this value must not be presented as measured or transferred to another embedding space.
     /// </summary>
     public const float UncalibratedDenseScoreFloor = 0.28f;
 
@@ -218,11 +207,9 @@ public sealed class ConceptEmbeddingSource : IEmbeddingSource
 
     /// <inheritdoc />
     /// <remarks>
-    /// ✅ <b>DERIVED for THIS space.</b> No longer <see cref="UncalibratedDenseScoreFloor"/> — that
-    /// constant's own summary called its equality with the Azure source "an unverified assumption",
-    /// and the assumption is now discharged rather than repeated:
-    /// <see cref="CalibratedThresholds.Concept"/> and <see cref="CalibratedThresholds.RealVectors"/>
-    /// are derived separately, on the same fit slice, by the same rule.
+    /// Derived for this concept space. <see cref="CalibratedThresholds.Concept"/> and
+    /// <see cref="CalibratedThresholds.RealVectors"/> use the same fit slice and derivation rule
+    /// but remain separate because their cosine distributions are not interchangeable.
     /// </remarks>
     public float SuggestedDenseScoreFloor => CalibratedThresholds.Concept.DenseScoreFloor;
 
@@ -585,11 +572,8 @@ public sealed class ConceptEmbeddingSource : IEmbeddingSource
         // is kept WEAK, because the disambiguating phrases ("nd filter", "water filter",
         // "digital filter", "filter thread") are longer and therefore win and consume their tokens.
         //
-        // This was not free. A first cut weighted bare "filter" at 0.35 and left the DAC's
-        // "7 digital filters / reconstruction filter presets" un-phrased, so three bare hits
-        // out-scored the actual water filter on a query about hard tap water — the exact
-        // "filter appears in DAC specs AND in water-filter specs" trap the design names in §B.1.
-        // The fix is the phrase, not a thumb on the scale.
+        // Specific phrases carry the strong signal; the ambiguous bare word remains weak so
+        // repeated mentions in one product cannot outweigh the intended sense.
         Add("filter", LongExposureLightControl, 0.25f, WaterFiltration, 0.25f, HomeAudio, 0.15f);
         Add("filters", LongExposureLightControl, 0.25f, WaterFiltration, 0.25f, HomeAudio, 0.15f);
         Add("digital filter", HomeAudio, 0.9f);
@@ -840,12 +824,8 @@ public sealed class ConceptEmbeddingSource : IEmbeddingSource
         Add("bikepacking", Cycling, 1.0f, StorageAndCarry, 0.6f, CarriedWeight, 0.5f, TravelPortability, 0.4f);
         Add("helmet", Cycling, 0.8f);
         Add("gravel", Cycling, 0.7f);
-        // The B-8 counterpart to "on foot" above, and the half that was silently dead: the seed's
-        // mode:on-bike tag keys as "on bike" (LookupKey strips the prefix), and with no entry here
-        // it projected onto NOTHING — the tag would have been authored, printed on the Use: line,
-        // and read by no dimension. Deliberately asymmetric with "on foot": walking means the
-        // person carries the load, so "on foot" also fires CarriedWeight; on a bicycle the bicycle
-        // carries it, so this one does not.
+        // `mode:on-bike` normalises to "on bike". Unlike "on foot", it does not imply
+        // CarriedWeight because the bicycle carries the load.
         Add("on bike", Cycling, 0.9f);
 
         // ── Apparel and layering ─────────────────────────────────────────────────────────────
@@ -922,37 +902,11 @@ public sealed class ConceptEmbeddingSource : IEmbeddingSource
         Add("home audio", HomeAudio, 1.0f);
         Add("small appliances", KitchenAppliance, 0.9f);
 
-        // ── D-v (plan item 8.11): the CLOSABLE half of the dead authored phrases ─────────────
-        //
-        // `DeadPhrasesAreDiagnosedNotJustCounted` splits the authored context phrases that embed
-        // to ZERO into three buckets. The `closable` bucket is the one where the products the gold
-        // rewards for that interest DO embed, so a query-side entry can reach them; the
-        // `no-products` bucket is a CORPUS gap that no lexicon entry closes. These entries are the
-        // closable half, and every one of them is grounded in the tags the gold is derived from —
-        // not in what the phrase sounds like.
-        //
-        // ⚠ THREE AUTHORING RULES THIS BLOCK KEEPS, because breaking any of them would make the
-        //   diagnosis move for a reason that is not the fix:
-        //
-        //   1. ONLY CONTENT TOKENS. "the", "a", "an", "with", "on", "and", "out", "every" and the
-        //      possessive "s" appear in these phrases and are deliberately NOT added. A stop word
-        //      in this lexicon would give a non-zero vector to every query containing it, which
-        //      would close D-v on paper by making the measurement meaningless.
-        //
-        //   2. NOTHING HERE MAY TOUCH THE `no-products` BUCKET. Those six phrases turn on the
-        //      tokens `weather`, `gear`, `lasts`, `morning`, `routine`, `summer`, `conditions` and
-        //      `winter`. Adding any of them would stop those phrases embedding to zero and shrink
-        //      the dead count WITHOUT closing anything — the corpus still carries no product for
-        //      the token. That is why "training through the winter" is closed on `training` alone.
-        //
-        //   3. THE STEMMER IS DOING WORK AND THE SINGULAR IS THE ENTRY. `ride` covers "ride",
-        //      "rides" and "riding"; `ascent` covers "ascents"; `card` covers "cards"; `session`
-        //      covers "sessions"; `weigh` covers "weighing". Authoring both forms would hide a
-        //      stemmer regression behind a duplicate.
-        //
-        // ⚠ NO EXPECTED OUTCOME IS RECORDED HERE, ON PURPOSE. An earlier item in this plan filed a
-        //   figure that turned out to be three times too big, and had it been written beside the
-        //   change it would have been a pre-registered result rather than a measurement.
+        // ── Authored context coverage ───────────────────────────────────────────────────────
+        // These entries are grounded in the same tags as the evaluation gold. Keep only content
+        // tokens, leave corpus-only gaps unmapped, and author singular roots where the stemmer is
+        // expected to cover inflections. Those rules preserve the diagnostic distinction between
+        // a lexicon gap and a catalogue with no eligible product.
 
         // all-day-riding — "all-day rides". Gold: on-bike training and bikepacking kit.
         Add("ride", Cycling, 1.0f);
@@ -995,8 +949,8 @@ public sealed class ConceptEmbeddingSource : IEmbeddingSource
         Add("dose", EspressoBrewing, 0.8f, MeasurementPrecision, 0.6f, CoffeeGrinding, 0.4f);
         Add("yield", EspressoBrewing, 0.7f, MeasurementPrecision, 0.5f);
 
-        // winter-base-miles — "training through the winter". Gold: turbo trainers and bike
-        // computers tagged context:training. ⚠ `winter` is deliberately NOT added — see rule 2.
+        // winter-base-miles — "training through the winter". `winter` remains unmapped because
+        // the supported product evidence is training, not seasonality.
         Add("training", Cycling, 0.8f);
 
         return lexicon;

@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AgentEval.Evals.Meta;
+using AgentEval.RedTeam.Reporting;
 using AgentEval.VitrineDemo.App.Models;
 using AgentEval.VitrineDemo.App.Runtime;
 using AgentEval.VitrineDemo.App.ViewModels;
@@ -54,7 +55,7 @@ public static class VitrineArtifactSerializer
             WorkflowStopReason: SafeOrNull(workflow?.State.StopReason.ToString()),
             Gates: evaluation?.Gates.Select(gate => new VitrineGateSnapshot(
                 Safe(gate.Name), gate.Passed, gate.Score, ProjectFloor(gate.ChanceFloor), Safe(gate.Evidence), gate.Outcome,
-                Provenance(gate.AgentEval))).ToArray() ?? [],
+                Provenance(gate.AgentEval), gate.Authority)).ToArray() ?? [],
             Controls: evaluation?.Controls.Select(control => new VitrineControlSnapshot(
                 Safe(control.Id), Safe(control.Name), Safe(control.Category), Safe(control.Target),
                 Safe(control.ObservationProducer), Safe(control.Evaluator), control.ScopeClass, Safe(control.Tranche),
@@ -70,13 +71,15 @@ public static class VitrineArtifactSerializer
             outcome.RunId,
             DateTimeOffset.UtcNow,
             request.Mode,
-            Safe(request.UserId),
+            Safe(PersonaScope(request, liveEvaluation)),
             request.Mode is ViewModels.VitrineRunMode.Demo01 or ViewModels.VitrineRunMode.Demo02
                 ? request.Demo01Arm.ToString()
                 : liveEvaluation?.Plan.ToString()
                   ?? evaluation?.Execution?.Profile.ToString()
                   ?? "EvaluationPlanNotRecorded",
-            !request.PersonalizationEnabled,
+            request.Mode is VitrineRunMode.Demo01 or VitrineRunMode.Demo02
+                ? request.PersonalizationEnabled != true
+                : null,
             SanitizeGraph(outcome.Graph),
             outcome.Events.Select(SanitizeEvent).ToArray(),
             result,
@@ -104,7 +107,7 @@ public static class VitrineArtifactSerializer
         EnsureSafeIntegrityInput(artifact);
         var frozen = Freeze(artifact);
         if (!Verify(frozen)) throw new InvalidDataException("Artifact integrity verification failed.");
-        return frozen;
+        return ApplyLegacySemanticCompatibility(frozen);
     }
 
     public static bool Verify(VitrineRunArtifact artifact)
@@ -204,6 +207,23 @@ public static class VitrineArtifactSerializer
         value is { Length: 64 } && value.All(static character =>
             character is >= '0' and <= '9' or >= 'a' and <= 'f');
 
+    private static VitrineRunArtifact ApplyLegacySemanticCompatibility(VitrineRunArtifact artifact)
+    {
+        if (artifact.SchemaVersion >= 9 || artifact.Result.Gates.Count == 0) return artifact;
+        var gates = artifact.Result.Gates.Select(static gate => IsLegacyMatchedQualityGate(gate)
+            ? gate with { CompatibilityAuthority = GateAuthority.Diagnostic }
+            : gate).ToArray();
+        return artifact with
+        {
+            Result = artifact.Result with { Gates = Array.AsReadOnly(gates) },
+        };
+    }
+
+    private static bool IsLegacyMatchedQualityGate(VitrineGateSnapshot gate) =>
+        string.Equals(gate.AgentEval?.IntegrationId, "matched-quality", StringComparison.Ordinal)
+        || string.Equals(gate.Name, "Matched agent/workflow judged quality", StringComparison.Ordinal)
+        || string.Equals(gate.Name, "Matched Demo01/Demo02 quality · shared criteria", StringComparison.Ordinal);
+
     private static VitrineGraphSnapshot SanitizeGraph(VitrineGraphSnapshot graph) => new(
         Safe(graph.Name),
         graph.Source,
@@ -212,6 +232,28 @@ public static class VitrineArtifactSerializer
         graph.Edges.Select(edge => new VitrineGraphEdge(Safe(edge.Id), Safe(edge.SourceId), Safe(edge.TargetId),
             Safe(edge.Label), edge.IsConditional, edge.IsLoopBack)).ToArray(),
         graph.RuntimeSourceId);
+
+    private static string PersonaScope(VitrineRunRequest request, LiveEvalResult? liveEvaluation)
+    {
+        if (request.Mode is VitrineRunMode.Demo01 or VitrineRunMode.Demo02) return request.UserId;
+        if (liveEvaluation?.Plan == VitrineEvaluationPlan.LiveEval06SafetyProbes
+            || request.EvaluationPlan == VitrineEvaluationPlan.LiveEval06SafetyProbes)
+            return VitrineRunRequest.NotApplicablePersonaScope;
+
+        if (liveEvaluation is not null)
+        {
+            var personas = liveEvaluation.Scenarios.Select(static scenario => scenario.PersonaId)
+                .Distinct(StringComparer.Ordinal).ToArray();
+            if (personas.Length == 1) return personas[0];
+            if (personas.Length > 1) return VitrineRunRequest.MultiplePersonasScope;
+        }
+
+        if (request.Mode == VitrineRunMode.Evals
+            && request.EvaluationPlan != VitrineEvaluationPlan.OfflineSuite
+            && request.LiveScenarioId is { Length: > 0 } scenarioId)
+            return LiveUseCaseScenarios.Require(scenarioId).PersonaId;
+        return VitrineRunRequest.MultiplePersonasScope;
+    }
 
     private static VitrineEvent SanitizeEvent(VitrineEvent item) => item with
     {
@@ -431,6 +473,9 @@ public static class VitrineArtifactSerializer
             {
                 Checks = Array.AsReadOnly(arm.Checks.ToArray()),
             }).ToArray()),
+            ScenarioAcceptances = snapshot.ScenarioAcceptances is null
+                ? null
+                : Array.AsReadOnly(snapshot.ScenarioAcceptances.ToArray()),
             Comparisons = Array.AsReadOnly(snapshot.Comparisons.ToArray()),
             Configuration = snapshot.Configuration is null ? null : snapshot.Configuration with
             {
@@ -702,6 +747,23 @@ public static class VitrineArtifactSerializer
             Failures = result.Failures.Select(Failure).Where(static failure => failure is not null)
                 .Cast<VitrineLiveFailureSnapshot>().ToArray(),
             Safety = Safety(result.Safety),
+            ScenarioAcceptances = result.ScenarioAcceptances.Select(decision =>
+                new VitrineLiveScenarioAcceptanceSnapshot(
+                    Safe(decision.ScenarioId),
+                    Safe(decision.PersonaId),
+                    Safe(decision.ArmId),
+                    Safe(decision.Architecture.ToString()),
+                    LiveCensus(decision.Census),
+                    new(
+                        Safe(decision.Reliability.Measurement.ToString()),
+                        decision.Reliability.Successes,
+                        decision.Reliability.Total,
+                        Finite(decision.Reliability.Estimate),
+                        Finite(decision.Reliability.Lower),
+                        Finite(decision.Reliability.Upper)),
+                    decision.ConfidenceLevel,
+                    decision.MinimumLowerBound,
+                    decision.Passed)).ToArray(),
         };
     }
 
@@ -718,6 +780,10 @@ public static class VitrineArtifactSerializer
             Safe(subject.ArmId), Safe(subject.Architecture.ToString()), Safe(subject.ModelId),
             Safe(subject.JudgeSubjectRelation.ToString()))).ToArray())
     {
+        Acceptance = new(
+            Safe(configuration.Acceptance.Policy.ToString()),
+            Finite(configuration.Acceptance.ConfidenceLevel),
+            Finite(configuration.Acceptance.MinimumLowerBound)),
         Safety = configuration.Safety is null ? null : new(
             configuration.Safety.Attacks.Select(Safe).ToArray(),
             configuration.Safety.MaxProbesPerAttack,
@@ -822,6 +888,8 @@ public static class VitrineArtifactSerializer
             || trial.Workflow is { DegradationKinds: null })) return true;
         if (live.Trials.Any(static trial => trial?.Workflow is { DegradationKinds: { } kinds }
             && kinds.Any(static kind => kind is null))) return true;
+        if (schemaVersion >= 9 && !safetyPlan && live.Trials.Any(HasInvalidLiveTrialVerdict))
+            return true;
         if (live.Arms.Any(static arm => arm is null
             || arm.Checks is null
             || arm.Checks.Any(static check => check is null
@@ -835,8 +903,219 @@ public static class VitrineArtifactSerializer
             || live.Configuration?.Safety is { Attacks: null }
             || live.Configuration?.Safety is { Attacks: { } attacks }
                 && attacks.Any(static attack => attack is null)) return true;
-        return HasInvalidSafetyShape(live, safetyPlan, schemaVersion);
+        if (live.ScenarioAcceptances is { } decisions && decisions.Any(static decision => decision is null
+            || decision.Census is null || decision.Reliability is null)) return true;
+        return HasInvalidAcceptanceShape(live, safetyPlan, schemaVersion)
+            || HasInvalidSafetyShape(live, safetyPlan, schemaVersion);
     }
+
+    private static bool HasInvalidAcceptanceShape(
+        VitrineLiveEvaluationSnapshot live,
+        bool safetyPlan,
+        int schemaVersion)
+    {
+        var requiresTypedAcceptance = schemaVersion >= 9;
+        var configuration = live.Configuration;
+        var acceptance = configuration?.Acceptance;
+        var decisions = live.ScenarioAcceptances;
+        if (requiresTypedAcceptance && (configuration is null || acceptance is null || decisions is null))
+            return true;
+        if (acceptance is null) return decisions is { Count: > 0 };
+
+        if (!Enum.TryParse<LiveTerminalAcceptancePolicy>(acceptance.Policy, out var policy)
+            || !Enum.IsDefined(policy)) return true;
+        var stochasticPlan = live.Plan is nameof(VitrineEvaluationPlan.LiveEval04StochasticAgent)
+            or nameof(VitrineEvaluationPlan.LiveEval05StochasticWorkflow);
+        var useCasePlan = live.Plan is nameof(VitrineEvaluationPlan.LiveEval01Agent)
+            or nameof(VitrineEvaluationPlan.LiveEval02Workflow)
+            or nameof(VitrineEvaluationPlan.LiveEval03AgentVsWorkflow)
+            or nameof(VitrineEvaluationPlan.LiveEval04StochasticAgent)
+            or nameof(VitrineEvaluationPlan.LiveEval05StochasticWorkflow);
+        if (!safetyPlan && !useCasePlan) return true;
+
+        if (safetyPlan)
+        {
+            return policy != LiveTerminalAcceptancePolicy.NotApplicable
+                || acceptance.ConfidenceLevel is not null
+                || acceptance.MinimumLowerBound is not null
+                || decisions is { Count: > 0 };
+        }
+        if (!stochasticPlan)
+        {
+            return policy != LiveTerminalAcceptancePolicy.EveryTrialMustPass
+                || acceptance.ConfidenceLevel is not null
+                || acceptance.MinimumLowerBound is not null
+                || decisions is { Count: > 0 };
+        }
+        if (policy != LiveTerminalAcceptancePolicy.WilsonLowerBoundPerScenario
+            || acceptance.ConfidenceLevel is not { } confidence
+            || !NearlyEqual(confidence, VitrineEvaluationPlans.StochasticConfidenceLevel)
+            || acceptance.MinimumLowerBound is not { } minimum
+            || !NearlyEqual(minimum, VitrineEvaluationPlans.StochasticMinimumWilsonLowerBound)
+            || decisions is null) return true;
+
+        var completedVerdict = live.TerminalStatus is nameof(LiveEvalTerminalStatus.Passed)
+            or nameof(LiveEvalTerminalStatus.QualityFailed);
+        if (live.Workload.ScenarioCount != live.Scenarios.Count
+            || live.Workload.ArmCount != configuration!.Subjects.Count
+            || live.Workload.Repetitions < VitrineEvaluationPlans.MinimumStochasticRepetitions
+            || completedVerdict && decisions.Count !=
+                (long)live.Workload.ScenarioCount * live.Workload.ArmCount)
+            return true;
+        if (decisions.Select(static decision => (decision.ArmId, decision.ScenarioId))
+            .Distinct().Count() != decisions.Count) return true;
+        if (live.Scenarios.Select(static item => item.Id).Distinct(StringComparer.Ordinal).Count()
+                != live.Scenarios.Count
+            || configuration!.Subjects.Select(static item => item.ArmId)
+                .Distinct(StringComparer.Ordinal).Count() != configuration.Subjects.Count) return true;
+        var scenarios = live.Scenarios.ToDictionary(static item => item.Id, StringComparer.Ordinal);
+        var subjects = configuration.Subjects.ToDictionary(static item => item.ArmId, StringComparer.Ordinal);
+        var decisionsBySubjectAndScenario = decisions.ToDictionary(
+            static item => (item.ArmId, item.ScenarioId));
+        // Interrupted sessions legitimately retain a strict prefix of completed trial receipts and
+        // do not manufacture terminal Wilson decisions from that partial evidence.
+        if (!completedVerdict && decisions.Count == 0) return false;
+        if (completedVerdict && live.Trials.Count !=
+            (long)live.Workload.ScenarioCount * live.Workload.ArmCount * live.Workload.Repetitions)
+            return true;
+        foreach (var subject in configuration.Subjects)
+        {
+            foreach (var scenario in live.Scenarios)
+            {
+                var trials = live.Trials.Where(trial =>
+                    string.Equals(trial.ArmId, subject.ArmId, StringComparison.Ordinal)
+                    && string.Equals(trial.ScenarioId, scenario.Id, StringComparison.Ordinal)).ToArray();
+                if (!completedVerdict && trials.Length == 0) continue;
+                if (trials.Length != live.Workload.Repetitions
+                    || !trials.Select(static trial => trial.Repetition).Order()
+                        .SequenceEqual(Enumerable.Range(1, live.Workload.Repetitions))
+                    || trials.Any(trial =>
+                        !string.Equals(trial.PersonaId, scenario.PersonaId, StringComparison.Ordinal)
+                        || !string.Equals(trial.Architecture, subject.Architecture, StringComparison.Ordinal))
+                    || !decisionsBySubjectAndScenario.TryGetValue(
+                        (subject.ArmId, scenario.Id), out var decision))
+                    return true;
+
+                var measured = trials.Count(static trial => string.Equals(
+                    trial.Measurement, nameof(MeasurementState.Measured), StringComparison.Ordinal));
+                var notApplicable = trials.Count(static trial => string.Equals(
+                    trial.Measurement, nameof(MeasurementState.NotApplicable), StringComparison.Ordinal));
+                var notMeasured = trials.Count(static trial => string.Equals(
+                    trial.Measurement, nameof(MeasurementState.NotMeasured), StringComparison.Ordinal));
+                var successes = trials.Count(static trial =>
+                    string.Equals(trial.Measurement, nameof(MeasurementState.Measured), StringComparison.Ordinal)
+                    && trial.Passed == true);
+                if (measured + notApplicable + notMeasured != trials.Length
+                    || decision.Census.Measured != measured
+                    || decision.Census.NotApplicable != notApplicable
+                    || decision.Census.NotMeasured != notMeasured
+                    || decision.Census.Total != trials.Length
+                    || decision.Reliability.Successes != successes
+                    || decision.Reliability.Total != measured)
+                    return true;
+            }
+        }
+        foreach (var decision in decisions)
+        {
+            if (!scenarios.TryGetValue(decision.ScenarioId, out var scenario)
+                || !string.Equals(scenario.PersonaId, decision.PersonaId, StringComparison.Ordinal)
+                || !subjects.TryGetValue(decision.ArmId, out var subject)
+                || !string.Equals(subject.Architecture, decision.Architecture, StringComparison.Ordinal)
+                || !NearlyEqual(decision.ConfidenceLevel, confidence)
+                || !NearlyEqual(decision.MinimumLowerBound, minimum)
+                || HasInvalidCensus(decision.Census)
+                || decision.Census.Total != live.Workload.Repetitions
+                || HasInvalidReliability(decision.Reliability)
+                || decision.Reliability.Total != decision.Census.Measured)
+                return true;
+            var complete = decision.Census.Measured == decision.Census.Total;
+            var expectedPass = complete && decision.Reliability.Lower is { } lower
+                ? lower >= minimum
+                : (bool?)null;
+            if (decision.Passed != expectedPass) return true;
+        }
+        if (!completedVerdict) return false;
+        if (decisions.Any(static decision => decision.Passed is null)) return true;
+        var expectedTerminal = decisions.All(static decision => decision.Passed == true)
+            ? nameof(LiveEvalTerminalStatus.Passed)
+            : nameof(LiveEvalTerminalStatus.QualityFailed);
+        return !string.Equals(live.TerminalStatus, expectedTerminal, StringComparison.Ordinal);
+    }
+
+    private static bool HasInvalidCensus(VitrineLiveCensusSnapshot census) =>
+        census.Measured < 0 || census.NotApplicable < 0 || census.NotMeasured < 0
+        || census.Total < 0
+        || census.Measured + census.NotApplicable + census.NotMeasured != census.Total;
+
+    private static bool HasInvalidLiveTrialVerdict(VitrineLiveTrialSnapshot trial)
+    {
+        if (!Enum.TryParse<LiveSubjectArchitecture>(trial.Architecture, out var architecture)
+            || !Enum.IsDefined(architecture)) return true;
+        var requiredKeys = architecture == LiveSubjectArchitecture.Agent
+            ? new[]
+            {
+                LiveUseCaseBenchmark.UseCaseQualityCheckKey,
+                LiveUseCaseBenchmark.ResponseObservedCheckKey,
+                LiveUseCaseBenchmark.AgentToolJournalCheckKey,
+            }
+            : new[]
+            {
+                LiveUseCaseBenchmark.UseCaseQualityCheckKey,
+                LiveUseCaseBenchmark.ResponseObservedCheckKey,
+                LiveUseCaseBenchmark.WorkflowTraceCheckKey,
+            };
+        var required = requiredKeys.Select(key => trial.Checks.Where(check =>
+            string.Equals(check.Key, key, StringComparison.Ordinal)).ToArray()).ToArray();
+        if (required.Any(static rows => rows.Length != 1)) return true;
+        var checks = required.Select(static rows => rows[0]).ToArray();
+        foreach (var check in checks)
+        {
+            if (!Enum.TryParse<MeasurementState>(check.Measurement, out var measurement)
+                || !Enum.IsDefined(measurement)) return true;
+            if (measurement == MeasurementState.Measured)
+            {
+                if (check.Passed is null || check.Score is not { } score || !double.IsFinite(score))
+                    return true;
+            }
+            else if (check.Passed is not null || check.Score is not null)
+            {
+                return true;
+            }
+        }
+
+        var fullyMeasured = checks.All(static check => string.Equals(
+            check.Measurement, nameof(MeasurementState.Measured), StringComparison.Ordinal));
+        var expectedMeasurement = fullyMeasured
+            ? nameof(MeasurementState.Measured)
+            : nameof(MeasurementState.NotMeasured);
+        var expectedPass = fullyMeasured ? checks.All(static check => check.Passed == true) : (bool?)null;
+        return !string.Equals(trial.Measurement, expectedMeasurement, StringComparison.Ordinal)
+            || trial.Passed != expectedPass;
+    }
+
+    private static bool HasInvalidReliability(VitrineLiveReliabilitySnapshot reliability)
+    {
+        if (reliability.Successes < 0 || reliability.Total < 0
+            || reliability.Successes > reliability.Total) return true;
+        if (string.Equals(reliability.Measurement, nameof(MeasurementState.NotMeasured), StringComparison.Ordinal))
+            return reliability.Successes != 0 || reliability.Total != 0
+                || reliability.Estimate is not null || reliability.Lower is not null || reliability.Upper is not null;
+        if (!string.Equals(reliability.Measurement, nameof(MeasurementState.Measured), StringComparison.Ordinal)
+            || reliability.Total == 0
+            || reliability.Estimate is not { } estimate
+            || reliability.Lower is not { } lower
+            || reliability.Upper is not { } upper
+            || !double.IsFinite(estimate) || !double.IsFinite(lower) || !double.IsFinite(upper)
+            || estimate is < 0 or > 1 || lower is < 0 or > 1 || upper is < 0 or > 1
+            || lower > estimate || estimate > upper) return true;
+        var expected = WilsonInterval.Compute(reliability.Successes, reliability.Total);
+        return !NearlyEqual(estimate, expected.Estimate)
+            || !NearlyEqual(lower, expected.Lower)
+            || !NearlyEqual(upper, expected.Upper);
+    }
+
+    private static bool NearlyEqual(double left, double right) =>
+        double.IsFinite(left) && double.IsFinite(right) && Math.Abs(left - right) <= 1e-12;
 
     private static bool HasInvalidSafetyShape(
         VitrineLiveEvaluationSnapshot live,
@@ -920,6 +1199,7 @@ public static class VitrineArtifactSerializer
             || artifact.Graph.Edges.Any(static edge => edge is null)
             || artifact.Events.Any(static item => item is null)
             || artifact.Result.Gates.Any(static gate => gate is null
+                || !Enum.IsDefined(gate.Authority)
                 || gate.AgentEval is { Observations: null }
                 || gate.AgentEval is { Observations: { } observations }
                     && observations.Any(static observation => observation is null))

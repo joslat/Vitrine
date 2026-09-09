@@ -287,6 +287,8 @@ public sealed class GraphViewModel : BindableBase
                 VitrineEventDisposition.NotApplicable => GraphNodeState.NotApplicable,
                 VitrineEventDisposition.ExpectedDefectDetected => GraphNodeState.ExpectedDefectDetected,
                 VitrineEventDisposition.SelfTestSucceeded => GraphNodeState.SelfTestSucceeded,
+                VitrineEventDisposition.Neutral when item.Kind == "GateCompleted"
+                    && node.Kind == "evaluation-diagnostic" => GraphNodeState.Warning,
                 _ => node.State,
             };
             if (item.Kind is "LiveCheckCompleted" or "LiveTrialCompleted")

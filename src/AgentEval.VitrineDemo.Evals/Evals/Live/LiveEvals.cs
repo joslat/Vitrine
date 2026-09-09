@@ -17,11 +17,16 @@ public static class LiveEvaluationPlanRunner
 {
     public static Task<LiveEvalResult> RunAsync(
         VitrineEvaluationPlan plan,
+        bool paidExecutionConfirmed,
         LiveEvalOptions? options = null,
         LiveEvalServices? services = null,
         IProgress<LiveEvalProgress>? progress = null,
-        CancellationToken cancellationToken = default) =>
-        LiveEvaluationExecutor.RunAsync(plan, options, services, progress, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        if (!paidExecutionConfirmed)
+            throw new InvalidOperationException("Paid live evaluation requires explicit confirmation before execution.");
+        return LiveEvaluationExecutor.RunAsync(plan, options, services, progress, cancellationToken);
+    }
 }
 
 internal static class LiveEvaluationExecutor
@@ -59,7 +64,7 @@ internal static class LiveEvaluationExecutor
         var started = DateTimeOffset.UtcNow;
         var reporter = new LiveProgressReporter(plan, progress);
         var scenarioDefinitions = Array.AsReadOnly(scenarios.Select(static item => item.ToDefinition()).ToArray());
-        var configuration = BuildConfiguration(options, services, subjects, scenarios);
+        var configuration = BuildConfiguration(plan, options, services, subjects, scenarios);
         var runReferences = new List<LiveEvalRunReference>(subjects.Count * repetitions);
         var trials = new List<LiveTrialEvidence>(subjects.Count * repetitions * scenarios.Count);
         reporter.Report(LiveEvalProgressPhase.SessionStarting,
@@ -118,7 +123,12 @@ internal static class LiveEvaluationExecutor
                         try
                         {
                             observed = await subject.RunAsync(
-                                new LiveSubjectRequest(scenario, repetition, options.SubjectMaxOutputTokens), ct)
+                                new LiveSubjectRequest(
+                                    scenario.Id,
+                                    scenario.PersonaId,
+                                    scenario.Query,
+                                    repetition,
+                                    options.SubjectMaxOutputTokens), ct)
                                 .ConfigureAwait(false)
                                 ?? LiveSubjectObservation.NotMeasured(LiveSubjectStatus.Failed, subject.Architecture);
                         }
@@ -177,14 +187,18 @@ internal static class LiveEvaluationExecutor
                 ? BuildComparisons(runsByArm[subjects[0].ArmId], runsByArm[subjects[1].ArmId],
                     definition, options.PassThreshold)
                 : [];
-            var terminal = Classify(trials);
+            var scenarioAcceptances = BuildScenarioAcceptances(plan, trials);
+            var terminal = Classify(plan, trials, scenarioAcceptances);
             result = new LiveEvalResult(
                 plan, terminal, sessionId, started, DateTimeOffset.UtcNow, workload,
                 options.PassThreshold, scenarioDefinitions, configuration,
                 Array.AsReadOnly(runReferences.ToArray()), Array.AsReadOnly(trials.ToArray()),
                 armSummaries, comparisons,
                 Array.AsReadOnly(trials.Where(static item => item.Failure is not null)
-                    .Select(static item => item.Failure!).ToArray()), paths);
+                    .Select(static item => item.Failure!).ToArray()), paths)
+            {
+                ScenarioAcceptances = scenarioAcceptances,
+            };
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -233,6 +247,11 @@ internal static class LiveEvaluationExecutor
             throw new ArgumentOutOfRangeException(nameof(options.Repetitions), "Repetitions must be between 1 and 100.");
         if (!descriptor.SupportsRepetitions && options.Repetitions is not null and not 1)
             throw new ArgumentException("This plan always runs exactly one repetition.", nameof(options));
+        var effectiveRepetitions = options.Repetitions ?? descriptor.DefaultRepetitions;
+        if (VitrineEvaluationPlans.IsStochastic(descriptor.Plan) &&
+            effectiveRepetitions < VitrineEvaluationPlans.MinimumStochasticRepetitions)
+            throw new ArgumentOutOfRangeException(nameof(options),
+                $"Stochastic plans require at least {VitrineEvaluationPlans.MinimumStochasticRepetitions} repetitions so an all-success 95% Wilson interval can clear the 0.50 reliability floor.");
         if (!descriptor.SupportsScenarioSelection && options.ScenarioIds is { Count: > 0 })
             throw new ArgumentException("This plan does not select persona scenarios.", nameof(options));
         if (options.SubjectMaxOutputTokens is < 1 or > 128_000)
@@ -278,6 +297,7 @@ internal static class LiveEvaluationExecutor
     }
 
     private static LiveEvalConfiguration BuildConfiguration(
+        VitrineEvaluationPlan plan,
         LiveEvalOptions options,
         LiveEvalServices services,
         IReadOnlyList<ILiveEvalSubject> subjects,
@@ -299,7 +319,14 @@ internal static class LiveEvaluationExecutor
                 var model = LiveEvalServices.SafeModelId(subject.ModelId);
                 return new LiveSubjectProvenance(subject.ArmId, subject.Architecture, model,
                     JudgeFingerprint.RelationTo(judge, model));
-            }).ToArray()));
+            }).ToArray()))
+        {
+            Acceptance = VitrineEvaluationPlans.IsStochastic(plan)
+                ? new(LiveTerminalAcceptancePolicy.WilsonLowerBoundPerScenario,
+                    VitrineEvaluationPlans.StochasticConfidenceLevel,
+                    VitrineEvaluationPlans.StochasticMinimumWilsonLowerBound)
+                : new(LiveTerminalAcceptancePolicy.EveryTrialMustPass, null, null),
+        };
     }
 
     private static SubjectIdentity SubjectFor(LiveSubjectArchitecture architecture) => architecture switch
@@ -562,7 +589,44 @@ internal static class LiveEvaluationExecutor
             interval.Estimate, interval.Lower, interval.Upper);
     }
 
-    private static LiveEvalTerminalStatus Classify(IReadOnlyList<LiveTrialEvidence> trials)
+    private static IReadOnlyList<LiveScenarioAcceptanceDecision> BuildScenarioAcceptances(
+        VitrineEvaluationPlan plan,
+        IReadOnlyList<LiveTrialEvidence> trials)
+    {
+        if (!VitrineEvaluationPlans.IsStochastic(plan)) return [];
+        return Array.AsReadOnly(trials
+            .GroupBy(static trial =>
+                (trial.ArmId, trial.Architecture, trial.ScenarioId, trial.PersonaId))
+            .Select(group =>
+            {
+                var measured = group.Where(static trial =>
+                    trial.Measurement == MeasurementState.Measured).ToArray();
+                var census = new LiveObservationCensus(
+                    measured.Length,
+                    group.Count(static trial => trial.Measurement == MeasurementState.NotApplicable),
+                    group.Count(static trial => trial.Measurement == MeasurementState.NotMeasured));
+                var reliability = Reliability(
+                    measured.Count(static trial => trial.Passed == true), measured.Length);
+                bool? passed = census.Measured == group.Count() && reliability.Lower is { } lower
+                    ? lower >= VitrineEvaluationPlans.StochasticMinimumWilsonLowerBound
+                    : null;
+                return new LiveScenarioAcceptanceDecision(
+                    group.Key.ScenarioId,
+                    group.Key.PersonaId,
+                    group.Key.ArmId,
+                    group.Key.Architecture,
+                    census,
+                    reliability,
+                    VitrineEvaluationPlans.StochasticConfidenceLevel,
+                    VitrineEvaluationPlans.StochasticMinimumWilsonLowerBound,
+                    passed);
+            }).ToArray());
+    }
+
+    private static LiveEvalTerminalStatus Classify(
+        VitrineEvaluationPlan plan,
+        IReadOnlyList<LiveTrialEvidence> trials,
+        IReadOnlyList<LiveScenarioAcceptanceDecision> scenarioAcceptances)
     {
         if (trials.Count == 0) return LiveEvalTerminalStatus.InfrastructureError;
         if (trials.Any(static trial => trial.SubjectStatus == LiveSubjectStatus.Cancelled))
@@ -570,6 +634,14 @@ internal static class LiveEvaluationExecutor
         var measured = trials.Count(static trial => trial.Measurement == MeasurementState.Measured);
         if (measured == 0) return LiveEvalTerminalStatus.NotMeasured;
         if (measured != trials.Count) return LiveEvalTerminalStatus.InfrastructureError;
+        if (VitrineEvaluationPlans.IsStochastic(plan))
+        {
+            if (scenarioAcceptances.Count == 0 || scenarioAcceptances.Any(static item => item.Passed is null))
+                return LiveEvalTerminalStatus.InfrastructureError;
+            return scenarioAcceptances.All(static item => item.Passed == true)
+                ? LiveEvalTerminalStatus.Passed
+                : LiveEvalTerminalStatus.QualityFailed;
+        }
         return trials.All(static trial => trial.Passed == true)
             ? LiveEvalTerminalStatus.Passed
             : LiveEvalTerminalStatus.QualityFailed;

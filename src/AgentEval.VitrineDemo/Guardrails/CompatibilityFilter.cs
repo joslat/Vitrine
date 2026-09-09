@@ -7,7 +7,7 @@ using Galaxus.RecommendationAgent.Workflows;
 namespace Galaxus.RecommendationAgent.Guardrails;
 
 /// <summary>
-/// Compatibility against the hardware the customer already owns (§8.1 B-7). Demo 1's third
+/// Compatibility against the hardware the customer already owns. Demo 1's third
 /// mechanical check, and the one it was missing while Demo 2 had it.
 /// </summary>
 /// <remarks>
@@ -20,7 +20,7 @@ namespace Galaxus.RecommendationAgent.Guardrails;
 /// enforced on one route out of five is a rule the demo cannot claim.
 /// </para>
 /// <para>
-/// <b>The rule is Demo 2's, not the one §8.1 B-7 spells out, and the difference is measured.</b>
+/// <b>The implementation intentionally narrows the naive disjoint-set rule, and the difference is measured.</b>
 /// The row's wording is "drop any presented accessory whose <c>compat:</c> tags are disjoint from
 /// every <c>compat:</c> tag the customer owns". That naive rule was tried in Demo 2 and was
 /// recorded to fire on a lens hood and a camera strap (<c>compat:camera-body</c>) for a customer

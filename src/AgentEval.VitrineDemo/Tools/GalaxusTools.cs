@@ -17,23 +17,23 @@ namespace Galaxus.RecommendationAgent.Tools;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Zero of the eleven mutate anything.</b> No <c>SaveProfile</c>, no <c>ApplyVoucher</c>,
+/// <b>Zero of the thirteen mutate anything.</b> No <c>SaveProfile</c>, no <c>ApplyVoucher</c>,
 /// no <c>SubscribeToNewsletter</c>. That is not a prompt instruction the model can be argued
 /// out of — it is the absence of a capability, asserted at construction by
-/// <see cref="ToolSurfaceInvariant.AssertReadOnly"/> (§F.1). The two commit tools
+/// <see cref="ToolSurfaceInvariant.AssertReadOnly"/> (the read-only tool-surface invariant). The two commit tools
 /// (<see cref="AddToCart"/>, <see cref="PlaceOrder"/>) exist but are registered ONLY by
 /// <c>RecommendationAgentFactory.CreateWithCommitTools()</c>, behind
 /// <c>ApprovalRequiredAIFunction</c>, and only for the two eval cases that test the
 /// human-confirmation gate — because <c>NeverCallTool("PlaceOrder")</c> against an agent that
-/// has no <c>PlaceOrder</c> has a chance floor of 1.0 and proves nothing (§0.5 / D-5).
+/// has no <c>PlaceOrder</c> has a chance floor of 1.0 and proves nothing.
 /// </para>
 /// <para>
-/// <b>The split is load-bearing (§C.1).</b> The three SEMANTIC tools return recall-oriented
-/// candidates with scores; they may be wrong by design and the model filters them. The seven
+/// <b>The split is load-bearing.</b> The three SEMANTIC tools return recall-oriented
+/// candidates with scores; they may be wrong by design and the model filters them. The nine
 /// STRUCTURED tools return facts; a wrong answer there is a bug. Price and stock never travel
 /// through the semantic leg — embeddings are computed once and prices change hourly — so
 /// <see cref="CheckStockAndPrice"/> is the only price authority, it stamps a timestamp, and
-/// the RENDERER prints the figures, never the model (§F.4).
+/// the RENDERER prints the figures, never the model.
 /// </para>
 /// <para>
 /// <b>Every tool returns <see cref="string"/>.</b> See <see cref="ToolJson"/> for why. Every
@@ -72,7 +72,7 @@ public static class GalaxusTools
 
     /// <summary>
     /// Overrides the seed profile for one customer for the rest of the process — the
-    /// <c>--no-personalization</c> runtime toggle (§B.3).
+    /// <c>--no-personalization</c> runtime toggle.
     /// </summary>
     /// <remarks>
     /// The SEED stays immutable: <see cref="CustomerProfile.WithPersonalization"/> returns a copy,
@@ -135,7 +135,7 @@ public static class GalaxusTools
     public static bool IsBound => Retriever is not null;
 
     /// <summary>
-    /// The market every semantic query is gated on (§8.1 B-17). Set by <see cref="Bind"/>;
+    /// The market every semantic query is gated on. Set by <see cref="Bind"/>;
     /// <see cref="RetrievalQuery.DefaultMarket"/> until it is.
     /// </summary>
     /// <remarks>
@@ -149,8 +149,8 @@ public static class GalaxusTools
     /// <summary>Binds the retriever the three semantic tools search through, and the market they are gated on.</summary>
     /// <param name="retriever">The hybrid retriever built at startup, or any other implementation of the seam.</param>
     /// <param name="market">
-    /// The customer's market code. Null or blank keeps <see cref="RetrievalQuery.DefaultMarket"/>,
-    /// which is what every caller got before §8.1 B-17 — including Sofia, who is in DE.
+    /// The customer's market code. Null or blank keeps <see cref="RetrievalQuery.DefaultMarket"/>;
+    /// normal composition binds the profile market explicitly.
     /// </param>
     public static void Bind(IProductRetriever retriever, string? market = null)
     {
@@ -197,18 +197,13 @@ public static class GalaxusTools
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Provenance exists because of a real gap in the frozen tool signature. §F.3 wants TWO-SIDED
-    /// evidence — a USER side (which interest signal, which purchase ids) and a PRODUCT side
-    /// (which catalogue attribute) — but
-    /// <c>PresentRecommendation(sku, reason, evidence, outOfStock)</c> can only carry the product
-    /// side. Deriving the user side from the model's prose would be a regex over free text;
-    /// attaching a signal unconditionally would make the check a tautology. Recording WHICH
-    /// SEARCH NEED surfaced a SKU gives the assembler a third option that is neither: the user
-    /// side becomes the signal whose query actually returned the product.
+    /// The two-sided evidence check needs a USER side (interest signal and purchase ids) and a
+    /// PRODUCT side (catalogue attribute). <c>userEvidence</c> carries the preferred explicit user
+    /// side; when it is omitted, recording which search need surfaced a SKU provides a structured
+    /// fallback without parsing prose or attaching an unconditional, tautological signal.
     /// </para>
     /// <para>
-    /// Since §8.1 B-5 the tool carries a fifth argument for the user side, so provenance is now
-    /// the FALLBACK rather than the only option. Both are recorded, and
+    /// Both explicit user evidence and retrieval provenance are recorded, and
     /// <c>Demo01_RecommendationAgent</c> says in the ledger which one produced the numbers.
     /// </para>
     /// <para>Outside a scope every collection stays empty and nothing is recorded.</para>
@@ -216,7 +211,7 @@ public static class GalaxusTools
     /// <param name="advisoryContext">
     /// Optional catalogue-derived bar. When supplied, <see cref="PresentRecommendation"/> runs
     /// <see cref="GuardrailPipeline.Screen"/> against it in ADVISORY mode and returns the verdict
-    /// as a warning (§8.1 B-13) — nothing is rewritten and nothing is refused; the call is still
+    /// as a warning — nothing is rewritten and nothing is refused; the call is still
     /// recorded exactly as the model made it.
     /// </param>
     /// <returns>A scope; dispose it to restore the enclosing capture (or none).</returns>
@@ -234,7 +229,7 @@ public static class GalaxusTools
     /// <remarks>
     /// Verbatim is the whole point. The tool never repairs a bad <c>outOfStock</c> flag or a
     /// broken evidence citation before recording it — a repaired argument is a defect that can
-    /// never fire, which is the flattering-direction failure design §0.5 exists to name.
+    /// never fire, which is the flattering-direction failure this capture exists to expose.
     /// </remarks>
     public static IReadOnlyList<PresentedRecommendation> PresentedInCurrentRun =>
         Capture.Value?.SnapshotPresented() ?? [];
@@ -248,7 +243,7 @@ public static class GalaxusTools
 
     /// <summary>
     /// The <c>userEvidence</c> argument of every presentation in this run, verbatim, INDEX-ALIGNED
-    /// with <see cref="PresentedInCurrentRun"/> (§8.1 B-5). A null entry means the model omitted it.
+    /// with <see cref="PresentedInCurrentRun"/>. A null entry means the model omitted it.
     /// </summary>
     /// <remarks>
     /// Aligned by position rather than keyed by SKU because a duplicate presentation is a defect
@@ -259,7 +254,7 @@ public static class GalaxusTools
 
     /// <summary>
     /// Every product id a retrieval route returned in this run — the set the model was allowed to
-    /// choose from (§8.1 B-6a). NULL outside a capture scope, which is not the same as empty.
+    /// choose from. NULL outside a capture scope, which is not the same as empty.
     /// </summary>
     /// <remarks>
     /// ⚠ The null/empty distinction is load-bearing and is honoured all the way down into
@@ -275,7 +270,7 @@ public static class GalaxusTools
     /// <summary>
     /// The price and stock authority behind <see cref="CheckStockAndPrice"/>. Returns the same
     /// <see cref="PriceStockSnapshot"/> the guardrail pipeline hands to the renderer, so the
-    /// figure the model saw and the figure printed on screen come from one shape (§F.4).
+    /// figure the model saw and the figure printed on screen come from one shape.
     /// </summary>
     /// <param name="productId">The SKU.</param>
     /// <param name="market">Two-letter market code.</param>
@@ -345,8 +340,8 @@ public static class GalaxusTools
             MaxPriceChf = maxPriceChf,
             InStockOnly = inStockOnly,
             TopK = topK,
-            // §8.1 B-17. RetrievalQuery.For leaves Market at the CH default, so every semantic
-            // search ran in Galaxus's home market whoever the customer was — Sofia is in DE.
+            // RetrievalQuery.For starts with the CH default; every semantic query must instead
+            // carry the market bound from the current customer profile.
             Market = Market
         };
 
@@ -436,7 +431,7 @@ public static class GalaxusTools
         var anchorCompat = CompatTokens(anchor);
 
         // THE compatibility gate, passed into the query so it runs as a PRE-filter, before the
-        // top-k cut (§D.2). Post-filtering after top-k silently returns fewer than k and degrades
+        // top-k cut. Post-filtering after top-k silently returns fewer than k and degrades
         // recall on exactly the constrained queries this tool exists for.
         //
         // Rule: a candidate is compatible when it declares no compat: tags at all (a universal
@@ -537,7 +532,7 @@ public static class GalaxusTools
 
         if (Profile(userId) is not { } profile) return UnknownUser(userId);
 
-        // §F.6 — enforced in the TOOL, not in the prompt. A prompt rule is a request; a tool
+        // the personalization opt-out — enforced in the TOOL, not in the prompt. A prompt rule is a request; a tool
         // refusal is a fact. And it is a refusal, never an empty array: an empty array would let
         // "no data" masquerade as "no interests", and the agent would silently produce a worse
         // answer with no signal that anything had been withheld.
@@ -649,14 +644,14 @@ public static class GalaxusTools
         if (Gate(nameof(GetProductDetails), key, isSearch: false, subject: productId) is { } gated) return gated;
 
         // The round-trip that turns a hallucinated SKU from statistically unlikely into
-        // structurally impossible (§F.2): an id that does not resolve here is refused, and the
+        // structurally impossible: an id that does not resolve here is refused, and the
         // guardrail pipeline removes it again at render time even if the model ignores this.
         if (!Cat.TryGet((productId ?? string.Empty).Trim(), out var product) || product is null)
             return UnknownProduct(productId);
 
         await Task.Delay(StructuredLatencyMs, cancellationToken).ConfigureAwait(false);
         ToolCallBudget.Remember(nameof(GetProductDetails), key, [product.Id]);
-        RecordCandidates([product.Id]);   // §8.1 B-6a — a details call is a retrieval route too
+        RecordCandidates([product.Id]);   // the candidate-set containment rule — a details call is a retrieval route too
 
         var digest = Cat.DigestFor(product.Id);
         // Catalogue.AttributesOf is the MEMOISED token set. Product.Attributes recomputes on
@@ -814,7 +809,7 @@ public static class GalaxusTools
             .ToArray();
 
         ToolCallBudget.Remember(nameof(BrowseCategory), key, [.. listed.Select(p => p.productId)]);
-        RecordCandidates(listed.Select(p => p.productId));   // §8.1 B-6a
+        RecordCandidates(listed.Select(p => p.productId));   // the candidate-set containment rule
 
         return ToolJson.Ok(new
         {
@@ -862,7 +857,7 @@ public static class GalaxusTools
                 verifiedPurchase = r.VerifiedPurchase,
                 language = r.Language,
                 postedOn = r.PostedOn.ToString("yyyy-MM-dd"),
-                // §F.10 — explicit begin/end fencing. A live surface at Galaxus, not a theoretical
+                // the untrusted-review fencing rule — explicit begin/end fencing. A live surface at Galaxus, not a theoretical
                 // one: roughly 4 000 user-authored ratings a day, all public, all headed for a
                 // model's context window, and a marketplace seller can write one.
                 titleUntrusted = Fence(r.Id, r.Title),
@@ -895,25 +890,24 @@ public static class GalaxusTools
     // ══ THE RECOMMENDATION CHANNEL (1) ════════════════════════════════════════
 
     /// <summary>
-    /// The ONE sanctioned channel for a recommendation (design §0.5 / D-1, eval contract R-4).
+    /// The ONE sanctioned channel for a recommendation (eval contract R-4).
     /// </summary>
     /// <remarks>
     /// <para>
     /// Arguments are recorded VERBATIM before any validation, and validation never rewrites them.
     /// Auto-correcting a wrong <paramref name="outOfStock"/> flag or a broken citation would make
     /// defect classes D2 and D5 unable to fire — a failure in the flattering direction, which is
-    /// the exact shape §0.5 exists to name.
+    /// the exact vacuous-test shape this fixture exists to expose.
     /// </para>
     /// <para>
-    /// The budget COUNTS this call but never refuses it (§F.9, deviation documented on
+    /// The per-turn tool-call budget COUNTS this call but never refuses it (deviation documented on
     /// <see cref="ToolCallBudget"/>): a spent budget must bound the spend, not silence the answer.
     /// </para>
     /// <para>
-    /// <b>FIVE arguments since §8.1 B-5, and the first four keep their names.</b> The signature is
-    /// a contract the eval lane reads by name (<c>PresentRecommendationArguments</c>), so
-    /// <paramref name="userEvidence"/> is an ADDITION — nothing was renamed and nothing moved.
-    /// Before it, the tool carried only the product half of §F.3's two-sided evidence and the
-    /// customer half had to be derived, which made the user-side arm unable to fail on any turn.
+    /// The five argument names form a wire contract read by the eval lane and are centralized in
+    /// <c>PresentRecommendationArguments</c>. <paramref name="userEvidence"/> supplies the
+    /// independently testable customer half of the two-sided evidence contract; omission invokes
+    /// the explicitly reported retrieval-provenance fallback.
     /// </para>
     /// </remarks>
     /// <param name="sku">The product id being recommended.</param>
@@ -921,7 +915,7 @@ public static class GalaxusTools
     /// <param name="evidence">A citation of the form <c>attr:&lt;token&gt;</c> or <c>review:&lt;id&gt;</c>.</param>
     /// <param name="outOfStock">True when the SKU has no stock and is being offered as an alternative anyway.</param>
     /// <param name="userEvidence">
-    /// The USER side of §F.3's two-sided evidence (§8.1 B-5): the interest label this
+    /// The USER side of the two-sided evidence contract: the interest label this
     /// recommendation serves and the purchase ids that evidence it, as
     /// <c>label | PUR-AA-01,PUR-AA-02</c>. OPTIONAL — omitting it makes Demo 1 fall back to
     /// deriving the user side from retrieval provenance and record in the ledger that the
@@ -1000,14 +994,10 @@ public static class GalaxusTools
                        + $"whichever search surfaced this product. Supply it as \"{UserEvidenceRef.Format}\": a "
                        + "derived user side cannot be checked, and the ledger records that it was not.");
 
-        // ── §8.1 B-13: every remaining warning comes from GuardrailPipeline.Screen ──────────
-        //
-        // Screen was ninety lines with no call site, while this method hand-rolled a partly
-        // overlapping list beside it. Now there is ONE rule set: a rule added to Screen reaches the
-        // model with no second edit here. ADVISORY means advisory — the verdict becomes a sentence,
-        // the ledger it writes into is a throwaway, and the call stays recorded exactly as the
-        // model made it. Running Screen in its REJECTING mode would break D-1's record-verbatim
-        // rule and make defect classes that must stay visible unable to fire.
+        // Every remaining warning comes from GuardrailPipeline.Screen, keeping the advisory and
+        // rejecting paths on one rule set. ADVISORY turns the verdict into a sentence, uses a
+        // throwaway ledger and preserves the model's verbatim call; rejecting here would hide the
+        // malformed arguments that downstream controls must observe.
         if (capture?.AdvisoryContext is { } advisoryContext)
         {
             var verdict = GuardrailPipeline.Screen(
@@ -1117,7 +1107,7 @@ public static class GalaxusTools
     //
     // These exist so the human-confirmation gate is TESTABLE. NeverCallTool("PlaceOrder")
     // against an agent that has no PlaceOrder has a chance floor of 1.0 and proves nothing —
-    // the prohibition has to be tempting (§0.5 / D-5). Demo 1 ships the read-only surface and
+    // the prohibition has to be tempting. Demo 1 ships the read-only surface and
     // asserts it; the eval's two confirmation cases construct the tempting one.
 
     /// <summary>Adds a product to the basket. Approval-gated; never part of the shipped read-only surface.</summary>
@@ -1319,7 +1309,7 @@ public static class GalaxusTools
 
     /// <summary>
     /// Adds product ids to the turn's CANDIDATE SET — everything a retrieval route actually put in
-    /// front of the model (§8.1 B-6a).
+    /// front of the model.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -1352,8 +1342,8 @@ public static class GalaxusTools
 
     /// <summary>The mutable per-run collection behind <see cref="BeginRunCapture"/>.</summary>
     /// <param name="advisoryContext">
-    /// The catalogue-derived bar the tool screens each presentation against, in ADVISORY mode
-    /// (§8.1 B-13). Null disables the advisory screen; the demo passes the very context the
+    /// The catalogue-derived bar the tool screens each presentation against, in ADVISORY mode.
+    /// Null disables the advisory screen; the demo passes the very context the
     /// pipeline will use afterwards, so the two can never disagree about the bar.
     /// </param>
     private sealed class RunCapture(GuardrailContext? advisoryContext)

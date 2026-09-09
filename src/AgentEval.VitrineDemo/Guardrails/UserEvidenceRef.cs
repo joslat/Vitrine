@@ -4,8 +4,8 @@
 namespace Galaxus.RecommendationAgent.Guardrails;
 
 /// <summary>
-/// The USER side of §F.3's two-sided evidence, as the model writes it — the fifth argument of
-/// <c>PresentRecommendation</c> (§8.1 B-5).
+/// The USER side of the two-sided evidence contract, as the model writes it — the fifth argument of
+/// <c>PresentRecommendation</c>.
 /// </summary>
 /// <remarks>
 /// <para>

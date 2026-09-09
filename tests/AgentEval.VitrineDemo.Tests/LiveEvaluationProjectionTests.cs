@@ -2,10 +2,12 @@
 
 using AgentEval.Evals.Meta;
 using AgentEval.Output;
+using AgentEval.RedTeam.Reporting;
 using AgentEval.VitrineDemo.App.Artifacts;
 using AgentEval.VitrineDemo.App.Models;
 using AgentEval.VitrineDemo.App.Runtime;
 using AgentEval.VitrineDemo.App.ViewModels;
+using AgentEval.VitrineDemo.Evals;
 using AgentEval.VitrineDemo.Evals.Live;
 using Galaxus.RecommendationAgent.Catalog;
 
@@ -203,6 +205,10 @@ public sealed class LiveEvaluationProjectionTests
         Assert.True(VitrineArtifactSerializer.Verify(artifact));
         Assert.Equal(result.Persistence.OutcomePath, live.Persistence.OutcomePath);
         Assert.Equal(result.PassThreshold, live.PassThreshold);
+        Assert.Equal(nameof(LiveTerminalAcceptancePolicy.EveryTrialMustPass),
+            live.Configuration?.Acceptance?.Policy);
+        Assert.NotNull(live.ScenarioAcceptances);
+        Assert.Empty(live.ScenarioAcceptances);
         Assert.Equal(result.Trials[0].ResponsePreview, live.Trials[0].ResponsePreview);
         Assert.Equal(result.Trials[0].Criteria[0].Explanation,
             live.Trials[0].Criteria[0].Explanation);
@@ -230,6 +236,8 @@ public sealed class LiveEvaluationProjectionTests
             ((IList<string>)live.Trials[1].Workflow!.DegradationKinds).Clear());
         Assert.Contains("\"liveEvaluation\"", json, StringComparison.Ordinal);
         Assert.Contains("\"passThreshold\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"acceptance\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"scenarioAcceptances\"", json, StringComparison.Ordinal);
         Assert.Contains("\"degradationKinds\"", json, StringComparison.Ordinal);
         Assert.Contains("\"explanation\"", json, StringComparison.Ordinal);
         Assert.Contains("\"minimumAttainableP\"", json, StringComparison.Ordinal);
@@ -237,6 +245,9 @@ public sealed class LiveEvaluationProjectionTests
         Assert.Contains("\"repCollapse\"", json, StringComparison.Ordinal);
         Assert.Contains("Paid live use-case evaluation", html, StringComparison.Ordinal);
         Assert.Contains("Quality pass bar (not a chance floor)", html, StringComparison.Ordinal);
+        Assert.Contains("Terminal acceptance policy", html, StringComparison.Ordinal);
+        Assert.Contains(nameof(LiveTerminalAcceptancePolicy.EveryTrialMustPass), html,
+            StringComparison.Ordinal);
         Assert.Contains("Bounded fallback degradations", html, StringComparison.Ordinal);
         Assert.Contains("InterestMapper:fallback", html, StringComparison.Ordinal);
         Assert.Contains("Judge explanation", html, StringComparison.Ordinal);
@@ -252,6 +263,8 @@ public sealed class LiveEvaluationProjectionTests
         Assert.Contains("LIVE EVALUATION OUTCOME", title, StringComparison.Ordinal);
         Assert.Contains("Quality pass bar: 0.750", inspector, StringComparison.Ordinal);
         Assert.Contains("NOT a null/chance floor", inspector, StringComparison.Ordinal);
+        Assert.Contains("Terminal acceptance: EveryTrialMustPass", inspector,
+            StringComparison.Ordinal);
         Assert.Contains("bounded fallback degradations 2", inspector, StringComparison.Ordinal);
         Assert.Contains("judge explanation The response connects", inspector, StringComparison.Ordinal);
         Assert.Contains("trace-complete · NotMeasured · met NOT MEASURED · judge explanation NOT MEASURED",
@@ -269,6 +282,8 @@ public sealed class LiveEvaluationProjectionTests
             StringComparison.Ordinal);
         Assert.Equal(result.Trials[0].ResponsePreview, replayBoard.LiveTrials[0].ResponsePreview);
         Assert.Contains("QUALITY PASS BAR 0.750", replayBoard.LiveQualityPassBar, StringComparison.Ordinal);
+        Assert.Contains("terminal acceptance every trial must pass",
+            replayBoard.LiveConfigurationSummary, StringComparison.Ordinal);
         Assert.Contains("bounded internal fallback degradations 2", replayBoard.LiveTrials[1].Workflow,
             StringComparison.Ordinal);
         Assert.Contains("judge explanation NOT MEASURED", replayBoard.LiveTrials[1].Criteria,
@@ -284,6 +299,275 @@ public sealed class LiveEvaluationProjectionTests
             },
         };
         Assert.Throws<InvalidDataException>(() => VitrineArtifactSerializer.Serialize(invalidThreshold));
+        var missingAcceptance = artifact with
+        {
+            Result = artifact.Result with
+            {
+                LiveEvaluation = live with
+                {
+                    Configuration = live.Configuration! with { Acceptance = null },
+                },
+            },
+        };
+        Assert.Throws<InvalidDataException>(() => VitrineArtifactSerializer.Serialize(missingAcceptance));
+        var missingDecisions = artifact with
+        {
+            Result = artifact.Result with
+            {
+                LiveEvaluation = live with { ScenarioAcceptances = null },
+            },
+        };
+        Assert.Throws<InvalidDataException>(() => VitrineArtifactSerializer.Serialize(missingDecisions));
+    }
+
+    [Fact]
+    public void StochasticScenarioAcceptanceRoundTripsAndRendersAsTheTerminalDecision()
+    {
+        var result = SyntheticStochasticResult();
+        var artifact = VitrineArtifactSerializer.Create(new VitrineRunOutcome(
+            Guid.NewGuid(),
+            new(
+                VitrineRunMode.Evals,
+                Personas.NadiaUserId,
+                EvaluationPlan: result.Plan,
+                LiveScenarioId: "nadia-cross-category",
+                EvaluationRepetitions: 4,
+                PaidEvaluationConfirmed: true),
+            VitrineGraphFactory.ForRunningLiveEvaluation(result.Plan),
+            [],
+            LiveEvaluation: result));
+
+        var json = VitrineArtifactSerializer.Serialize(artifact);
+        var roundTripped = VitrineArtifactSerializer.Deserialize(json);
+        var live = Assert.IsType<VitrineLiveEvaluationSnapshot>(roundTripped.Result.LiveEvaluation);
+        var decision = Assert.Single(Assert.IsAssignableFrom<
+            IReadOnlyList<VitrineLiveScenarioAcceptanceSnapshot>>(live.ScenarioAcceptances));
+        var html = VitrineHtmlReport.Render(roundTripped);
+        var (_, inspector) = VitrineOutcomeInspector.Describe(roundTripped);
+        var board = new EvaluationBoardViewModel();
+        board.LoadLiveSnapshot(live);
+
+        Assert.Equal("nadia-cross-category", decision.ScenarioId);
+        Assert.True(decision.Passed);
+        Assert.Equal((4, 4), (decision.Reliability.Successes, decision.Reliability.Total));
+        Assert.Contains("\"scenarioAcceptances\"", json, StringComparison.Ordinal);
+        Assert.Contains("WilsonLowerBoundPerScenario", json, StringComparison.Ordinal);
+        Assert.Contains("Terminal per-scenario Wilson decisions", html, StringComparison.Ordinal);
+        Assert.Contains("nadia-cross-category", html, StringComparison.Ordinal);
+        Assert.Contains("lower bound &gt;= 0.500", html, StringComparison.Ordinal);
+        Assert.Contains("three required checks passed", html, StringComparison.Ordinal);
+        Assert.True(
+            html.IndexOf("Terminal per-scenario Wilson decisions", StringComparison.Ordinal)
+            < html.IndexOf("Per-check census and Wilson reliability", StringComparison.Ordinal));
+        Assert.Contains("Terminal acceptance: WilsonLowerBoundPerScenario", inspector,
+            StringComparison.Ordinal);
+        Assert.Contains("Terminal per-scenario Wilson decisions", inspector,
+            StringComparison.Ordinal);
+        Assert.Contains("whole-trial success means use-case quality", inspector,
+            StringComparison.Ordinal);
+        Assert.Contains("minimum lower bound 0.500", inspector, StringComparison.Ordinal);
+        var boardDecision = Assert.Single(board.LiveScenarioAcceptances);
+        Assert.Equal("PASS", boardDecision.Outcome);
+        Assert.Contains("Wilson [0.510", boardDecision.WilsonInterval, StringComparison.Ordinal);
+        Assert.Contains("lower bound >= 0.500", boardDecision.Policy, StringComparison.Ordinal);
+
+        var forged = artifact with
+        {
+            Result = artifact.Result with
+            {
+                LiveEvaluation = live with
+                {
+                    ScenarioAcceptances = [decision with { Passed = false }],
+                },
+            },
+        };
+        Assert.Throws<InvalidDataException>(() => VitrineArtifactSerializer.Serialize(forged));
+        var nonCanonicalPolicy = artifact with
+        {
+            Result = artifact.Result with
+            {
+                LiveEvaluation = live with
+                {
+                    Configuration = live.Configuration! with
+                    {
+                        Acceptance = live.Configuration.Acceptance! with
+                        {
+                            MinimumLowerBound = 0.49,
+                        },
+                    },
+                },
+            },
+        };
+        Assert.Throws<InvalidDataException>(() => VitrineArtifactSerializer.Serialize(nonCanonicalPolicy));
+        var forgedWilson = artifact with
+        {
+            Result = artifact.Result with
+            {
+                LiveEvaluation = live with
+                {
+                    ScenarioAcceptances =
+                    [
+                        decision with
+                        {
+                            Reliability = decision.Reliability with
+                            {
+                                Lower = decision.Reliability.Lower!.Value - 0.01,
+                            },
+                        },
+                    ],
+                },
+            },
+        };
+        Assert.Throws<InvalidDataException>(() => VitrineArtifactSerializer.Serialize(forgedWilson));
+
+        var threeOfFour = WilsonInterval.Compute(3, 4);
+        var trialContradiction = artifact with
+        {
+            Result = artifact.Result with
+            {
+                LiveEvaluation = live with
+                {
+                    TerminalStatus = nameof(LiveEvalTerminalStatus.QualityFailed),
+                    ExitCode = EvaluationExitCodes.GateFailed,
+                    ScenarioAcceptances =
+                    [
+                        decision with
+                        {
+                            Reliability = decision.Reliability with
+                            {
+                                Successes = 3,
+                                Estimate = threeOfFour.Estimate,
+                                Lower = threeOfFour.Lower,
+                                Upper = threeOfFour.Upper,
+                            },
+                            Passed = false,
+                        },
+                    ],
+                },
+            },
+        };
+        Assert.Throws<InvalidDataException>(() =>
+            VitrineArtifactSerializer.Serialize(trialContradiction));
+
+        var forgedWholeTrial = artifact with
+        {
+            Result = artifact.Result with
+            {
+                LiveEvaluation = live with
+                {
+                    TerminalStatus = nameof(LiveEvalTerminalStatus.QualityFailed),
+                    ExitCode = EvaluationExitCodes.GateFailed,
+                    Trials = [.. live.Trials.Take(3), live.Trials[3] with { Passed = false }],
+                    ScenarioAcceptances =
+                    [
+                        decision with
+                        {
+                            Reliability = decision.Reliability with
+                            {
+                                Successes = 3,
+                                Estimate = threeOfFour.Estimate,
+                                Lower = threeOfFour.Lower,
+                                Upper = threeOfFour.Upper,
+                            },
+                            Passed = false,
+                        },
+                    ],
+                },
+            },
+        };
+        Assert.Throws<InvalidDataException>(() =>
+            VitrineArtifactSerializer.Serialize(forgedWholeTrial));
+
+        var duplicateRepetition = artifact with
+        {
+            Result = artifact.Result with
+            {
+                LiveEvaluation = live with
+                {
+                    Trials =
+                    [
+                        live.Trials[0],
+                        live.Trials[1] with { Repetition = 1 },
+                        live.Trials[2],
+                        live.Trials[3],
+                    ],
+                },
+            },
+        };
+        Assert.Throws<InvalidDataException>(() =>
+            VitrineArtifactSerializer.Serialize(duplicateRepetition));
+
+        var threeOfThree = WilsonInterval.Compute(3, 3);
+        var undersampled = artifact with
+        {
+            Result = artifact.Result with
+            {
+                LiveEvaluation = live with
+                {
+                    TerminalStatus = nameof(LiveEvalTerminalStatus.QualityFailed),
+                    ExitCode = EvaluationExitCodes.GateFailed,
+                    Workload = live.Workload with
+                    {
+                        Repetitions = 3,
+                        PlannedSubjectCalls = 3,
+                        PlannedJudgeEvaluations = 3,
+                    },
+                    Runs = live.Runs.Take(3).ToArray(),
+                    Trials = live.Trials.Take(3).ToArray(),
+                    ScenarioAcceptances =
+                    [
+                        decision with
+                        {
+                            Census = new(3, 0, 0, 3),
+                            Reliability = new(
+                                nameof(MeasurementState.Measured),
+                                3,
+                                3,
+                                threeOfThree.Estimate,
+                                threeOfThree.Lower,
+                                threeOfThree.Upper),
+                            Passed = false,
+                        },
+                    ],
+                },
+            },
+        };
+        Assert.Throws<InvalidDataException>(() => VitrineArtifactSerializer.Serialize(undersampled));
+    }
+
+    [Fact]
+    public void InterruptedStochasticArtifactRetainsPartialTrialsWithoutInventingAcceptance()
+    {
+        var complete = SyntheticStochasticResult();
+        var partial = complete with
+        {
+            TerminalStatus = LiveEvalTerminalStatus.Cancelled,
+            Runs = complete.Runs.Take(1).ToArray(),
+            Trials = complete.Trials.Take(1).ToArray(),
+            Arms = [],
+            ScenarioAcceptances = [],
+            Failures = [new(LiveEvalFailureCode.Cancelled, "cancelled")],
+        };
+        var artifact = VitrineArtifactSerializer.Create(new VitrineRunOutcome(
+            Guid.NewGuid(),
+            new(
+                VitrineRunMode.Evals,
+                Personas.NadiaUserId,
+                EvaluationPlan: partial.Plan,
+                LiveScenarioId: "nadia-cross-category",
+                EvaluationRepetitions: 4,
+                PaidEvaluationConfirmed: true),
+            VitrineGraphFactory.ForRunningLiveEvaluation(partial.Plan),
+            [],
+            LiveEvaluation: partial));
+
+        var restored = VitrineArtifactSerializer.Deserialize(
+            VitrineArtifactSerializer.Serialize(artifact));
+        var live = Assert.IsType<VitrineLiveEvaluationSnapshot>(restored.Result.LiveEvaluation);
+        Assert.Equal(nameof(LiveEvalTerminalStatus.Cancelled), live.TerminalStatus);
+        Assert.Single(live.Trials);
+        Assert.Empty(Assert.IsAssignableFrom<
+            IReadOnlyList<VitrineLiveScenarioAcceptanceSnapshot>>(live.ScenarioAcceptances));
     }
 
     [Fact]
@@ -354,7 +638,13 @@ public sealed class LiveEvaluationProjectionTests
             agentResponse,
             new(true, ["SearchProducts"], 1, 1, 0, 0, 0, [], 0),
             null,
-            [new(key, name, MeasurementState.Measured, 0.9, true)],
+            [
+                new(key, name, MeasurementState.Measured, 0.9, true),
+                new(LiveUseCaseBenchmark.ResponseObservedCheckKey, "Response observed",
+                    MeasurementState.Measured, 1, true),
+                new(LiveUseCaseBenchmark.AgentToolJournalCheckKey, "Agent tool journal",
+                    MeasurementState.Measured, 1, true),
+            ],
             [new("connects-evidence", MeasurementState.Measured, true,
                 agentCriterionExplanation)],
             agentUsage,
@@ -382,7 +672,13 @@ public sealed class LiveEvaluationProjectionTests
                 0,
                 2,
                 ["InterestMapper:fallback", "CoverageReviewer:model-failure"]),
-            [new(key, name, MeasurementState.Measured, 0.6, false)],
+            [
+                new(key, name, MeasurementState.Measured, 0.6, false),
+                new(LiveUseCaseBenchmark.ResponseObservedCheckKey, "Response observed",
+                    MeasurementState.Measured, 1, true),
+                new(LiveUseCaseBenchmark.WorkflowTraceCheckKey, "Workflow trace",
+                    MeasurementState.Measured, 1, true),
+            ],
             [
                 new("connects-evidence", MeasurementState.Measured, false,
                     "The response did not connect the authored evidence to the use case."),
@@ -411,11 +707,14 @@ public sealed class LiveEvaluationProjectionTests
             new(1, 2, 1, 2, 2),
             0.75,
             [LiveUseCaseScenarios.Require("nadia-cross-category").ToDefinition()],
-            new("vitrine-live-use-cases", "1", "judge", "prompt", "rubric", 512, 256, 640,
+            new LiveEvalConfiguration("vitrine-live-use-cases", "1", "judge", "prompt", "rubric", 512, 256, 640,
             [
                 new("robin-agent-live", LiveSubjectArchitecture.Agent, "agent-model", JudgeSubjectRelation.DifferentModel),
                 new("discovery-workflow-live", LiveSubjectArchitecture.Workflow, "workflow-model", JudgeSubjectRelation.DifferentModel),
-            ]),
+            ])
+            {
+                Acceptance = new(LiveTerminalAcceptancePolicy.EveryTrialMustPass, null, null),
+            },
             [
                 new("agent-run", "robin-agent-live", 1, "runs/agent-run"),
                 new("workflow-run", "discovery-workflow-live", 1, "runs/workflow-run"),
@@ -430,5 +729,67 @@ public sealed class LiveEvaluationProjectionTests
                 "C:\\safe\\.agenteval\\live\\sessions\\synthetic",
                 "C:\\safe\\.agenteval\\live\\sessions\\synthetic\\outcome.json",
                 "C:\\safe\\.agenteval\\live\\sessions\\index.json"));
+    }
+
+    private static LiveEvalResult SyntheticStochasticResult()
+    {
+        var baseline = SyntheticResult();
+        var trial = baseline.Trials[0];
+        var trials = Enumerable.Range(1, 4)
+            .Select(repetition => trial with { Repetition = repetition })
+            .ToArray();
+        var interval = WilsonInterval.Compute(4, 4);
+        var reliability = new LiveReliability(
+            MeasurementState.Measured, 4, 4,
+            interval.Estimate, interval.Lower, interval.Upper);
+        var census = new LiveObservationCensus(4, 0, 0);
+        return baseline with
+        {
+            Plan = VitrineEvaluationPlan.LiveEval04StochasticAgent,
+            TerminalStatus = LiveEvalTerminalStatus.Passed,
+            Workload = new(1, 1, 4, 4, 4),
+            Configuration = baseline.Configuration with
+            {
+                Subjects = [baseline.Configuration.Subjects[0]],
+                Acceptance = new(
+                    LiveTerminalAcceptancePolicy.WilsonLowerBoundPerScenario,
+                    0.95,
+                    0.50),
+            },
+            Runs = Enumerable.Range(1, 4)
+                .Select(repetition => new LiveEvalRunReference(
+                    $"agent-run-{repetition}",
+                    "robin-agent-live",
+                    repetition,
+                    $"runs/agent-run-{repetition}"))
+                .ToArray(),
+            Trials = trials,
+            Arms =
+            [
+                new LiveArmSummary(
+                    "robin-agent-live",
+                    LiveSubjectArchitecture.Agent,
+                    4,
+                    [new(
+                        LiveUseCaseBenchmark.UseCaseQualityCheckKey,
+                        "Canonical use-case criteria",
+                        census,
+                        reliability)]),
+            ],
+            Comparisons = [],
+            ScenarioAcceptances =
+            [
+                new(
+                    "nadia-cross-category",
+                    Personas.NadiaUserId,
+                    "robin-agent-live",
+                    LiveSubjectArchitecture.Agent,
+                    census,
+                    reliability,
+                    0.95,
+                    0.50,
+                    true),
+            ],
+        };
     }
 }

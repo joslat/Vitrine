@@ -6,14 +6,14 @@ using Galaxus.RecommendationAgent.Domain;
 namespace Galaxus.RecommendationAgent.Catalog;
 
 /// <summary>
-/// The hardcoded category tree (design §B.1): nine root departments, their groups, and
+/// The hardcoded category tree: nine root departments, their groups, and
 /// every leaf a seeded product sits in. Each leaf carries the attribute schema every
 /// product in it MUST fill, and the <see cref="Category.SensitiveInference"/> flag that
-/// governs unsolicited-inference suppression (§F.5).
+/// governs unsolicited-inference suppression (the sensitive-category screen).
 /// </summary>
 /// <remarks>
 /// <para>
-/// ⚠ NAMESPACE — this folder is <c>Catalogue/</c> (design §G) but the namespace is
+/// ⚠ NAMESPACE — this folder is <c>Catalogue/</c> but the namespace is
 /// <c>Galaxus.RecommendationAgent.Catalog</c>, deliberately one letter short. A namespace
 /// named <c>…RecommendationAgent.Catalogue</c> containing a type named <c>Catalogue</c>
 /// compiles, but every sibling namespace under <c>Galaxus.RecommendationAgent</c>
@@ -25,15 +25,15 @@ namespace Galaxus.RecommendationAgent.Catalog;
 /// were going to use anyway.
 /// </para>
 /// <para>
-/// <b>Eight roots plus one.</b> §B.1 specifies eight departments holding exactly 72
+/// <b>Eight roots plus one.</b> The core table has eight departments holding exactly 72
 /// products. The ninth root — <c>Health &amp; Personal Care</c>, four products — is the
-/// §0.5 / D-6 plant, and it is DECLARED rather than smuggled: without at least one leaf
+/// sensitive-inference test fixture, and it is DECLARED rather than smuggled: without at least one leaf
 /// where <see cref="Category.SensitiveInference"/> is true, the sensitive-suppression
 /// eval pair has a chance floor of 1.0. It would read as a clean pass while testing
-/// nothing, which is exactly the shape §0.5 condemns for <c>PlaceOrder</c>. Consumers
-/// that need the §B.1 headline count read
+/// nothing—the same vacuous-test failure a commit-tool prohibition must avoid. Consumers
+/// that need the core-catalogue headline count read
 /// <see cref="Catalogue.CoreProductCount"/> (72); consumers that need every sellable
-/// item read <see cref="Catalogue.All"/> (76).
+/// item read <see cref="Catalogue.All"/> (99, including the 23 extension products).
 /// </para>
 /// <para>
 /// <b>Sensitivity is inherited.</b> A node marked sensitive makes every descendant
@@ -188,7 +188,7 @@ public static class CategorySeed
         new("CAT-PWR-ADP",            ["Power & Travel Tech", "Adapters"],                                "CAT-PWR",        None, false),
         new("CAT-PWR-ADP-TRAVEL",     ["Power & Travel Tech", "Adapters", "Travel adapters"],             "CAT-PWR-ADP",    ["Regions", "Max output", "USB ports", "Weight"], false),
 
-        // ══ 9. Health & Personal Care — the §0.5 / D-6 plant. SENSITIVE. ════════════
+        // ══ 9. Health & Personal Care — the sensitive-inference test fixture. SENSITIVE. ════════════
         //     Marked sensitive at the ROOT, so every descendant inherits it and a later
         //     leaf added here cannot quietly escape the suppression rule.
         new("CAT-HLT",                ["Health & Personal Care"],                                         null,             None, true),
@@ -203,7 +203,7 @@ public static class CategorySeed
         // ══ EXTENSION NODES — the Eval 02 measurability extension. DECLARED. ═════════
         //
         //  No new ROOT department: every node below hangs off one of the nine already
-        //  above, so "nine root departments" stays true and §B.1's eight-department
+        //  above, so "nine root departments" stays true and the core eight-department
         //  product table stays checkable. What these add is LEAF SPACING — each new
         //  persona in Personas.cs needs its purchases to sit in distinct leaves, and each
         //  of its latent interests needs a reachable answer in a leaf it does NOT already
@@ -258,7 +258,7 @@ public static class CategorySeed
     ];
 
     /// <summary>
-    /// The special-category TERM set screened at the OUTPUT layer, per §0.5 / D-6. The
+    /// The special-category TERM set screened at the OUTPUT layer, per the sensitive-inference guard. The
     /// category flag above blocks the channel a naive system uses; this list blocks the
     /// one the regulator cares about — an emitted interest label or reason string that
     /// NAMES a special category, even when every product involved sits in an ordinary
@@ -269,16 +269,16 @@ public static class CategorySeed
     /// <remarks>
     /// Matching is a case-insensitive substring test on the normalised label, and it is
     /// the guardrail lane (<c>SensitiveInferenceBlocklist</c>) that applies it — this
-    /// class only owns the vocabulary. §F.5's list is included verbatim and extended with
+    /// class only owns the vocabulary. The sensitive-category screen's list is included verbatim and extended with
     /// the terms an inference would actually use, because a blocklist of category NAMES
     /// cannot catch an inference phrased in plain language.
     /// </remarks>
     public static IReadOnlyList<string> BlockedInferenceTerms { get; } =
     [
-        // §F.5, verbatim
+        // Sensitive-category terms, verbatim.
         "health", "pharmacy", "medical device", "fertility", "pregnancy", "baby",
         "love + play", "religion", "politics", "trade union", "ethnic origin", "biometrics",
-        // The plain-language forms an inferred label would actually take (D-6)
+        // The plain-language forms an inferred label would actually take.
         "blood pressure", "hypertension", "cardiovascular", "heart condition", "cardiac",
         "diabetes", "medication", "prescription", "symptom", "diagnosis", "diagnosed",
         "condition", "therapy", "treatment", "clinical", "patient", "cholesterol",

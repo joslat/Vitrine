@@ -12,8 +12,9 @@ data, private catalogue data, credentials, or measured result from a Digitec Gal
 
 Some namespaces retain `Galaxus.RecommendationAgent` because the working subject began as the
 author's AgentEval sample contribution. The name is historical technical continuity, not a claim
-of company ownership or provenance. All personas, catalogue entries, histories, prompts, and
-systems evaluated here are synthetic.
+of company ownership or provenance. All personas, catalogue records, histories, prompts, prices,
+stock, reviews, and relationships evaluated here are authored/synthetic. Recognizable third-party
+product and brand names are used illustratively and remain the property of their respective owners.
 
 VITRINE applies [AgentEval](https://github.com/AgentEvalHQ/AgentEval), including its admitted
 checks, benchmark runner, statistics, output stores, and red-team runner. AgentEval remains a
