@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="VITRINE architecture: system
+ownership, runtime data flow, evaluation boundaries, graph provenance,
+persistence, replay, and security.">
+  <title>Architecture · VITRINE</title>
+  <link rel="stylesheet" href="assets/vitrine-doc-page.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<header class="hero"><div class="wrap">
+  <div class="eyebrow">VITRINE · Engineering reference</div>
+  <h1>Architecture</h1>
+  <p class="lead">How the recommendation subjects, evaluation system,
+control room, and durable evidence remain separated and trustworthy.</p>
+</div></header>
+<nav class="topnav" aria-label="VITRINE documentation">
+  <div class="wrap">
+    <a href="index.html">VITRINE docs</a>
+    <a href="Vitrine-Digitec-Galaxus-Value-Proposal.html">Value proposal</a>
+    <a href="Vitrine-Walkthrough.html">Walkthrough</a>
+    <a href="Vitrine-Retrieval-Deep-Dive.html">Retrieval</a>
+    <a href="Vitrine-Architecture.html">Architecture</a>
+    <a href="Vitrine-Evaluation-Protocol.html">Evaluation protocol</a>
+    <a href="Vitrine-Verification.html">Verification</a>
+  </div>
+</nav>
+<main id="content" class="doc-shell">
+<aside class="toc" aria-label="On this page"><strong>On this page</strong><ul>
+<li><a href="#compile-time-and-cost-boundaries"
+id="toc-compile-time-and-cost-boundaries">Compile-time and cost
+boundaries</a></li>
+<li><a href="#subject-execution" id="toc-subject-execution">Subject
+execution</a></li>
+<li><a href="#evaluation-ownership"
+id="toc-evaluation-ownership">Evaluation ownership</a>
+<ul>
+<li><a href="#offline-chain" id="toc-offline-chain">Offline
+chain</a></li>
+<li><a href="#paid-use-case-and-safety-plans"
+id="toc-paid-use-case-and-safety-plans">Paid use-case and safety
+plans</a></li>
+</ul></li>
+<li><a href="#native-agenteval-and-measurement-boundary"
+id="toc-native-agenteval-and-measurement-boundary">Native AgentEval and
+measurement boundary</a></li>
+<li><a href="#runtime-observation-and-control-room"
+id="toc-runtime-observation-and-control-room">Runtime observation and
+control room</a></li>
+</ul></aside>
+<article class="prose">
+<!-- SPDX-License-Identifier: MIT -->
+
+<p>Portfolio context: VITRINE is an independent job-application sample
+for Digitec Galaxus and an applied demonstration of the author's
+AgentEval work. The recruiter-facing intent and non-affiliation boundary
+are stated in the <a
+href="Vitrine-Digitec-Galaxus-Value-Proposal.html">Digitec Galaxus value
+proposal</a>; the architecture below remains company-neutral and uses
+only synthetic data.</p>
+<p>For the diagram-first version of this document, open the offline <a
+href="index.html">VITRINE visual guide</a>. Retrieval mechanics and the
+shipped UI are expanded in the <a
+href="Vitrine-Retrieval-Deep-Dive.html">retrieval deep dive</a> and <a
+href="Vitrine-Walkthrough.html#reading">operator walkthrough</a>.</p>
+<p>VITRINE applies two exploration architectures to realistic, familiar
+e-commerce recommendation scenarios, then maps those scenarios to
+independent evaluation contracts. The architecture is designed to
+support an improvement loop: deterministic checks catch wiring and
+regression defects, paid LLM and stochastic plans measure behavioral
+quality, safety probes test the real agent under explicit opt-in, and
+both lanes leave durable filesystem evidence that can be compared over
+time.</p>
+<h2 id="compile-time-and-cost-boundaries">Compile-time and cost
+boundaries</h2>
+<p>The repository has four compile-time layers: subject, evals, app, and
+tests. The subject owns catalogue facts, persona histories, the
+<code>ChatClientAgent</code> tool surface, retrieval, guardrails, and
+the MAF workflow. The eval project references the subject and the
+published <code>AgentEval</code> package; the app references both to
+coordinate runs and project their typed results. The subject references
+neither evaluator nor app.</p>
+<p>Inside the eval project, execution cost is also a source boundary.
+<code>Evals/Offline</code> owns the deterministic suite, production and
+recommendation leaves, variant benchmarks, self-test, and diagnostic
+fixtures. <code>Evals/Live</code> owns the named paid plans, canonical
+live-use-case criteria, subject/judge adapters, typed trace evidence,
+Wilson/comparison summaries, and sanitized session store. CLI, progress,
+shared models/reports, and the process entry point remain at project
+root. This organization preserves the offline implementation as the
+default lane; it does not replace it with model-backed tests.
+<code>OfflineSuite</code> is the strict default plan, and
+<code>OfflineDeterministic</code> is the only remaining
+<code>EvaluationExecutionProfile</code> value; live execution is
+represented by the named plan/result contracts rather than a live
+profile.</p>
+<h2 id="subject-execution">Subject execution</h2>
+<p>The default data path is
+<code>Catalogue → ConceptEmbeddingSource → HybridRetriever → guardrails → rendered recommendations</code>.
+Demo02 passes one <code>DiscoveryState</code> message through
+<code>InterestMapper → Discovery → CoverageReviewer → Ranker → Presenter</code>.
+CoverageReviewer has two outgoing conditions: exit to Ranker or loop
+back to Discovery. MAF graph reflection, not a hand-authored diagram,
+supplies the topology observation used by the atomic contract.</p>
+<h2 id="evaluation-ownership">Evaluation ownership</h2>
+<p>Pass/fail ownership is intentionally one-way. Runtime artifacts
+supply observations. <code>VitrineEvalCriteria</code>, the
+admitted-check registries, and the diagnostic control catalogue
+independently supply expected values, chance-floor derivations,
+applicability, and thresholds. No runtime <code>Passed</code> property
+is accepted as evidence for its own gate.</p>
+<h3 id="offline-chain">Offline chain</h3>
+  <p>The no-provider lane owns deterministic observations, admitted checks,
+  persisted benchmarks, and mutation diagnostics. It depends on the
+  published <code>AgentEval</code> <code>0.35.0-beta</code> package rather
+  than a source checkout. Subject outputs are projected into typed
+  <code>EvalInput</code> values; only registered evaluators and native
+  AgentEval score objects own verdicts, census, floors, or comparisons.</p>
+  <p>The detailed gate inventory, benchmark arms, measurement states,
+  statistics, controls, and exit rules belong to the <a
+  href="Vitrine-Evaluation-Protocol.html#offline-suite">evaluation
+  protocol</a>. The architecture concern is narrower: observations flow
+  from the subject into the evaluation layer, never the reverse, and every
+  durable result retains its producer and evaluator provenance.</p>
+<h3 id="paid-use-case-and-safety-plans">Paid use-case and safety
+plans</h3>
+  <p>The paid lane is a separate composition boundary, not a mode hidden
+  inside the offline suite. Named plans create fresh subject and judge
+  instances, persist one native benchmark run per arm/repetition when
+  applicable, and write a sanitized session receipt. Eval 06 instead uses
+  AgentEval's real <code>RedTeamRunner</code> and writes no synthetic
+  benchmark facade.</p>
+  <p>Provider readiness and explicit paid confirmation are checked before
+  execution. Runtime prompts, unrestricted responses, credentials,
+  canaries, and raw provider exceptions do not cross the evidence boundary;
+  bounded previews, typed measurements, allow-listed diagnostics, usage,
+  and physical run references can. Exact plan behavior and classification
+  rules are defined once in the <a
+  href="Vitrine-Evaluation-Protocol.html#evaluation-plans-and-source-lanes">evaluation
+  protocol</a>; the <a href="Vitrine-Walkthrough.html#evals">walkthrough</a>
+  explains how to select and read them.</p>
+<h2 id="native-agenteval-and-measurement-boundary">Native AgentEval and
+measurement boundary</h2>
+<p>The current architecture rule is structural: no local shadow
+statistic, census, floor model, runner, grader, or calibration harness.
+This migration deletes those former wrappers; duplicate code is removed
+or a general capability is moved upstream to AgentEval.</p>
+<p>The ADR mapping is deliberate: ADR-030's neutral meta lane is
+accepted without merging the judge-execution, RedTeam, Memory, or
+benchmark evidence lanes; ADR-031's pack proposal is rejected as scoped,
+so no <code>pack.json</code> or parallel pack CLI exists; ADR-032's
+benchmark/arm/runner/score pipeline and standard output store are the
+persistence authority.</p>
+<p><code>GateResult.Score</code> and <code>GateResult.Passed</code> are
+nullable. Native census state distinguishes <code>NotApplicable</code>
+(the check could not look) from <code>NotMeasured</code> (the instrument
+did not produce a measurement); neither becomes numeric zero. Aggregate
+process priority is infrastructure failure <code>4</code>, then missing
+measurement <code>3</code>, then measured gate/control failure
+<code>1</code>, then pass <code>0</code>.</p>
+<h2 id="runtime-observation-and-control-room">Runtime observation and
+control room</h2>
+<div class="flow-diagram" role="img" aria-label="Runtime subjects and evaluation plans emit typed observations. Adapters sanitize them into an append-only event store, which independently feeds the paced user interface, versioned exports, and pure replay. Native benchmark runs and sanitized live-session receipts are also persisted to the local AgentEval filesystem store.">
+  <div class="flow-row">
+    <div class="flow-node">Demo01 agent<br>Demo02 workflow</div>
+    <span class="flow-arrow" aria-hidden="true">→</span>
+    <div class="flow-node">Typed runtime<br>observations</div>
+    <span class="flow-arrow" aria-hidden="true">→</span>
+    <div class="flow-node accent">Sanitized adapters</div>
+  </div>
+  <div class="flow-row">
+    <div class="flow-node">Offline suite<br>Paid Eval01–06</div>
+    <span class="flow-arrow" aria-hidden="true">→</span>
+    <div class="flow-node">Typed evaluation<br>progress</div>
+    <span class="flow-arrow" aria-hidden="true">→</span>
+    <div class="flow-node accent">Append-only event store</div>
+  </div>
+  <div class="flow-row outputs">
+    <div class="flow-node">Paced control room</div>
+    <div class="flow-node">JSON / HTML export</div>
+    <div class="flow-node">Integrity-checked replay</div>
+    <div class="flow-node">Local AgentEval evidence</div>
+  </div>
+</div>
+<p>Demo01 emits request/response events at the <code>IChatClient</code>
+boundary and start/completion events around the real
+<code>AIFunction</code> await. Demo02 publishes from its actual
+five-executor workflow. The eval suite publishes typed gate,
+benchmark-persisted, and healthy/defect/recovery control progress. App
+adapters normalize these signals into a strict, monotonically sequenced
+<code>VitrineEvent</code> store. Audience pacing consumes a separate
+channel, so animation cannot delay authoritative execution.</p>
+<p>The graph is runtime-derived. Demo01's composition root prepares one
+observed 13-function tool set and passes those exact objects to both the
+graph factory and the <code>ChatClientAgent</code>; tests require the
+graph's safe tool-set ID and every runtime endpoint/name to agree.
+Runtime tool objects do not cross the result or artifact boundary—only
+the safe identity and allow-listed names remain. Demo02 topology comes
+from <code>AgentEval.MAF.MAFWorkflowAdapter</code> over the exact
+prepared workflow that executes. The evaluation board maps
+<code>GateResult</code>, the standard benchmark score/census,
+<code>ControlResult</code>, and the typed <code>LiveEvalResult</code>
+without UI-side scoring. Mode-specific selection and interpretation are
+operator concerns documented in the <a
+href="Vitrine-Walkthrough.html">walkthrough</a>.</p>
+<p>Mode-specific previews are available before execution. During
+execution, operation IDs correlate model/tool requests with their
+responses and drive terminal node state. Directed edges, executor
+counts, traversal counts, the flattened <code>BACK</code> route, and
+Demo02's executor-action shelf are all reconstructed from the same event
+sequence; paced presentation is a separate consumer and cannot keep the
+authoritative run active.</p>
+<p>Live evaluation lifecycle correlation is equally explicit: subject,
+check, and trial start cards close on their typed terminal events, while
+<code>SessionCompleted</code> closes both the persistence start and the
+session start. A completed live session therefore leaves no stale
+<code>STARTED</code>/<code>ACTIVE</code> operation.</p>
+<p>Each mode has a runtime-derived graph whose node IDs match its typed
+progress routes. The graph describes execution and persistence; the
+evaluation board projects evaluator-owned facts and never manufactures a
+winner or score. Operation IDs close start cards on terminal events so a
+completed run cannot remain visually active.</p>
+<p>Exports and replay project the same sanitized schema-v8 screened
+outcome used by the UI, including answers, recommendations, verification
+measurements, ledger, routes, degradations, control tranches, all
+offline benchmark arms/runs/reference comparisons, named live-evaluation
+summaries, execution provenance, complete AgentEval independence
+provenance, and redacted Eval 06 safety census/probe facts and workload
+ceilings when applicable. Creation sanitizes before hashing;
+caller-built and deserialized artifacts are structurally rejected before
+integrity serialization when any string would require secret/URL
+redaction. HTML and the inspector verify before rendering. They never
+rerun the subject or evaluator.</p>
+<p>Schema 8 adds allow-listed Eval 06 probe diagnostics. The reader
+still accepts integrity-valid schema-7 artifacts and reconstructs the
+generic safe explanation from the stored outcome/error category; it
+never invents or recovers a raw provider exception that the older
+receipt did not contain. New paid-session receipts use live-session
+schema 1.2.</p>
+<p>The exact per-check floor, admission, measurement-state, and ablation
+inventory is maintained in the repository-native <code>MIGRATION.md</code> ledger.</p>
+<div class="note"><strong>Reading boundary.</strong> This is an independent, synthetic portfolio sample prepared for Digitec Galaxus. It is not affiliated with, commissioned by, or endorsed by the company, and it makes no claim about company production systems or customer data.</div>
+</article>
+</main>
+<footer><div class="wrap">VITRINE · independent Digitec Galaxus job-application sample · <a href="index.html">documentation hub</a> · <a href="https://github.com/AgentEvalHQ/AgentEval">AgentEval</a></div></footer>
+</body>
+</html>

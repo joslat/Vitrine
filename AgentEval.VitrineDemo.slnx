@@ -1,0 +1,7 @@
+<!-- SPDX-License-Identifier: MIT -->
+<Solution>
+  <Project Path="src/AgentEval.VitrineDemo/AgentEval.VitrineDemo.csproj" />
+  <Project Path="src/AgentEval.VitrineDemo.Evals/AgentEval.VitrineDemo.Evals.csproj" />
+  <Project Path="src/AgentEval.VitrineDemo.App/AgentEval.VitrineDemo.App.csproj" />
+  <Project Path="tests/AgentEval.VitrineDemo.Tests/AgentEval.VitrineDemo.Tests.csproj" />
+</Solution>

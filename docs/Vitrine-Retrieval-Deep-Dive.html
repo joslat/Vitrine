@@ -1,0 +1,325 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="A code-grounded deep dive into VITRINE's offline concept vectors, optional real embeddings, hybrid retrieval, and guardrails.">
+  <title>VITRINE · Retrieval deep dive</title>
+  <style>
+    :root {
+      --paper:#f1f4f7; --surface:#fff; --surface-2:#edf1f5; --ink:#17212d; --muted:#5d6978;
+      --line:#d4dce5; --cyan:#087b84; --cyan-soft:#d8eff0; --blue:#245ca6; --blue-soft:#dce9fb;
+      --amber:#9c5b14; --amber-soft:#f8e9d2; --red:#a43d38; --red-soft:#f8dfdd;
+      --green:#18734d; --green-soft:#dcefe6; --shadow:0 16px 42px -34px rgba(15,30,50,.5);
+    }
+    @media (prefers-color-scheme:dark) {
+      :root {
+        --paper:#0b1118; --surface:#121b25; --surface-2:#192431; --ink:#eef4fa; --muted:#9ba9b8;
+        --line:#29394b; --cyan:#6cd3da; --cyan-soft:#14363a; --blue:#87baff; --blue-soft:#17304e;
+        --amber:#f3bc72; --amber-soft:#3d2b14; --red:#ff918b; --red-soft:#45201f;
+        --green:#68d29e; --green-soft:#16392a; --shadow:0 18px 44px -30px #000;
+      }
+    }
+    * { box-sizing:border-box }
+    html { scroll-behavior:smooth }
+    body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.64 system-ui,-apple-system,"Segoe UI",sans-serif }
+    a { color:var(--blue); text-underline-offset:3px }
+    code,.mono { font-family:ui-monospace,"Cascadia Mono",Consolas,monospace }
+    code { font-size:.87em; background:var(--surface-2); border:1px solid var(--line); border-radius:4px; padding:.08em .32em }
+    .skip { position:absolute; left:-9999px; top:8px; background:var(--surface); padding:8px 12px; z-index:100 }
+    .skip:focus { left:8px }
+    .wrap { width:min(1120px,calc(100% - 36px)); margin-inline:auto }
+    .hero { padding:66px 0 44px; border-bottom:1px solid var(--line); background:linear-gradient(150deg,var(--surface),var(--paper) 70%) }
+    .eyebrow { color:var(--cyan); font:700 .72rem/1.2 ui-monospace,Consolas,monospace; letter-spacing:.14em; text-transform:uppercase }
+    h1,h2,h3 { line-height:1.12; text-wrap:balance }
+    h1 { font-size:clamp(2.35rem,6vw,4.5rem); letter-spacing:-.05em; margin:.22em 0 .16em }
+    h2 { font-size:clamp(1.65rem,3.4vw,2.45rem); letter-spacing:-.034em; margin:0 0 14px }
+    h3 { font-size:1.08rem; margin:0 0 7px }
+    p { margin:.55em 0 }
+    .lead { color:var(--muted); font-size:clamp(1.03rem,2vw,1.22rem); max-width:780px }
+    .back { display:inline-block; margin-top:18px; font-weight:700 }
+    nav { position:sticky; top:0; z-index:20; border-bottom:1px solid var(--line); background:color-mix(in srgb,var(--paper) 90%,transparent); backdrop-filter:blur(12px) }
+    nav .wrap { display:flex; gap:18px; align-items:center; min-height:48px; overflow-x:auto; white-space:nowrap }
+    nav a { color:var(--muted); text-decoration:none; font-size:.81rem; font-weight:700 }
+    nav a:first-child { color:var(--ink); margin-right:auto }
+    main section { padding:66px 0; scroll-margin-top:52px }
+    main section + section { border-top:1px solid var(--line) }
+    .section-lead { color:var(--muted); max-width:780px; margin-bottom:24px }
+    .facts { display:grid; grid-template-columns:repeat(auto-fit,minmax(155px,1fr)); gap:1px; border:1px solid var(--line); background:var(--line); border-radius:11px; overflow:hidden; margin-top:28px; box-shadow:var(--shadow) }
+    .fact { background:var(--surface); padding:16px }
+    .fact b { display:block; font-size:1.45rem; line-height:1.15 }
+    .fact span { color:var(--muted); font-size:.75rem }
+    .grid2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px }
+    .grid3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px }
+    .card { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:19px; box-shadow:var(--shadow) }
+    .card p,.card li { color:var(--muted); font-size:.91rem }
+    .card ul { padding-left:18px }
+    .tag { display:inline-block; border:1px solid currentColor; border-radius:999px; padding:2px 8px; margin-bottom:10px; font:700 .66rem/1.45 ui-monospace,Consolas,monospace; letter-spacing:.06em; text-transform:uppercase }
+    .tag.green { color:var(--green) } .tag.blue { color:var(--blue) } .tag.warn { color:var(--amber) } .tag.red { color:var(--red) }
+    figure { margin:26px 0 }
+    .diagram { overflow-x:auto; padding:18px; background:var(--surface); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow) }
+    svg { display:block; min-width:720px; width:100%; height:auto; color:var(--ink) }
+    .node { fill:var(--surface-2); stroke:var(--line); stroke-width:1.5 }
+    .node-cyan { fill:var(--cyan-soft); stroke:var(--cyan); stroke-width:1.7 }
+    .node-blue { fill:var(--blue-soft); stroke:var(--blue); stroke-width:1.7 }
+    .node-amber { fill:var(--amber-soft); stroke:var(--amber); stroke-width:1.7 }
+    .node-green { fill:var(--green-soft); stroke:var(--green); stroke-width:1.7 }
+    .edge { stroke:currentColor; stroke-width:1.5; fill:none }
+    .edge-dash { stroke:var(--amber); stroke-width:1.8; stroke-dasharray:7 5; fill:none }
+    .svg-title { fill:currentColor; font:650 14px system-ui,sans-serif }
+    .svg-sub { fill:var(--muted); font:12px ui-monospace,Consolas,monospace }
+    .svg-label { fill:var(--amber); font:700 12px ui-monospace,Consolas,monospace }
+    figcaption { color:var(--muted); font-size:.83rem; margin:10px 4px 0; max-width:900px }
+    .callout { border-left:4px solid var(--cyan); border-radius:0 9px 9px 0; background:var(--cyan-soft); padding:13px 17px; margin:20px 0 }
+    .callout.warn { border-color:var(--amber); background:var(--amber-soft) }
+    .callout.danger { border-color:var(--red); background:var(--red-soft) }
+    .table-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:10px; background:var(--surface); box-shadow:var(--shadow) }
+    table { width:100%; min-width:700px; border-collapse:collapse; font-size:.86rem }
+    th,td { padding:10px 12px; text-align:left; vertical-align:top; border-bottom:1px solid var(--line) }
+    th { background:var(--surface-2); color:var(--muted); font:700 .69rem/1.3 ui-monospace,Consolas,monospace; letter-spacing:.07em; text-transform:uppercase }
+    tr:last-child td { border-bottom:0 }
+    .steps { counter-reset:step; display:grid; gap:10px; padding:0; list-style:none }
+    .steps li { counter-increment:step; display:grid; grid-template-columns:34px 1fr; gap:12px; align-items:start; background:var(--surface); border:1px solid var(--line); border-radius:9px; padding:13px }
+    .steps li::before { content:counter(step); display:grid; place-items:center; width:30px; height:30px; border-radius:50%; background:var(--cyan-soft); color:var(--cyan); font-weight:800 }
+    .steps p { margin:0; color:var(--muted) }
+    footer { padding:34px 0 56px; border-top:1px solid var(--line); color:var(--muted); font-size:.83rem }
+    :focus-visible { outline:3px solid var(--blue); outline-offset:3px }
+    @media (max-width:800px) { .grid2,.grid3 { grid-template-columns:1fr } .wrap { width:min(100% - 24px,1120px) } }
+    @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto } }
+    @media print { nav { display:none } body { background:#fff;color:#111 } .card,.diagram,.facts { box-shadow:none } main section { break-inside:avoid } }
+  </style>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">VITRINE · Specialist deep dive</div>
+    <h1>Retrieval without a hidden network dependency</h1>
+    <p class="lead">How 99 products support reproducible exploration of realistic e-commerce
+      scenarios through an authored concept space, an optional real embedding space, a lexical
+      index, reciprocal-rank fusion, and post-retrieval guardrails—and why retrieval is neither a
+      recommendation-quality verdict nor a safety measurement.</p>
+    <a class="back" href="index.html">← Back to the VITRINE documentation hub</a> ·
+    <a href="Vitrine-Digitec-Galaxus-Value-Proposal.html">Value proposal</a> ·
+    <a href="Vitrine-Walkthrough.html">Operator walkthrough</a> ·
+    <a href="Vitrine-Evaluation-Protocol.html">Evaluation protocol</a>
+    <div class="facts" aria-label="Retrieval facts">
+      <div class="fact"><b>99</b><span>product documents</span></div>
+      <div class="fact"><b>24</b><span>authored concept dimensions</span></div>
+      <div class="fact"><b>1,536</b><span>optional real-vector dimensions</span></div>
+      <div class="fact"><b>24</b><span>candidates requested per leg</span></div>
+      <div class="fact"><b>k = 60</b><span>RRF rank constant</span></div>
+      <div class="fact"><b>1–12</b><span>allowed final top-k range</span></div>
+    </div>
+  </div>
+</header>
+
+<nav aria-label="Page sections">
+  <div class="wrap">
+    <a href="index.html">VITRINE docs</a>
+    <a href="#content">Retrieval</a>
+    <a href="#spaces">Spaces</a>
+    <a href="#hybrid">Hybrid search</a>
+    <a href="#concepts">Concept vectors</a>
+    <a href="#thresholds">Thresholds</a>
+    <a href="#evidence">Evidence</a>
+    <a href="#limits">Limits</a>
+  </div>
+</nav>
+
+<main id="content">
+  <section id="spaces">
+    <div class="wrap">
+      <div class="eyebrow">01 · Space selection</div>
+      <h2>Choose once, report it every time</h2>
+      <p class="section-lead"><code>EmbeddingSpace</code> resolves one vector space for the
+        process. The default and automatic choice is the authored concept space. The real-vector
+        path is explicit because a run must not silently change meaning when credentials happen to
+        be present. It also requires <code>--confirm-paid</code> because every query may be embedded
+        by a live provider.</p>
+
+      <figure>
+        <div class="diagram">
+          <svg viewBox="0 0 1040 405" role="img" aria-labelledby="space-title space-desc">
+            <title id="space-title">Embedding-space selection</title>
+            <desc id="space-desc">Automatic and concept-vector requests select the authored 24-dimensional space with no egress. A confirmed real-vector request loads committed 1536-dimensional product vectors and requires a live matching query embedder. Missing credentials or a failed identity probe falls back visibly to concept vectors.</desc>
+            <defs><marker id="arrow-space" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+            <rect class="node-blue" x="28" y="151" width="178" height="76" rx="8"/><text class="svg-title" x="117" y="181" text-anchor="middle">Requested space</text><text class="svg-sub" x="117" y="205" text-anchor="middle">CLI sets before retrieval</text>
+            <rect class="node-cyan" x="290" y="48" width="220" height="90" rx="8"/><text class="svg-title" x="400" y="79" text-anchor="middle">Concept vectors</text><text class="svg-sub" x="400" y="102" text-anchor="middle">24 dims · authored · local</text><text class="svg-sub" x="400" y="121" text-anchor="middle">AUTO PREFERS THIS</text>
+            <rect class="node-amber" x="290" y="254" width="220" height="90" rx="8"/><text class="svg-title" x="400" y="285" text-anchor="middle">Real product vectors</text><text class="svg-sub" x="400" y="308" text-anchor="middle">1,536 dims · committed index</text><text class="svg-sub" x="400" y="327" text-anchor="middle">--real-vectors + confirmation</text>
+            <rect class="node-amber" x="588" y="254" width="190" height="90" rx="8"/><text class="svg-title" x="683" y="285" text-anchor="middle">Live query embedder</text><text class="svg-sub" x="683" y="308" text-anchor="middle">credentials required</text><text class="svg-sub" x="683" y="327" text-anchor="middle">memoized per exact text</text>
+            <rect class="node-green" x="844" y="120" width="168" height="104" rx="8"/><text class="svg-title" x="928" y="151" text-anchor="middle">Resolved source</text><text class="svg-sub" x="928" y="175" text-anchor="middle">name · model · dims</text><text class="svg-sub" x="928" y="196" text-anchor="middle">identity proof printed</text>
+            <path class="edge" d="M206 170L286 107" marker-end="url(#arrow-space)"/><text class="svg-sub" x="235" y="118">auto / concept</text>
+            <path class="edge" d="M206 211L286 278" marker-end="url(#arrow-space)"/><text class="svg-sub" x="226" y="272">real</text>
+            <path class="edge" d="M510 299L584 299" marker-end="url(#arrow-space)"/>
+            <path class="edge" d="M778 278C824 264 830 213 840 194" marker-end="url(#arrow-space)"/>
+            <path class="edge" d="M510 94C694 94 758 116 840 145" marker-end="url(#arrow-space)"/>
+            <path class="edge-dash" d="M683 250C683 187 532 177 474 141" marker-end="url(#arrow-space)"/>
+            <text class="svg-label" x="636" y="176" text-anchor="middle">no key / mismatch → declared fallback</text>
+          </svg>
+        </div>
+        <figcaption>The fallback is visible in the banner. It is not a zero vector and it does not
+          pretend a real-space search happened.</figcaption>
+      </figure>
+
+      <div class="grid2">
+        <article class="card"><span class="tag green">Default</span><h3>Concept space</h3><p>Every product and query is projected locally through a committed 24-concept lexicon. No endpoint or API key is read for this path.</p></article>
+        <article class="card"><span class="tag warn">Explicit</span><h3>Real-vector space</h3><p>The product index is committed, but a new query must be embedded into the same model space. A product identity probe checks that the live query embedder and index agree before use.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section id="hybrid">
+    <div class="wrap">
+      <div class="eyebrow">02 · Hybrid retrieval</div>
+      <h2>Meaning and exact identity need different legs</h2>
+      <p class="section-lead">Dense search helps when the customer's wording differs from the
+        catalogue. Lexical search protects model numbers, GTINs, brands, and literal product
+        facts. Their scores are not comparable, so VITRINE fuses ranks rather than raw values.</p>
+
+      <figure>
+        <div class="diagram">
+          <svg viewBox="0 0 1060 380" role="img" aria-labelledby="hybrid-title hybrid-desc">
+            <title id="hybrid-title">VITRINE hybrid retrieval pipeline</title>
+            <desc id="hybrid-desc">A normalized retrieval query and its filters split into dense and lexical legs. Each leg returns up to 24 candidates. Dense results below the selected space's floor are removed. Reciprocal rank fusion with k 60 merges the rank positions, returning one to twelve candidates with provenance.</desc>
+            <defs><marker id="arrow-hybrid" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+            <rect class="node-blue" x="24" y="135" width="176" height="92" rx="8"/><text class="svg-title" x="112" y="165" text-anchor="middle">RetrievalQuery</text><text class="svg-sub" x="112" y="189" text-anchor="middle">need · market · category</text><text class="svg-sub" x="112" y="209" text-anchor="middle">attributes · exclusions · k</text>
+            <rect class="node-cyan" x="284" y="40" width="210" height="98" rx="8"/><text class="svg-title" x="389" y="71" text-anchor="middle">Dense leg</text><text class="svg-sub" x="389" y="94" text-anchor="middle">cosine in selected space</text><text class="svg-sub" x="389" y="115" text-anchor="middle">top 24 · then floor</text>
+            <rect class="node-amber" x="284" y="242" width="210" height="98" rx="8"/><text class="svg-title" x="389" y="273" text-anchor="middle">Lexical leg</text><text class="svg-sub" x="389" y="296" text-anchor="middle">weighted tokens + exact boosts</text><text class="svg-sub" x="389" y="317" text-anchor="middle">top 24</text>
+            <rect class="node-green" x="586" y="124" width="202" height="112" rx="8"/><text class="svg-title" x="687" y="156" text-anchor="middle">Reciprocal rank fusion</text><text class="svg-sub" x="687" y="181" text-anchor="middle">Σ 1 / (60 + rank)</text><text class="svg-sub" x="687" y="205" text-anchor="middle">raw scores stay diagnostic</text>
+            <rect class="node" x="870" y="124" width="166" height="112" rx="8"/><text class="svg-title" x="953" y="156" text-anchor="middle">RetrievalResult</text><text class="svg-sub" x="953" y="181" text-anchor="middle">ranked hits + leg ranks</text><text class="svg-sub" x="953" y="202" text-anchor="middle">degradation + evidence line</text>
+            <path class="edge" d="M200 163L280 105" marker-end="url(#arrow-hybrid)"/><path class="edge" d="M200 207L280 269" marker-end="url(#arrow-hybrid)"/>
+            <path class="edge" d="M494 89C555 89 550 146 582 158" marker-end="url(#arrow-hybrid)"/><path class="edge" d="M494 291C555 291 550 218 582 204" marker-end="url(#arrow-hybrid)"/>
+            <path class="edge" d="M788 180L866 180" marker-end="url(#arrow-hybrid)"/>
+            <text class="svg-label" x="389" y="366" text-anchor="middle">filters run before the cut—not after ranking</text>
+          </svg>
+        </div>
+        <figcaption>RRF deliberately ignores score scale. A cosine and an IDF-weighted token score
+          do not become comparable merely because both are numbers.</figcaption>
+      </figure>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Lexical signal</th><th>Current weight/boost</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td>Name</td><td>3.0</td><td>Product identity and strong title terms</td></tr>
+            <tr><td>Brand</td><td>3.0</td><td>Exact brand preference</td></tr>
+            <tr><td>Specification value</td><td>1.5</td><td>Mounts, capacities, dimensions, and compatibility values</td></tr>
+            <tr><td>Specification key</td><td>1.0</td><td>The kind of fact being requested</td></tr>
+            <tr><td>Description</td><td>0.75</td><td>Recall without letting prose dominate identity</td></tr>
+            <tr><td>Model-number match</td><td>+6.0</td><td>Dense retrieval is weak at arbitrary identifiers</td></tr>
+            <tr><td>Exact GTIN</td><td>+12.0</td><td>An exact barcode is an identity, not a semantic hint</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="concepts">
+    <div class="wrap">
+      <div class="eyebrow">03 · Authored concept vectors</div>
+      <h2>Deterministic meaning, with a visible ceiling</h2>
+      <p class="section-lead">The key-free embedding source is a small authored projection—not a
+        miniature claim of general language understanding. Text is tokenized, phrases of up to
+        three tokens are looked up, concept weights accumulate, and the result is normalized.</p>
+
+      <figure>
+        <div class="diagram">
+          <svg viewBox="0 0 1020 285" role="img" aria-labelledby="concept-title concept-desc">
+            <title id="concept-title">Authored concept-vector projection</title>
+            <desc id="concept-desc">Input text is tokenized and scanned for up to three-token phrases. An authored lexicon maps matched phrases to 24 concept dimensions. Weights are accumulated and normalized. If no phrase is recognized, an all-zero vector is returned and retrieval reports the missing signal.</desc>
+            <defs><marker id="arrow-concept" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+            <rect class="node-blue" x="24" y="91" width="160" height="78" rx="8"/><text class="svg-title" x="104" y="121" text-anchor="middle">Input text</text><text class="svg-sub" x="104" y="144" text-anchor="middle">query or product</text>
+            <rect class="node" x="228" y="91" width="166" height="78" rx="8"/><text class="svg-title" x="311" y="121" text-anchor="middle">Tokenize</text><text class="svg-sub" x="311" y="144" text-anchor="middle">shared lexical rules</text>
+            <rect class="node-cyan" x="438" y="72" width="188" height="116" rx="8"/><text class="svg-title" x="532" y="103" text-anchor="middle">Phrase lexicon</text><text class="svg-sub" x="532" y="127" text-anchor="middle">1–3 token windows</text><text class="svg-sub" x="532" y="148" text-anchor="middle">authored weights</text><text class="svg-sub" x="532" y="169" text-anchor="middle">galaxus-concept-v3</text>
+            <rect class="node-green" x="670" y="72" width="166" height="116" rx="8"/><text class="svg-title" x="753" y="103" text-anchor="middle">24 dimensions</text><text class="svg-sub" x="753" y="127" text-anchor="middle">accumulate</text><text class="svg-sub" x="753" y="148" text-anchor="middle">then normalize</text><text class="svg-sub" x="753" y="169" text-anchor="middle">unit length</text>
+            <rect class="node-amber" x="880" y="91" width="116" height="78" rx="8"/><text class="svg-title" x="938" y="121" text-anchor="middle">Cosine</text><text class="svg-sub" x="938" y="144" text-anchor="middle">or zero signal</text>
+            <path class="edge" d="M184 130L224 130" marker-end="url(#arrow-concept)"/><path class="edge" d="M394 130L434 130" marker-end="url(#arrow-concept)"/><path class="edge" d="M626 130L666 130" marker-end="url(#arrow-concept)"/><path class="edge" d="M836 130L876 130" marker-end="url(#arrow-concept)"/>
+            <text class="svg-label" x="510" y="239" text-anchor="middle">unknown vocabulary → all-zero vector → explicit degraded reason, never invented similarity</text>
+          </svg>
+        </div>
+      </figure>
+
+      <div class="grid3">
+        <article class="card"><h3>What it is good at</h3><p>Stable demonstrations, known retail concepts, understandable explanations, and byte-repeatable offline evaluation.</p></article>
+        <article class="card"><h3>What it is bad at</h3><p>Unanticipated vocabulary, linguistic nuance outside the lexicon, and any claim of broad semantic generalization.</p></article>
+        <article class="card"><h3>Why zero is visible</h3><p>An unrecognized query has no dense signal. The retriever records a degraded reason rather than ranking 99 identical zero cosines.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section id="thresholds">
+    <div class="wrap">
+      <div class="eyebrow">04 · Space-dependent operating points</div>
+      <h2>A threshold belongs to a vector space</h2>
+      <p class="section-lead">VITRINE carries separate rows because the numeric shape of an
+        authored 24-dimensional space is not transferable to a 1,536-dimensional provider space.
+        These are the values in current code, not claims of universal accuracy.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Resolved space</th><th>Dense floor</th><th>Attribution floor</th><th>Primary confidence</th><th>Secondary confidence</th></tr></thead>
+          <tbody>
+            <tr><td>Concept</td><td>0.280</td><td>0.200</td><td>0.703</td><td>0.455</td></tr>
+            <tr><td>Real vectors</td><td>0.223</td><td>0.221</td><td>0.520</td><td>0.437</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout warn"><p><strong>Do not compare scores across spaces as though only the
+        vector length changed.</strong> Query embedding, cosine distributions, dense cut behavior,
+        attribution, and confidence routing all change together. The runtime prints the resolved
+        space so the provenance cannot disappear.</p></div>
+    </div>
+  </section>
+
+  <section id="evidence">
+    <div class="wrap">
+      <div class="eyebrow">05 · From hit to recommendation</div>
+      <h2>Retrieval is necessary, not authoritative</h2>
+      <p class="section-lead">A fused hit is only a candidate. Recommendation authority arrives
+        later, after the subject can connect the product to a customer signal and to a resolvable
+        catalogue fact.</p>
+      <ol class="steps">
+        <li><div><strong>Pre-filter</strong><p>Market, category, attribute, ownership, and exclusion constraints are applied before each leg ranks.</p></div></li>
+        <li><div><strong>Retain provenance</strong><p>Each hit keeps dense rank, lexical rank, raw diagnostic scores, and the best matching catalogue line.</p></div></li>
+        <li><div><strong>Attribute to an interest</strong><p>The subject must identify which independently derived or explicitly stated customer need the product answers.</p></div></li>
+        <li><div><strong>Resolve catalogue evidence</strong><p>The cited review or attribute must resolve against the selected SKU. Plausible prose is insufficient.</p></div></li>
+        <li><div><strong>Run guardrails</strong><p>Sensitive-category, confidence, candidate-containment, compatibility, ownership, and price/stock checks may drop or demote it.</p></div></li>
+        <li><div><strong>Re-read price and stock</strong><p>Presentation uses catalogue authority at render time. A price stated in model-authored reason text is rejected.</p></div></li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="limits">
+    <div class="wrap">
+      <div class="eyebrow">06 · Interpretation limits</div>
+      <h2>What this subsystem does—and does not—show</h2>
+      <div class="grid2">
+        <article class="card"><span class="tag green">Shown structurally</span><h3>Offline reproducibility</h3><p>The default search can run entirely in-process over committed product data and the authored concept projection. Its graph, counts, floors, and failure semantics are testable without credentials.</p></article>
+        <article class="card"><span class="tag blue">Shown historically</span><h3>Stated constraints</h3><p>A predecessor Galaxus-themed synthetic-sample run measured 0.889 live versus a tag-join oracle's 1.000 at matched k. It is not a Digitec Galaxus production or business metric, and this deep dive does not regenerate that paid measurement. <a href="evidence/vitrine-synthetic-live-2026-09-04-eval02b-02c.html">Inspect the bounded receipt →</a></p></article>
+        <article class="card"><span class="tag red">Not shown</span><h3>Next-purchase prediction</h3><p>Four informative pairs make the minimum attainable two-sided p-value 0.125. Better retrieval mechanics do not repair an underpowered design.</p></article>
+        <article class="card"><span class="tag warn">Baseline warning</span><h3>Model value</h3><p>A tag join reaches 1.000 on several questions with no model calls. Hybrid retrieval and a richer architecture must earn their complexity on matched comparisons.</p></article>
+      </div>
+      <div class="callout danger"><p><strong>Security boundary:</strong> the offline VITRINE
+        injection gate runs AgentEval's real <code>RedTeamRunner</code> with direct, indirect, and
+        tool-output attacks against deterministic guarded and deliberately vulnerable calibration
+        arms; its poison-dependent forbidden call is not Robin. The separate, explicitly paid
+        Eval 06 plan runs jailbreak and canary-backed system-prompt-extraction probes against fresh
+        real Robin targets and persists a redacted census. The offline gate is not a live-agent
+        resistance rate, and neither lane is a retrieval-quality rate. See the
+        <a href="Vitrine-Evaluation-Protocol.html">evaluation protocol</a> for their exact evidence and cost
+        boundaries.</p></div>
+      <p>For implementation-level details, start with
+        <a href="Vitrine-Architecture.html">architecture reference</a> and the source files under
+        <code>src/AgentEval.VitrineDemo/Retrieval</code>.</p>
+    </div>
+  </section>
+</main>
+
+<footer><div class="wrap">Self-contained VITRINE documentation · no external scripts, fonts,
+  images, or network requests · adapted from earlier retrieval and architecture material; this
+  page is the current public reference.</div></footer>
+</body>
+</html>

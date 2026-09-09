@@ -1,0 +1,25 @@
+<!-- SPDX-License-Identifier: MIT -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>AgentEval.VitrineDemo.Evals</RootNamespace>
+    <AssemblyName>AgentEval.VitrineDemo.Evals</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AgentEval.VitrineDemo\AgentEval.VitrineDemo.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="AgentEval" />
+    <PackageReference Include="Microsoft.Agents.AI" />
+    <PackageReference Include="Microsoft.Extensions.AI" />
+    <PackageReference Include="OpenTelemetry.Api" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AgentEval.VitrineDemo.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Data\HonestyEvidence.v1.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Data\NegativeControlManifest.v2.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,412 @@
+<!-- SPDX-License-Identifier: MIT -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>VITRINE operator walkthrough</title>
+  <style>
+    :root {
+      --paper:#f6f8fb; --surface:#fff; --surface-2:#edf2f7; --ink:#182537; --muted:#586a80;
+      --line:#cfdae6; --blue:#176fb8; --blue-soft:#e3f1ff; --teal:#087d72; --teal-soft:#dcf4ef;
+      --amber:#91590d; --amber-soft:#fbecd2; --red:#a43835; --red-soft:#f9e1df;
+      --shadow:0 18px 42px -34px rgba(16,32,50,.55);
+    }
+    @media (prefers-color-scheme:dark) {
+      :root {
+        --paper:#0b1119; --surface:#121b27; --surface-2:#182433; --ink:#edf3fa; --muted:#9aa9bb;
+        --line:#29394d; --blue:#75baff; --blue-soft:#123255; --teal:#64d4c7; --teal-soft:#123a38;
+        --amber:#f1bd73; --amber-soft:#3d2b14; --red:#ff918a; --red-soft:#44201f;
+        --shadow:0 18px 42px -30px rgba(0,0,0,.85);
+      }
+    }
+    * { box-sizing:border-box }
+    html { scroll-behavior:smooth }
+    body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.62 system-ui,-apple-system,"Segoe UI",sans-serif }
+    a { color:var(--blue); text-underline-offset:3px }
+    code,.mono { font-family:ui-monospace,"Cascadia Mono",Consolas,monospace }
+    code { background:var(--surface-2); border:1px solid var(--line); border-radius:4px; padding:.08em .32em; font-size:.88em }
+    .skip { position:absolute; left:-9999px; top:8px; background:var(--surface); padding:8px 12px; z-index:100 }
+    .skip:focus { left:8px }
+    .wrap { width:min(1080px,calc(100% - 36px)); margin-inline:auto }
+    header { padding:64px 0 42px; border-bottom:1px solid var(--line); background:linear-gradient(145deg,var(--surface),var(--paper) 68%) }
+    .eyebrow { color:var(--teal); font:700 .73rem/1.2 ui-monospace,Consolas,monospace; letter-spacing:.14em; text-transform:uppercase }
+    h1,h2,h3 { line-height:1.13; text-wrap:balance }
+    h1 { margin:.2em 0 .16em; font-size:clamp(2.35rem,6vw,4.8rem); letter-spacing:-.05em }
+    h2 { margin:0 0 12px; font-size:clamp(1.6rem,3vw,2.35rem); letter-spacing:-.035em }
+    h3 { margin:0 0 7px; font-size:1.05rem }
+    p { margin:.55em 0 }
+    .lead { max-width:760px; color:var(--muted); font-size:clamp(1.02rem,2vw,1.2rem) }
+    nav { position:sticky; top:0; z-index:20; border-bottom:1px solid var(--line); background:color-mix(in srgb,var(--paper) 91%,transparent); backdrop-filter:blur(12px) }
+    nav .wrap { display:flex; gap:18px; align-items:center; min-height:48px; overflow-x:auto; white-space:nowrap }
+    nav a { color:var(--muted); text-decoration:none; font-size:.8rem; font-weight:700 }
+    nav a:first-child { color:var(--ink); margin-right:auto }
+    main section { padding:56px 0; scroll-margin-top:52px }
+    main section + section { border-top:1px solid var(--line) }
+    .section-lead { color:var(--muted); max-width:780px; margin-bottom:22px }
+    .grid2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px }
+    .grid3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px }
+    .card,.callout { padding:18px; background:var(--surface); border:1px solid var(--line); border-radius:10px; box-shadow:var(--shadow) }
+    .card p,.card li { color:var(--muted); font-size:.93rem }
+    .callout { margin-top:16px; border-left:4px solid var(--blue) }
+    .callout.ok { border-left-color:var(--teal); background:var(--teal-soft) }
+    .callout.warn { border-left-color:var(--amber); background:var(--amber-soft) }
+    .callout.danger { border-left-color:var(--red); background:var(--red-soft) }
+    .step { display:grid; grid-template-columns:48px 1fr; gap:15px; margin:18px 0 }
+    .step-number { display:grid; place-items:center; width:42px; height:42px; border:1px solid var(--teal); border-radius:50%; color:var(--teal); font-weight:800 }
+    .tag { display:inline-block; margin-bottom:8px; border:1px solid currentColor; border-radius:999px; padding:2px 8px; font:700 .67rem/1.45 ui-monospace,Consolas,monospace; letter-spacing:.05em; text-transform:uppercase }
+    .tag.ok { color:var(--teal) } .tag.info { color:var(--blue) } .tag.warn { color:var(--amber) } .tag.bad { color:var(--red) }
+    .table-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:10px; background:var(--surface); box-shadow:var(--shadow) }
+    table { width:100%; border-collapse:collapse; min-width:710px }
+    th,td { padding:10px 12px; text-align:left; vertical-align:top; border-bottom:1px solid var(--line) }
+    th { background:var(--surface-2); color:var(--muted); font:700 .7rem/1.3 ui-monospace,Consolas,monospace; letter-spacing:.07em; text-transform:uppercase }
+    tr:last-child td { border-bottom:0 }
+    pre { overflow-x:auto; padding:15px 17px; border:1px solid #29384b; border-radius:9px; background:#0a111b; color:#e6edf5; font:13px/1.62 ui-monospace,"Cascadia Mono",Consolas,monospace }
+    ol,ul { padding-left:1.25rem }
+    footer { padding:30px 0 52px; border-top:1px solid var(--line); color:var(--muted); font-size:.84rem }
+    :focus-visible { outline:3px solid var(--blue); outline-offset:3px }
+    @media (max-width:760px) { .grid2,.grid3 { grid-template-columns:1fr } .wrap { width:min(100% - 24px,1080px) } header { padding-top:44px } }
+    @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto } }
+    @media print { nav { display:none } body { background:#fff;color:#111 } .card,.callout,.table-wrap { box-shadow:none } main section { break-inside:avoid } }
+  </style>
+</head>
+<body>
+<a class="skip" href="#content">Skip to walkthrough</a>
+<header>
+  <div class="wrap">
+    <div class="eyebrow">VITRINE · task-oriented guide</div>
+    <h1>Run it. Read it. Trust the right thing.</h1>
+    <p class="lead">A screen-by-screen walkthrough of realistic e-commerce exploration through a
+      single agent or five-executor workflow, the offline evidence suite, optional paid
+      LLM/stochastic/safety evals, durable receipts, and catalogue integrity self-test.</p>
+    <div class="callout warn"><strong>Independent application sample.</strong> VITRINE is an
+      independently created value proposal for Digitec Galaxus using synthetic data; no company
+      affiliation, commission, endorsement, internal system, or proprietary customer data is implied.</div>
+    <p><a href="Vitrine-Digitec-Galaxus-Value-Proposal.html">Why this matters to Digitec Galaxus</a> ·
+      <a href="index.html">VITRINE documentation hub</a> · <a href="Vitrine-Architecture.html#runtime-observation-and-control-room">Implementation details</a></p>
+  </div>
+</header>
+
+<nav aria-label="Walkthrough sections">
+  <div class="wrap">
+    <a href="index.html">VITRINE docs</a>
+    <a href="#content">Walkthrough</a>
+    <a href="#start">Start</a>
+    <a href="#agent">Agent</a>
+    <a href="#workflow">Workflow</a>
+    <a href="#evals">Evals</a>
+    <a href="#self-test">Self-test</a>
+    <a href="#reading">Read the UI</a>
+    <a href="#exports">Export</a>
+  </div>
+</nav>
+
+<main id="content">
+  <section id="start">
+    <div class="wrap">
+      <div class="eyebrow">00 · Before the first run</div>
+      <h2>The UI is available before execution</h2>
+      <p class="section-lead">You do not need to wait for a run to see the control room. The app
+        opens with a pre-run graph preview. When execution is prepared, that preview is replaced by
+        the exact registered function set, reflected MAF graph, or evaluation plan used for the run.</p>
+      <pre># From the repository root
+.\start.ps1 -Mode App</pre>
+      <div class="grid2">
+        <article class="card"><span class="tag info">Choose</span><h3>Mode and persona</h3><p>Select
+          Agent Demo01, Workflow Demo02, Evals, or Catalogue integrity self-test. The default offline
+          Evals plan includes the 43 diagnostic controls; <code>--controls</code> is also available in
+          the CLI. For a demo persona, the authored scenario description and exact canonical customer
+          query appear before you press Run.</p></article>
+        <article class="card"><span class="tag info">Configure</span><h3>Execution controls</h3><p>
+          Personalization switched right means enabled; switched left means disabled. Max rounds
+          caps Demo02 discovery/review cycles. Audience pace delays presentation only—it cannot
+          change execution or evaluator outcomes.</p></article>
+        <article class="card"><span class="tag ok">No surprise cost</span><h3>Offline is the default</h3><p>
+          The scripted provider and zero-model arms need no remote provider. Any live subject or LLM
+          judge choice is an explicit named plan, readiness-gated, paid, and never silently falls
+          back to offline. The removed live execution profile is not another hidden choice.</p></article>
+        <article class="card"><span class="tag info">Hover help</span><h3>Let a pointer rest</h3><p>
+          Buttons and sections expose delayed tooltips explaining their action and prerequisites.
+          Disabled export/replay controls become available only after a completed artifact exists.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section id="agent">
+    <div class="wrap">
+      <div class="eyebrow">01 · Single agent + tools</div>
+      <h2>Run Agent Demo01</h2>
+      <div class="step"><div class="step-number">1</div><div><h3>Select Agent Demo01</h3><p>Start with
+        Nadia and <strong>Mocked model + real runtime</strong>. The mocked provider makes choices
+        deterministic, while the real <code>ChatClientAgent</code> and the actual registered
+        read-only tools still execute.</p></div></div>
+      <div class="step"><div class="step-number">2</div><div><h3>Read what will be asked</h3><p>The
+        scenario card explains the authored use case and shows the exact query. Changing the persona
+        changes both; there is no invisible generic prompt substituted at run time.</p></div></div>
+      <div class="step"><div class="step-number">3</div><div><h3>Watch the graph and action evidence</h3><p>
+        An agent node is connected to the currently registered tools with directional arrows.
+        <code>×N</code> on a tool is the number of observed starts, not an estimate. The event timeline
+        contains the matching request, safe tool parameters, safe tool response, and correlation ID.</p></div></div>
+      <div class="step"><div class="step-number">4</div><div><h3>Inspect the screened outcome</h3><p>
+        The lower outcome panel is the final customer-facing response after policy and catalogue
+        screening. Expand model/tool events to inspect intermediate responses; use the outcome panel
+        for the final answer. If an output was not captured, the UI says so instead of showing an
+        unexplained blank area.</p></div></div>
+      <div class="callout"><strong>Comparison arm:</strong> Zero-model baseline runs retrieval and
+        code without the agent. It is useful as a labelled baseline, not as evidence that the model
+        helped. Live Azure is a separate explicit paid arm.</div>
+    </div>
+  </section>
+
+  <section id="workflow">
+    <div class="wrap">
+      <div class="eyebrow">02 · Five-executor workflow</div>
+      <h2>Run Workflow Demo02</h2>
+      <div class="step"><div class="step-number">1</div><div><h3>Select Marco</h3><p>Marco's authored
+        scenario distinguishes his genuine espresso interest from a recent gaming gift. Set Max
+        rounds to 3; the wider field is the hard cap, not the number of rounds the workflow must use.</p></div></div>
+      <div class="step"><div class="step-number">2</div><div><h3>Follow direction</h3><p>The normal
+        arrows move from InterestMapper → Discovery → CoverageReviewer → Ranker → Presenter. The
+        flattened <strong>BACK</strong> arrow is the conditional CoverageReviewer → Discovery route.
+        Every connector shows its observed traversal count.</p></div></div>
+      <div class="step"><div class="step-number">3</div><div><h3>Read executor counts</h3><p>An
+        executor increments once for each <code>NodeStarted</code>. Round-start events do not add a
+        second count. Therefore a reject → rediscover → approve path correctly shows Discovery ×2
+        and CoverageReviewer ×2.</p></div></div>
+      <div class="step"><div class="step-number">4</div><div><h3>Use the action shelf</h3><p>Demo02
+        has executors and typed workflow actions rather than registered agent tools. The shelf below
+        the graph lists executor starts, searches, and any model boundaries observed, with counts and
+        the latest safe detail.</p></div></div>
+      <div class="callout ok"><strong>What a loop means:</strong> CoverageReviewer found a gap and
+        progress was still possible. It is a normal route, not automatically a failure. The edge
+        count and the reviewer/discovery node counts show exactly how often it occurred.</div>
+    </div>
+  </section>
+
+  <section id="evals">
+    <div class="wrap">
+      <div class="eyebrow">03 · Evaluation modes</div>
+      <h2>Know which evaluator you are paying for</h2>
+      <p class="section-lead">Open <strong>Evaluation board</strong> while a suite runs. The header
+        updates from typed evaluator progress immediately; it does not wait for audience-paced event
+        cards to finish animating.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Choice</th><th>What runs</th><th>Provider cost</th><th>What to inspect</th></tr></thead>
+          <tbody>
+            <tr><td>Offline Evals</td><td>Six production gates; persisted Nadia/Sofia benchmark across Demo01, Demo02, and degraded arms; five predicates; 43 registered diagnostic controls</td><td>None</td><td>Gate evidence, benchmark census/floor/reference facts, and three-phase controls</td></tr>
+            <tr><td>Eval 01 · Agent</td><td>One fresh Robin agent trial for each selected use case</td><td>Paid; confirmation required</td><td>Response preview, read-only tool journal, LLM criterion verdicts, and local run receipt</td></tr>
+            <tr><td>Eval 02 · Workflow</td><td>One fresh five-executor discovery-workflow trial for each selected use case</td><td>Paid; confirmation required</td><td>Response preview, executor/route facts, LLM criterion verdicts, and local run receipt</td></tr>
+            <tr><td>Eval 03 · Agent vs workflow</td><td>Matched agent-reference and workflow-challenger arms; repetitions are configurable</td><td>Paid; confirmation required</td><td>Per-arm checks plus paired-case observation unit, <code>RepCollapse.All</code>, repetition counts, wins/losses/ties, effective n, p-value, minimum attainable p, mean delta, and power warning</td></tr>
+            <tr><td>Eval 04 · Stochastic agent</td><td>Repeated agent trials; five repetitions by default</td><td>Paid; confirmation required</td><td>Per-check measured/N/A/not-measured census, success rate, and Wilson interval</td></tr>
+            <tr><td>Eval 05 · Stochastic workflow</td><td>Repeated workflow trials; five repetitions by default</td><td>Paid; confirmation required</td><td>Per-check measured/N/A/not-measured census, success rate, and Wilson interval</td></tr>
+            <tr><td>Eval 06 · Safety probes</td><td>Fixed Robin-only AgentEval jailbreak and hidden-instruction-extraction campaign</td><td>Paid; confirmation required; 104-model-call ceiling by default</td><td>Redacted per-attack/per-probe resisted, compromised, inconclusive, error, fidelity, and usage facts; no scenario, repetition, or benchmark run</td></tr>
+            <tr><td>Offline Evals · controls panel</td><td>The 43 registered mutation controls inside the offline suite, each using healthy → defect-injected → recovered observations</td><td>None</td><td>Which exact planted defect was detected and whether the same evaluator recovered; this is not a separate app mode</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 style="margin-top:24px">Run a paid use-case eval deliberately</h3>
+      <div class="grid3">
+        <article class="card"><span class="tag info">1 · Plan</span><h3>Choose the architecture question</h3><p>
+          In <strong>Evals</strong>, open <strong>Evaluation plan</strong>. Offline suite remains selected
+          by default. Choose Eval 01–06 only when you intend to create new paid measurements.</p></article>
+        <article class="card"><span class="tag info">2 · Case</span><h3>Read what will be asked</h3><p>
+          For Eval 01–05, choose one use case or <strong>All four canonical use cases</strong>.
+          Before any model call, the panel shows the selected scenario title, description, exact
+          query, and expected behavior. The completed board expands the independent
+          ground-truth/tool contract and criteria. Eval 06 instead shows
+          its fixed campaign and disables scenario/repetition inputs.</p></article>
+        <article class="card"><span class="tag info">3 · Cost boundary</span><h3>Inspect, confirm, run</h3><p>
+          Set repetitions when the plan supports them, inspect the planned subject/judge counts or
+          safety probe/model-call ceiling, then turn on <strong>Confirm paid execution</strong>. The run button remains disabled
+          until both configuration readiness and confirmation hold.</p></article>
+      </div>
+      <div class="callout warn"><strong>Workload is explicit:</strong> inspect the scenario, arm,
+        repetition, subject/judge, and safety-call estimates shown in the setup panel before confirming.
+        Tool calls and retries can make provider-level requests higher than the number of subject trials.
+        The normative formulas and ceilings live in the <a
+        href="Vitrine-Evaluation-Protocol.html#cost-persistence-and-paid-execution">evaluation protocol</a>.</div>
+      <div class="callout"><strong>The decision rule is visible:</strong> the board identifies the
+        applicable quality bar, census, and evaluator-owned verdict. It distinguishes a quality threshold
+        from a chance floor, preserves bounded judge explanations, and marks a rule as not applicable when
+        the plan—such as Eval 06—uses a different safety classification.</div>
+      <div class="callout warn"><strong>Workflow degradation is visible:</strong> after two
+        unusable structured-output attempts, the mapper, reviewer, ranker, or presenter may use its
+        declared deterministic fallback. The board and receipt show the degradation count and
+        allow-listed kind. A terminal provider failure or cancellation still makes the trial
+        <code>NOT MEASURED</code>, even if a fallback response was constructed.</div>
+
+      <div class="callout"><strong>Scenario details have one owner.</strong> The setup preview shows the
+        exact selected case and query. The completed board shows its criterion outcomes and independent
+        tool/abstention evidence. The canonical case definitions and criterion IDs are maintained in the
+        <a href="Vitrine-Evaluation-Protocol.html#use-case-contracts-eval-0105">evaluation protocol</a>,
+        rather than duplicated in this operator guide.</div>
+
+      <h3 style="margin-top:24px">How to read the board</h3>
+      <div class="grid3">
+        <article class="card"><span class="tag info">Gates</span><h3>Six production contracts</h3><p>
+          Catalogue, topology, matched quality, injection, recall, and honesty each expose the
+          observed value, measurement state, pass/fail verdict, evidence, observation producer, and
+          acceptance evaluator. Expand a row for the cause—not just the completion count.</p></article>
+        <article class="card"><span class="tag info">Benchmark</span><h3>Scores are measured facts</h3><p>
+          Successes/trials, not-applicable and not-measured census, p-value, minimum attainable p,
+          observation unit/repetition collapse, power, and reference-arm comparison come from
+          AgentEval. The UI projects them and does not re-score them.</p></article>
+        <article class="card"><span class="tag info">Controls</span><h3><span class="mono">43/43</span> means rows checked</h3><p>
+          The graph increments only after a row reaches <code>ControlCompleted</code>. It does not mean
+          that the full suite ran 43 times. Expand timeline evidence to see baseline, planted defect,
+          recovery, and cause for each NC-01…NC-43 row.</p></article>
+        <article class="card"><span class="tag info">Safety</span><h3>Read the census, not 0.750</h3><p>
+          Eval 06 shows planned probes and the 104-call ceiling, then resisted,
+          <strong>COMPROMISED</strong>, inconclusive, error, truncation, and skipped counts with
+          per-attack/probe facts and usage. Its quality threshold is explicitly not applicable and
+          it claims zero <code>BenchmarkRunner</code> directories.</p></article>
+      </div>
+
+      <div class="callout warn"><strong>Why this board normally says NOT DERIVABLE:</strong> the
+        offline production/recommendation checks and the live use-case checks do not have a defensible
+        random-answer population, so no 0.500 floor is invented. A 0.500 chance fact is meaningful
+        only for a separately registered uniform binary-choice fixture; it is not the passing score,
+        the live 0.75 quality pass bar, or proof that a result is useful.</div>
+      <div class="callout warn"><strong>“The probes ran” is not the same as “the campaign was
+        measurable.”</strong> Eval 06 records every completed probe attempt. <em>Errored</em> is a
+        subset of <em>inconclusive</em>, not an additional probe: one inconclusive / one error means
+        one probe ended in an execution error. A complete, error-free but undecidable campaign is
+        <code>NOT MEASURED</code> (exit 3). A timeout, transport/execution error, malformed census,
+        truncation, or missing probe makes the session an <code>INFRASTRUCTURE ERROR</code> (exit 4).
+        Expand the probe row to see its attack and probe id, allow-listed stage/code/detail, and
+        whether the underlying raw detail was deliberately suppressed. Raw attack prompts,
+        responses, canaries, provider messages, and
+        system instructions remain outside the receipt.</div>
+      <div class="callout"><strong>Do not merge the two safety lanes:</strong> the offline injection
+        gate runs AgentEval's real <code>RedTeamRunner</code> against deterministic guarded and
+        deliberately vulnerable calibration fixtures, including a poison-dependent behavioral
+        tool call. It is not a Robin measurement. Eval 06 is the separately confirmed paid scan
+        against fresh real Robin targets. Neither is a retrieval-quality rate.</div>
+    </div>
+  </section>
+
+  <section id="self-test">
+    <div class="wrap">
+      <div class="eyebrow">04 · Catalogue integrity self-test</div>
+      <h2>One intentional red row; one green self-test</h2>
+      <p class="section-lead">This is the former “Ablation” mode. It removes one product only from
+        an isolated snapshot, runs the same catalogue contract, and leaves the healthy source at 99.</p>
+      <div class="grid3">
+        <article class="card"><span class="tag bad">Underlying gate</span><h3>Catalogue: FAIL</h3><p>
+          Expected products 99; observed products 98. The red gate is retained because changing it
+          to pass would erase the proof that the real contract noticed the defect.</p></article>
+        <article class="card"><span class="tag ok">Interpretation</span><h3>EXPECTED DEFECT DETECTED</h3><p>
+          Timeline and graph present the failed gate as successful detection. Its expanded evidence
+          names the expected/observed counts and isolated removed SKU rather than only “6/6”.</p></article>
+        <article class="card"><span class="tag ok">Overall</span><h3>SELF-TEST SUCCEEDED</h3><p>
+          The overall self-test is green only when the catalogue defect is detected, all other gates
+          behave normally, and the requested controls are caught.</p></article>
+      </div>
+      <div class="callout danger"><strong>Exit code remains 1.</strong> The underlying evaluation
+        process still reports a failed admitted gate for automation and artifact fidelity. In this
+        explicitly selected self-test mode, the UI explains that exit 1 is the expected successful
+        detection—not an unexplained suite failure.</div>
+    </div>
+  </section>
+
+  <section id="reading">
+    <div class="wrap">
+      <div class="eyebrow">05 · Status and evidence glossary</div>
+      <h2>Read state, not color alone</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Label</th><th>Meaning</th><th>Typical next action</th></tr></thead>
+          <tbody>
+            <tr><td>READY</td><td>Known in the preview or plan; not started yet</td><td>Run or continue the suite</td></tr>
+            <tr><td>RUNNING / STARTED</td><td>A start event exists and no matching terminal event has arrived</td><td>Watch the correlated event; subject, check, and trial completions close their starts, while live session completion closes persistence and session starts</td></tr>
+            <tr><td>DONE</td><td>The operation completed; optional audience pacing may still be presenting queued evidence</td><td>Expand response/evidence or inspect outcome</td></tr>
+            <tr><td>DETECTED</td><td>A deliberately injected control fault produced the expected failure</td><td>Confirm recovery also passes</td></tr>
+            <tr><td>EXPECTED DEFECT DETECTED</td><td>The isolated catalogue 99→98 defect was caught</td><td>Inspect the red underlying gate as evidence</td></tr>
+            <tr><td>SELF-TEST SUCCEEDED</td><td>The intentional defect was caught and self-test invariants held</td><td>No repair is required; exit 1 is retained intentionally</td></tr>
+            <tr><td>FAILED</td><td>An unplanned operation/gate failure, missed control defect, or failed recovery</td><td>Expand evidence; expected vs observed and cause are shown</td></tr>
+            <tr><td>BLOCKED</td><td>A runtime guardrail or pre-gate prevented an unsafe/ineligible transition</td><td>Inspect the guard decision; planted control detection no longer uses this label</td></tr>
+            <tr><td>NOT MEASURED</td><td>No valid measurement exists; it is not zero</td><td>Inspect readiness, applicability, or instrument evidence</td></tr>
+            <tr><td>NOT APPLICABLE</td><td>The registered criterion does not apply to this authored request</td><td>No score should be invented</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout"><strong>Event expansion:</strong> model events show safe request/response;
+        tool events show safe arguments/results; evaluation events show expected outcome, measurement,
+        verdict, score, pass threshold, criterion explanation, workflow degradation, census, and
+        producer/evaluator when available. Judge explanations are bounded evidence, not hidden
+        reasoning. A progress value such as 6/6 says only that six stages completed—the evidence
+        block explains what happened.</div>
+    </div>
+  </section>
+
+  <section id="exports">
+    <div class="wrap">
+      <div class="eyebrow">06 · Save and replay</div>
+      <h2>One screened artifact, three views</h2>
+      <div class="grid3">
+        <article class="card"><span class="tag info">JSON</span><h3>Machine-readable receipt</h3><p>
+          Saves the completed, sanitized, integrity-protected run artifact for downstream inspection.
+          It becomes enabled only after an artifact exists.</p></article>
+        <article class="card"><span class="tag info">HTML</span><h3>Human-readable report</h3><p>
+          Saves a self-contained report generated from the same artifact, including graph, outcome,
+          event evidence, gates, benchmark, and controls.</p></article>
+        <article class="card"><span class="tag info">Replay</span><h3>Pure projection</h3><p>
+          Resets the screen and replays stored events. Previous/next rebuild graph state and counters
+          deterministically; replay calls no model, tool, workflow, or evaluator.</p></article>
+      </div>
+      <div class="callout"><strong>Paid results are saved even without pressing JSON or HTML.</strong>
+        For Eval 01–05, each selected arm/repetition creates a standard AgentEval run below
+        <code>.agenteval/live</code>; Eval 06 creates no benchmark run. Every paid plan writes a
+        sanitized session receipt to
+        <code>.agenteval/live/live-sessions/&lt;session-id&gt;/outcome.json</code>, and the rolling
+        <code>.agenteval/live/live-sessions/index.json</code> links to it. The Evaluation board and
+        schema-v8 app export show the same plan-specific evidence: Eval 01–05 retain the pass threshold, bounded response preview, criterion
+        verdicts/explanations, check facts, tool or workflow/degradation evidence, usage when
+        reported, Wilson summaries, and optional paired comparisons; Eval 06 retains its redacted
+        safety configuration, workload ceiling, census/probe facts, and usage.</div>
+      <pre># Offline launcher aliases (Controls invokes the eval CLI; it is not an app mode)
+.\start.ps1 -Mode Demo01
+.\start.ps1 -Mode Demo02 -NoRestore
+.\start.ps1 -Mode Evals -NoRestore
+.\start.ps1 -Mode Controls -NoRestore
+.\start.ps1 -Mode Ablation -NoRestore
+
+# Standalone subject selectors 1–6 stay offline unless both paid flags are present
+dotnet run --project src/AgentEval.VitrineDemo -- 1
+dotnet run --project src/AgentEval.VitrineDemo -- 1 --live --confirm-paid
+
+# Explicit paid paths; secure Azure configuration and --confirm-paid are required
+dotnet run --project src/AgentEval.VitrineDemo.Evals -- --eval-plan eval01-agent --scenario nadia-cross-category --confirm-paid
+dotnet run --project src/AgentEval.VitrineDemo.Evals -- --eval-plan eval02-workflow --scenario all --confirm-paid
+dotnet run --project src/AgentEval.VitrineDemo.Evals -- --eval-plan eval03-compare --scenario marco-gift-trap --repetitions 3 --confirm-paid
+dotnet run --project src/AgentEval.VitrineDemo.Evals -- --eval-plan eval04-stochastic-agent --scenario all --repetitions 5 --confirm-paid
+dotnet run --project src/AgentEval.VitrineDemo.Evals -- --eval-plan eval05-stochastic-workflow --scenario luca-safe-abstention --repetitions 5 --confirm-paid
+dotnet run --project src/AgentEval.VitrineDemo.Evals -- --eval-plan eval06-safety-probes --confirm-paid
+# Backward-compatible parser alias for the same confirmed Eval 03 plan (not a profile)
+dotnet run --project src/AgentEval.VitrineDemo.Evals -- --live-subjects-and-judge --confirm-paid</pre>
+      <div class="callout warn"><strong>Eval 06 is intentionally fixed:</strong> the CLI rejects
+        both <code>--scenario</code> and <code>--repetitions</code>, even <code>all</code> or
+        <code>1</code>. The default four-probe campaign may consume up to 104 model calls; inspect
+        that ceiling before confirming paid execution.</div>
+      <div class="callout warn"><strong>Standalone subject cost boundary:</strong> credentials do
+        not opt selectors 1–6 into a live model. That requires both <code>--live</code> and
+        <code>--confirm-paid</code>. Because <code>--real-vectors</code> embeds queries live and
+        <code>--rebuild-embeddings</code> regenerates the live index, both vector options also
+        require <code>--confirm-paid</code>.</div>
+      <div class="callout ok"><strong>Verification safety:</strong> the implementation build,
+        normal tests, self-test, and committed offline report refresh use no live subject or LLM
+        judge. A paid plan is a separate operator action and produces a new local session receipt.</div>
+      <p><a href="Vitrine-Evaluation-Protocol.html">Continue to the normative evaluation protocol →</a></p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">VITRINE operator walkthrough · self-contained HTML · no remote scripts,
+    fonts, images, or network requests.</div>
+</footer>
+</body>
+</html>

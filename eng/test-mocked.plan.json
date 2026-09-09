@@ -1,0 +1,11 @@
+{
+  "spdxLicense": "MIT",
+  "schemaVersion": 1,
+  "command": "dotnet-test",
+  "solution": "AgentEval.VitrineDemo.slnx",
+  "evalProject": "src/AgentEval.VitrineDemo.Evals/AgentEval.VitrineDemo.Evals.csproj",
+  "evalArguments": ["--all"],
+  "evalProofArguments": ["--gates-only"],
+  "testFilter": "Category!=LiveModel",
+  "failOnNonZero": true
+}

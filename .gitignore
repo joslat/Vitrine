@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: MIT
+bin/
+obj/
+.vs/
+.vscode/
+.agenteval/
+.artifacts/
+TestResults/
+coverage/
+publish/
+*.trx
+*.coverage
+*.coveragexml
+*.sarif
+*.binlog
+*.user
+*.log
+.DS_Store
+Thumbs.db
+
+# Local configuration, credentials, certificates, and signing material.
+.env
+.env.*
+!.env.example
+secrets.json
+appsettings.Local.json
+appsettings.*.local.json
+.azure/
+*.pem
+*.key
+*.pfx
+*.p12
+*.snk
+*.cer
+*.crt
+*.publishsettings
+
+# Local publication/export scratch material.
+*.zip
+*.tar
+*.tar.gz
+publication-receipts/

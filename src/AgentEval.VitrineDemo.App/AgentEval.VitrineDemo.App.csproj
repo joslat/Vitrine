@@ -1,0 +1,24 @@
+<!-- SPDX-License-Identifier: MIT -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>AgentEval.VitrineDemo.App</RootNamespace>
+    <AssemblyName>AgentEval.VitrineDemo.App</AssemblyName>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AgentEval.VitrineDemo\AgentEval.VitrineDemo.csproj" />
+    <ProjectReference Include="..\AgentEval.VitrineDemo.Evals\AgentEval.VitrineDemo.Evals.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="AgentEval" />
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AgentEval.VitrineDemo.Tests" />
+  </ItemGroup>
+</Project>

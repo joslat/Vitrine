@@ -1,0 +1,360 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="An independent job-application sample prepared for Digitec Galaxus, showing how AgentEval makes AI-assisted product-discovery quality, safety risks, and evidence inspectable.">
+  <title>VITRINE · Independent value proposal for Digitec Galaxus</title>
+  <style>
+    :root {
+      --paper:#f4f7fa; --surface:#fff; --surface-2:#edf2f7; --ink:#162334; --muted:#5b6a7d;
+      --line:#d1dbe6; --blue:#176bb2; --blue-soft:#e1effd; --teal:#087c72; --teal-soft:#daf2ed;
+      --amber:#92590e; --amber-soft:#faecd3; --red:#a23d38; --red-soft:#f8e1df;
+      --violet:#6650a4; --violet-soft:#ece5f8; --shadow:0 18px 42px -34px rgba(20,36,55,.55);
+    }
+    @media (prefers-color-scheme:dark) {
+      :root {
+        --paper:#0a1119; --surface:#111b27; --surface-2:#182433; --ink:#edf3fa; --muted:#9aa9bb;
+        --line:#2b3b4e; --blue:#76baff; --blue-soft:#123255; --teal:#65d5c7; --teal-soft:#123a38;
+        --amber:#f1bd73; --amber-soft:#3d2b14; --red:#ff918a; --red-soft:#44201f;
+        --violet:#c4a9ff; --violet-soft:#30234a; --shadow:0 18px 42px -30px rgba(0,0,0,.85);
+      }
+    }
+    * { box-sizing:border-box }
+    html { scroll-behavior:smooth }
+    body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.62 system-ui,-apple-system,"Segoe UI",sans-serif }
+    a { color:var(--blue); text-underline-offset:3px }
+    code,.mono { font-family:ui-monospace,"Cascadia Mono",Consolas,monospace }
+    code { padding:.08em .32em; border:1px solid var(--line); border-radius:4px; background:var(--surface-2); font-size:.88em }
+    .skip { position:absolute; left:-9999px; top:8px; z-index:100; padding:8px 12px; background:var(--surface) }
+    .skip:focus { left:8px }
+    .wrap { width:min(1120px,calc(100% - 36px)); margin-inline:auto }
+    header { padding:72px 0 48px; border-bottom:1px solid var(--line); background:linear-gradient(145deg,var(--surface),var(--paper) 68%) }
+    .eyebrow { color:var(--teal); font:750 .74rem/1.25 ui-monospace,Consolas,monospace; letter-spacing:.14em; text-transform:uppercase }
+    h1,h2,h3 { line-height:1.12; text-wrap:balance }
+    h1 { max-width:970px; margin:.2em 0 .16em; font-size:clamp(2.45rem,6.5vw,5.25rem); letter-spacing:-.052em }
+    h1 span { color:var(--teal) }
+    h2 { margin:0 0 13px; font-size:clamp(1.65rem,3.4vw,2.55rem); letter-spacing:-.035em }
+    h3 { margin:0 0 7px; font-size:1.08rem }
+    p { margin:.56em 0 }
+    .lead { max-width:840px; color:var(--muted); font-size:clamp(1.05rem,2vw,1.25rem) }
+    .actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:24px }
+    .button { display:inline-flex; align-items:center; padding:9px 14px; border:1px solid var(--line); border-radius:7px; background:var(--surface); color:var(--ink); text-decoration:none; font-weight:680; box-shadow:var(--shadow) }
+    .button.primary { border-color:var(--teal); background:var(--teal); color:#fff }
+    nav { position:sticky; top:0; z-index:20; border-bottom:1px solid var(--line); background:color-mix(in srgb,var(--paper) 91%,transparent); backdrop-filter:blur(12px) }
+    nav .wrap { display:flex; gap:18px; align-items:center; min-height:48px; overflow-x:auto; white-space:nowrap }
+    nav a { color:var(--muted); text-decoration:none; font-size:.8rem; font-weight:720 }
+    nav a:first-child { color:var(--ink); margin-right:auto }
+    main section { padding:62px 0; scroll-margin-top:52px }
+    main section + section { border-top:1px solid var(--line) }
+    .section-lead { max-width:800px; margin-bottom:24px; color:var(--muted) }
+    .grid2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:15px }
+    .grid3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:15px }
+    .grid4 { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:13px }
+    .card,.callout { padding:19px; border:1px solid var(--line); border-radius:10px; background:var(--surface); box-shadow:var(--shadow) }
+    .card p,.card li { color:var(--muted); font-size:.92rem }
+    .card ul { margin:.55em 0 0; padding-left:1.15rem }
+    .tag { display:inline-block; margin-bottom:8px; padding:2px 8px; border:1px solid currentColor; border-radius:999px; font:720 .67rem/1.45 ui-monospace,Consolas,monospace; letter-spacing:.05em; text-transform:uppercase }
+    .tag.ok { color:var(--teal) } .tag.info { color:var(--blue) } .tag.warn { color:var(--amber) } .tag.no { color:var(--red) } .tag.agent { color:var(--violet) }
+    .callout { margin-top:20px; border-left:4px solid var(--teal); border-radius:0 10px 10px 0; background:var(--teal-soft) }
+    .callout.warn { border-left-color:var(--amber); background:var(--amber-soft) }
+    .callout.danger { border-left-color:var(--red); background:var(--red-soft) }
+    .callout p { margin:.3em 0 }
+    .facts { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1px; margin-top:28px; overflow:hidden; border:1px solid var(--line); border-radius:11px; background:var(--line); box-shadow:var(--shadow) }
+    .fact { padding:17px; background:var(--surface) }
+    .fact b { display:block; font-size:1.65rem; line-height:1.15; font-variant-numeric:tabular-nums }
+    .fact span { color:var(--muted); font-size:.77rem }
+    .table-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:10px; background:var(--surface); box-shadow:var(--shadow) }
+    table { width:100%; min-width:790px; border-collapse:collapse; font-size:.88rem }
+    th,td { padding:11px 13px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top }
+    th { background:var(--surface-2); color:var(--muted); font:720 .7rem/1.3 ui-monospace,Consolas,monospace; letter-spacing:.07em; text-transform:uppercase }
+    tr:last-child td { border-bottom:0 }
+    .flow { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; margin-top:25px }
+    .flow article { position:relative; min-height:152px }
+    .flow article:not(:last-child)::after { content:"→"; position:absolute; top:50%; right:-18px; z-index:2; color:var(--teal); font-weight:900 }
+    .step { display:grid; grid-template-columns:52px 1fr; gap:15px; margin:18px 0 }
+    .step-number { display:grid; place-items:center; width:45px; height:45px; border:1px solid var(--teal); border-radius:50%; color:var(--teal); font-weight:800 }
+    .proof { border-left:4px solid var(--blue) }
+    footer { padding:34px 0 58px; border-top:1px solid var(--line); color:var(--muted); font-size:.84rem }
+    :focus-visible { outline:3px solid var(--blue); outline-offset:3px }
+    @media (max-width:900px) { .grid4,.flow { grid-template-columns:repeat(2,minmax(0,1fr)) } .flow article::after { display:none } }
+    @media (max-width:720px) { .grid2,.grid3,.grid4,.flow { grid-template-columns:1fr } .wrap { width:min(100% - 24px,1120px) } header { padding-top:48px } }
+    @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto } }
+    @media print { nav,.actions { display:none } body { background:#fff;color:#111 } .card,.callout,.facts,.table-wrap { box-shadow:none } main section { break-inside:avoid } }
+  </style>
+</head>
+<body>
+<a class="skip" href="#content">Skip to the value proposal</a>
+
+<header>
+  <div class="wrap">
+    <div class="eyebrow">Independent job-application sample for Digitec Galaxus · AgentEval in practice</div>
+    <h1>From AI product discovery to <span>measurable value.</span></h1>
+    <p class="lead"><strong>What I can help Digitec Galaxus achieve:</strong> move an AI-assisted
+      shopping experience from an impressive demonstration to a capability whose relevance,
+      safety, variability, cost, and failure modes can be inspected before and after every change.</p>
+    <div class="callout warn">
+      <strong>Independent portfolio project.</strong>
+      VITRINE was created independently as a job-application value proposal for Digitec Galaxus. It is not
+      affiliated with, commissioned by, or endorsed by Digitec Galaxus. Its catalogue, customer
+      histories, and personas are synthetic. Its measurements are observations of this sample,
+      not company systems, proprietary data, or production results.
+    </div>
+    <div class="actions">
+      <a class="button primary" href="#proposal">Read the proposal</a>
+      <a class="button" href="index.html">Return to the documentation hub</a>
+      <a class="button" href="Vitrine-Walkthrough.html">Run the walkthrough</a>
+      <a class="button" href="https://github.com/joslat/Vitrine">View VITRINE source</a>
+      <a class="button" href="https://github.com/AgentEvalHQ/AgentEval">View AgentEval</a>
+    </div>
+  </div>
+</header>
+
+<nav aria-label="Value proposal sections">
+  <div class="wrap">
+    <a href="index.html">VITRINE docs</a>
+    <a href="#content">Value proposal</a>
+    <a href="#proposal">Contribution</a>
+    <a href="#value">Business value</a>
+    <a href="#scenarios">Scenarios</a>
+    <a href="#strategy">Eval strategy</a>
+    <a href="#adoption">Adoption</a>
+    <a href="#proof">Evidence</a>
+    <a href="#limits">Limits</a>
+  </div>
+</nav>
+
+<main id="content">
+  <section id="proposal">
+    <div class="wrap">
+      <div class="eyebrow">01 · The proposal</div>
+      <h2>Make quality a system, not a launch-day opinion</h2>
+      <p class="section-lead">A product-discovery model can sound convincing while recommending an
+        owned product, following a gift-derived false preference, inventing commercial facts, or
+        behaving differently on the next execution. My contribution is to make those risks explicit,
+        testable, observable, and reviewable by product, engineering, and safety stakeholders.</p>
+      <div class="grid3">
+        <article class="card"><span class="tag agent">Product engineering</span><h3>Build executable alternatives</h3><p>A tool-using
+          recommendation agent and a five-stage workflow operate over the same synthetic commerce
+          domain, so control structures can be compared rather than debated in the abstract.</p></article>
+        <article class="card"><span class="tag info">Evaluation engineering</span><h3>Define independent evidence</h3><p>Ground truth,
+          criteria, tool expectations, missing-measurement rules, repetitions, and adversarial probes
+          live outside the system being evaluated. The subject never grades itself.</p></article>
+        <article class="card"><span class="tag ok">Decision support</span><h3>Leave a durable answer</h3><p>Each execution lane retains the
+          evidence appropriate to it: app runs emit typed events and support integrity-checked
+          export and replay; the offline benchmark and Eval01–Eval05 create standard AgentEval run
+          directories; every paid plan writes a sanitized local session receipt.</p></article>
+      </div>
+      <div class="callout">
+        <strong>The AgentEval connection.</strong>
+        VITRINE is also an applied demonstration of my work on
+        <a href="https://github.com/AgentEvalHQ/AgentEval">AgentEval</a>: admitted atomic checks,
+        benchmark arms and cases, honest missingness, native comparisons, Wilson reliability,
+        RedTeam probes, filesystem evidence, and fail-closed execution are used here against a
+        realistic e-commerce subject—not presented only as framework APIs.
+      </div>
+      <div class="facts" aria-label="Current VITRINE proof surface">
+        <div class="fact"><b>99</b><span>synthetic products</span></div>
+        <div class="fact"><b>14</b><span>authored personas</span></div>
+        <div class="fact"><b>2</b><span>subject architectures</span></div>
+        <div class="fact"><b>6</b><span>admitted product gates</span></div>
+        <div class="fact"><b>43</b><span>registered control mutations</span></div>
+        <div class="fact"><b>6</b><span>explicit paid Eval01–Eval06 plans</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="value">
+    <div class="wrap">
+      <div class="eyebrow">02 · Value for an e-commerce company</div>
+      <h2>Turn recurring AI questions into inspectable decisions</h2>
+      <p class="section-lead">VITRINE does not claim to know Digitec Galaxus production internals.
+        It demonstrates an evaluation method that can be adapted to governed catalogue, customer,
+        search, safety, and business data.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Business question</th><th>VITRINE evidence</th><th>Decision enabled</th></tr></thead>
+          <tbody>
+            <tr><td>Are recommendations grounded and useful?</td><td>Scenario-specific ground truth,
+              LLM criteria, catalogue checks, and deterministic tool expectations.</td><td>Catch
+              relevance, ownership, and fabricated-fact regressions before release.</td></tr>
+            <tr><td>Should this use case be an agent or a workflow?</td><td>When explicitly invoked, Eval03 runs matched cases
+              through both architectures and retains native paired comparison facts.</td><td>Choose
+              from observed quality, control, reliability, and cost trade-offs—not fashion.</td></tr>
+            <tr><td>Will the behavior remain stable?</td><td>When explicitly invoked, Eval04 and Eval05
+              repeat provider-backed executions and report per-check Wilson intervals alongside the case census.</td><td>Expose
+              variability and decide whether the evidence is mature enough for a rollout.</td></tr>
+            <tr><td>Can the system resist misuse?</td><td>The offline suite calibrates injection
+              detection on guarded and deliberately vulnerable fixtures. When explicitly invoked,
+              Eval06 targets fresh Robin instances with AgentEval jailbreak and hidden-instruction-extraction attacks.</td><td>Prioritize
+              containment work and rerun the same bounded safety contract after changes.</td></tr>
+            <tr><td>What did a run cost?</td><td>Paid work is explicitly confirmed, planned calls are
+              shown before execution, and provider usage is retained when reported.</td><td>Compare
+              quality per unit of spend and distinguish measured zero from missing telemetry.</td></tr>
+            <tr><td>Can we defend the decision later?</td><td>Sanitized receipts, run IDs, persisted
+              benchmark output, integrity-checked artifacts, HTML/JSON export, and pure replay.</td><td>Reproduce
+              evidence for engineering review, incident learning, and model-change governance.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="scenarios">
+    <div class="wrap">
+      <div class="eyebrow">03 · Representative customer risks</div>
+      <h2>Evaluate behavior through concrete shopping situations</h2>
+      <p class="section-lead">The four cases are intentionally different. They prevent one generic
+        “helpful recommendation” rubric from hiding distinct product and trust failures.</p>
+      <div class="grid4">
+        <article class="card"><span class="tag agent">Nadia</span><h3>Cross-category intent</h3><p>Connect
+          hiking, pre-sunrise lighting, off-grid power, and photography evidence while avoiding
+          products she already owns.</p></article>
+        <article class="card"><span class="tag agent">Sofia</span><h3>Capability gap</h3><p>Recognize a
+          missing coffee grinder while separating consumable replenishment from new durable-product
+          discovery.</p></article>
+        <article class="card"><span class="tag agent">Marco</span><h3>Gift-history trap</h3><p>Suppress
+          gifted gaming purchases as a preference signal and personalize only from Marco’s own
+          espresso evidence.</p></article>
+        <article class="card"><span class="tag agent">Luca</span><h3>Safe abstention</h3><p>Treat one
+          low-information cable purchase as insufficient evidence, ask useful questions, and avoid
+          speculative recommendations.</p></article>
+      </div>
+      <div class="callout warn"><strong>Why authored cases matter:</strong> these are evaluation
+        hypotheses, not claims about real Digitec Galaxus customers. In a production pilot they
+        would be reviewed, replaced, or expanded using privacy-governed evidence and domain-expert
+        input.</div>
+    </div>
+  </section>
+
+  <section id="strategy">
+    <div class="wrap">
+      <div class="eyebrow">04 · Improvement loop</div>
+      <h2>Use the cheapest trustworthy evidence first</h2>
+      <p class="section-lead">The goal is not to call an LLM for every assertion. Deterministic
+        contracts protect invariants quickly; paid evaluation is reserved for semantic quality,
+        stochastic reliability, architectural comparison, and real adversarial behavior.</p>
+      <div class="flow" aria-label="Evaluation improvement loop">
+        <article class="card"><span class="tag info">1 · Explore</span><h3>Observe the subject</h3><p>Run
+          the agent and workflow, inspect tool calls, graph routes, fallbacks, screening, and final
+          customer response.</p></article>
+        <article class="card"><span class="tag ok">2 · Guard</span><h3>Offline CI</h3><p>Apply catalogue,
+          workflow, memory, honesty, injection, and recommendation predicates without provider
+          spend.</p></article>
+        <article class="card"><span class="tag agent">3 · Measure</span><h3>Paid use-case evals</h3><p>Use
+          scenario-routed LLM judging only after readiness and explicit cost confirmation.</p></article>
+        <article class="card"><span class="tag warn">4 · Stress</span><h3>Reliability and safety</h3><p>Repeat
+          runs for Wilson intervals; compare architectures; probe jailbreak and instruction leakage.</p></article>
+        <article class="card"><span class="tag info">5 · Learn</span><h3>Persist and compare</h3><p>Keep
+          bounded receipts and native run facts, fix a failure, then rerun the same contract.</p></article>
+      </div>
+      <div class="grid2" style="margin-top:16px">
+        <article class="card proof"><h3>What AgentEval contributes</h3><ul>
+          <li>First-class checks with explicit applicability and chance-floor policy.</li>
+          <li>Cases, arms, repetitions, census, reference comparisons, and observation units.</li>
+          <li>Wilson reliability and honest underpowered/undecidable states.</li>
+          <li>Real RedTeam orchestration and filesystem-backed evidence.</li>
+        </ul></article>
+        <article class="card proof"><h3>What VITRINE demonstrates</h3><ul>
+          <li>Mapping commerce risks to independent ground truth and evaluators.</li>
+          <li>Instrumenting a real tool-using agent and conditional-loop workflow.</li>
+          <li>Making costs, fallbacks, missing data, and failure causes visible.</li>
+          <li>Turning framework primitives into an operator-friendly quality workflow.</li>
+          <li>Feeding application-discovered needs—such as safe, structured red-team failure
+            diagnostics without raw evidence—back into my AgentEval engineering work.</li>
+        </ul></article>
+      </div>
+    </div>
+  </section>
+
+  <section id="adoption">
+    <div class="wrap">
+      <div class="eyebrow">05 · A credible adoption path</div>
+      <h2>Start bounded, then connect evaluation to real outcomes</h2>
+      <p class="section-lead">A production programme would be collaborative: product and category
+        experts define useful behavior, safety and privacy owners set boundaries, and engineering
+        makes the evidence repeatable.</p>
+      <div class="step"><div class="step-number">30</div><div><h3>Days 1–30 · Frame and instrument</h3><p>Choose
+        a narrow product-discovery journey; map failure modes and decision owners; define a governed
+        scenario registry; instrument tool, retrieval, screening, latency, cost, and fallback facts;
+        establish deterministic baselines.</p></div></div>
+      <div class="step"><div class="step-number">60</div><div><h3>Days 31–60 · Calibrate and compare</h3><p>Connect
+        read-only staging data; have domain experts review rubrics and failure examples; run blinded
+        agent/workflow comparisons; calibrate judge agreement; add offline release gates and explicit
+        missing-measurement policy.</p></div></div>
+      <div class="step"><div class="step-number">90</div><div><h3>Days 61–90 · Pilot and govern</h3><p>Run scheduled
+        model-backed canaries and bounded RedTeam probes; analyze reliability and spend; define model
+        or prompt change gates; connect technical quality to privacy-approved business measures such
+        as successful discovery, add-to-cart, support contacts, returns, and customer feedback.</p></div></div>
+      <div class="callout"><strong>Deliverable:</strong> not merely a dashboard—a repeatable decision
+        process with owned scenarios, versioned criteria, bounded execution, retained evidence,
+        failure triage, and a clear path from a red result to remediation.</div>
+    </div>
+  </section>
+
+  <section id="proof">
+    <div class="wrap">
+      <div class="eyebrow">06 · Evidence available today</div>
+      <h2>Inspect the implementation, not just the proposal</h2>
+      <p class="section-lead">The current receipts are engineering evidence from a synthetic sample.
+        They demonstrate that the contracts execute and can detect planted defects; they are not
+        Digitec Galaxus business metrics.</p>
+      <div class="grid3">
+        <article class="card"><span class="tag ok">Verified offline</span><h3>Release confidence</h3><p>At the
+          2026-09-09 verification snapshot: Release build with zero warnings/errors; 336/336 credential-free tests; six of six admitted production-check gates;
+          43/43 registered mutations detected; catalogue defect detected and recovery verified.</p></article>
+        <article class="card"><span class="tag info">Durable</span><h3>Run evidence</h3><p>The checked-in
+          <a href="reports/evals-offline.html">offline report</a> records cases, arms, checks, census,
+          paired comparisons, gates, controls, and the exact canonical run identity.</p></article>
+        <article class="card"><span class="tag warn">Implemented, explicitly paid</span><h3>Live measurement</h3><p>The
+          live-plan orchestration and all selectors are exercised with injected fakes in ordinary
+          tests. Intentional provider runs require readiness and one-shot paid confirmation, then
+          write separate live receipts.</p></article>
+      </div>
+      <div class="actions">
+        <a class="button primary" href="Vitrine-Walkthrough.html">Follow the operator walkthrough</a>
+        <a class="button" href="Vitrine-Evaluation-Protocol.html">Read the evaluation protocol</a>
+        <a class="button" href="Vitrine-Architecture.html">Read the architecture</a>
+        <a class="button" href="Vitrine-Verification.html">Inspect the verification receipt</a>
+      </div>
+    </div>
+  </section>
+
+  <section id="limits">
+    <div class="wrap">
+      <div class="eyebrow">07 · Honest boundary</div>
+      <h2>What this proposal does not claim</h2>
+      <div class="grid2">
+        <article class="card"><span class="tag no">Not claimed</span><h3>Production business impact</h3><ul>
+          <li>The 99 products and 14 personas are synthetic, not production scale.</li>
+          <li>No conversion, revenue, margin, return-rate, or customer-satisfaction uplift is shown.</li>
+          <li>No Digitec Galaxus customer data, internal service, or proprietary prompt is used.</li>
+          <li>No paid live-plan result is presented here as portfolio evidence of product quality;
+            each operator-run measurement keeps its own local receipt.</li>
+          <li>No current paid comparison establishes that the agent or workflow is superior.</li>
+        </ul></article>
+        <article class="card"><span class="tag no">Not certified</span><h3>Statistical and security certainty</h3><ul>
+          <li>Configured small stochastic samples illustrate uncertainty; they do not establish production reliability.</li>
+          <li>The default four-probe Eval06 campaign is a bounded evaluation, not penetration testing or certification.</li>
+          <li>The 43 controls prove registered mutation reachability, not a natural defect rate.</li>
+          <li>Historical sample measurements are not Digitec Galaxus operational metrics.</li>
+        </ul></article>
+      </div>
+      <div class="callout danger"><strong>The claim I am making:</strong> I can design and implement
+        the engineering loop that makes an AI commerce capability easier to evaluate, compare,
+        debug, govern, and improve—and I can communicate its evidence and limitations clearly.</div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">VITRINE · independent job-application sample for Digitec Galaxus · built by
+    <a href="https://github.com/joslat">@joslat</a> to demonstrate applied AgentEval and e-commerce
+    evaluation engineering. Digitec Galaxus names are used only to identify the intended
+    value-proposal audience; no affiliation or endorsement is implied. Return to the
+    <a href="index.html">documentation hub</a>.</div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="A bounded historical measurement receipt for an earlier synthetic VITRINE predecessor.">
+  <title>Historical synthetic measurement receipt · VITRINE</title>
+  <link rel="stylesheet" href="../assets/vitrine-doc-page.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<header class="hero"><div class="wrap">
+  <div class="eyebrow">VITRINE · Historical evidence · 2026-09-04</div>
+  <h1>A genuine measurement of a synthetic predecessor</h1>
+  <p class="lead">This receipt preserves the aggregate facts needed by the offline honesty gate while keeping private prompts, responses, infrastructure, and internal working notes out of the public repository.</p>
+</div></header>
+<nav class="topnav" aria-label="VITRINE documentation"><div class="wrap">
+  <a href="../index.html">VITRINE docs</a>
+  <a href="../Vitrine-Digitec-Galaxus-Value-Proposal.html">Value proposal</a>
+  <a href="../Vitrine-Walkthrough.html">Walkthrough</a>
+  <a href="../Vitrine-Evaluation-Protocol.html">Evaluation protocol</a>
+  <a href="../Vitrine-Verification.html">Verification</a>
+</div></nav>
+<main id="content" class="doc-shell"><article class="prose">
+  <h2>Claim boundary</h2>
+  <p><strong>This is not a Digitec Galaxus measurement.</strong> It is a genuine historical paid-model observation of an earlier synthetic, same-author e-commerce sample. The catalogue, personas, questions, subjects, and expected answers were synthetic. It establishes neither production quality nor company endorsement.</p>
+
+  <h2>Measurement identity</h2>
+  <table><tbody>
+    <tr><th>Measurement ID</th><td><code>vitrine-synthetic-live-2026-09-04-eval02b-02c</code></td></tr>
+    <tr><th>Scope retained</th><td>Aggregate stated-need and next-purchase observations only</td></tr>
+    <tr><th>Excluded</th><td>Raw prompts, responses, provider configuration, credentials, endpoints, and internal notes</td></tr>
+  </tbody></table>
+
+  <h2>Stated-need result</h2>
+  <p>Twelve authored cases (<code>SN-01</code> through <code>SN-12</code>) were measured. The live synthetic subject scored <strong>0.889</strong>; a zero-model tag-join oracle scored <strong>1.000</strong> at matched <em>k</em>. Mean matched <em>k</em> was 1.92, seven cases matched exact <em>k</em>, and 23 recommendation slots were observed.</p>
+  <p>The honest claim is deliberately narrow: the model-backed approach did not beat the simple oracle on this small authored set.</p>
+
+  <h2>Next-purchase result</h2>
+  <p>Thirteen pairs produced 3 wins, 1 loss, and 9 ties: only 4 informative pairs. The exact two-sided sign-test value was 0.625. At four informative pairs the minimum attainable two-sided p-value was 0.125, above α = 0.05. The experiment therefore cannot support a next-purchase superiority claim; more informative pairs are required.</p>
+
+  <h2>Machine-checked copy</h2>
+  <p>The aggregate values are duplicated in <code>src/AgentEval.VitrineDemo.Evals/Data/HonestyEvidence.v1.json</code>. The offline honesty gate pins that file by SHA-256, recomputes the exact-test quantities with AgentEval, and fails closed if the artifact or its claim wording is changed.</p>
+</article></main>
+<footer><div class="wrap">Independent synthetic portfolio evidence · <a href="../index.html">Return to the VITRINE documentation hub</a></div></footer>
+</body>
+</html>

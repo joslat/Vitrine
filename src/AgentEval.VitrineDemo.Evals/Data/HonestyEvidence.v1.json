@@ -1,0 +1,33 @@
+{
+  "spdxLicense": "MIT",
+  "schemaVersion": 1,
+  "measurementId": "vitrine-synthetic-live-2026-09-04-eval02b-02c",
+  "source": "docs/evidence/vitrine-synthetic-live-2026-09-04-eval02b-02c.html",
+  "statedNeed": {
+    "caseIds": [
+      "SN-01", "SN-02", "SN-03", "SN-04", "SN-05", "SN-06",
+      "SN-07", "SN-08", "SN-09", "SN-10", "SN-11", "SN-12"
+    ],
+    "liveScore": 0.889,
+    "oracleScore": 1.000,
+    "matchedMeanK": 1.92,
+    "exactKMatchedCases": 7,
+    "presentedSlots": 23
+  },
+  "nextPurchase": {
+    "pairCount": 13,
+    "wins": 3,
+    "losses": 1,
+    "ties": 9,
+    "informativePairs": 4,
+    "observedTwoSidedP": 0.625,
+    "minimumAttainableTwoSidedP": 0.125,
+    "alpha": 0.05
+  },
+  "baseline": {
+    "name": "tag-join oracle",
+    "modelCalls": 0,
+    "score": 1.000,
+    "scope": "several questions"
+  }
+}

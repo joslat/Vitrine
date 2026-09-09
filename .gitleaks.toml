@@ -1,0 +1,20 @@
+title = "VITRINE public-release secret scan"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Exact synthetic artifact-redaction sentinel; never a credential"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+paths = ['''(^|/)tests/AgentEval\.VitrineDemo\.Tests/ArtifactAndReplayTests\.cs$''']
+regexes = ['''^SENTINEL-VITRINE-OPAQUE-KEY-4C8E63A1$''']
+
+[[allowlists]]
+description = "Exact synthetic report-redaction sentinel; never a credential"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+paths = ['''(^|/)tests/AgentEval\.VitrineDemo\.Tests/EvaluationHardeningTests\.cs$''']
+regexes = ['''^SENTINEL-EVAL-OPAQUE-KEY-7D39F2$''']

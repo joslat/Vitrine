@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="VITRINE verification receipt: build
+and test evidence, offline results, Eval06 diagnostic coverage,
+incidents, and claim boundaries.">
+  <title>Verification · VITRINE</title>
+  <link rel="stylesheet" href="assets/vitrine-doc-page.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<header class="hero"><div class="wrap">
+  <div class="eyebrow">VITRINE · Dated evidence receipt</div>
+  <h1>Verification</h1>
+  <p class="lead">What was actually built, tested, persisted, and
+deliberately not claimed in the current repository state.</p>
+</div></header>
+<nav class="topnav" aria-label="VITRINE documentation">
+  <div class="wrap">
+    <a href="index.html">VITRINE docs</a>
+    <a href="Vitrine-Digitec-Galaxus-Value-Proposal.html">Value proposal</a>
+    <a href="Vitrine-Walkthrough.html">Walkthrough</a>
+    <a href="Vitrine-Retrieval-Deep-Dive.html">Retrieval</a>
+    <a href="Vitrine-Architecture.html">Architecture</a>
+    <a href="Vitrine-Evaluation-Protocol.html">Evaluation protocol</a>
+    <a href="Vitrine-Verification.html">Verification</a>
+  </div>
+</nav>
+<main id="content" class="doc-shell">
+<aside class="toc" aria-label="On this page"><strong>On this page</strong><ul>
+<li><a href="#2026-09-09-credential-free-acceptance"
+id="toc-2026-09-09-credential-free-acceptance">2026-09-09
+credential-free acceptance</a></li>
+<li><a href="#restored-offline-evidence"
+id="toc-restored-offline-evidence">Restored offline evidence</a></li>
+<li><a href="#package-and-ownership-boundary"
+id="toc-package-and-ownership-boundary">Package and ownership
+boundary</a></li>
+<li><a href="#eval06-diagnostic-verification"
+id="toc-eval06-diagnostic-verification">Eval06 diagnostic
+verification</a></li>
+<li><a href="#historical-live-run-disclosure"
+id="toc-historical-live-run-disclosure">Historical live-run
+disclosure</a></li>
+<li><a href="#claim-boundary" id="toc-claim-boundary">Claim
+boundary</a></li>
+</ul></aside>
+<article class="prose">
+<!-- SPDX-License-Identifier: MIT -->
+
+<p>This page is the dated evidence receipt for the current VITRINE tree.
+It records what was actually run; it is not another architecture or
+evaluation-protocol document. See the <a
+href="Vitrine-Evaluation-Protocol.html">evaluation protocol</a> for
+normative semantics and the <a
+href="Vitrine-Architecture.html">architecture</a> for ownership and
+trust boundaries.</p>
+<h2 id="2026-09-09-credential-free-acceptance">2026-09-09
+credential-free acceptance</h2>
+<p>The final validation deliberately excluded every test categorized
+<code>LiveModel</code> and invoked no provider-backed subject, judge, or
+safety scan.</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Release solution build</td>
+<td>PASS · 0 warnings · 0 errors</td>
+</tr>
+<tr>
+<td>Full <code>Category!=LiveModel</code> test lane</td>
+<td>PASS · 336/336 · 0 failed · 0 skipped · 5m 10s</td>
+</tr>
+<tr>
+<td>Eval06 hardening focus</td>
+<td>PASS · 101/101 synthetic/credential-free tests</td>
+</tr>
+<tr>
+<td>Artifact compatibility</td>
+<td>Schema 8 creation; integrity-valid schema 7 read compatibility</td>
+</tr>
+<tr>
+<td>Documentation integrity</td>
+<td>Local links, fragments, duplicate IDs, and HTML structure checked
+before commit</td>
+</tr>
+</tbody>
+</table>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>dotnet build AgentEval<span class="op">.</span><span class="fu">VitrineDemo</span><span class="op">.</span><span class="fu">slnx</span> <span class="op">--</span>configuration Release <span class="op">--</span>no-restore</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>dotnet test tests\AgentEval<span class="op">.</span><span class="fu">VitrineDemo</span><span class="op">.</span><span class="fu">Tests</span>\AgentEval<span class="op">.</span><span class="fu">VitrineDemo</span><span class="op">.</span><span class="fu">Tests</span><span class="op">.</span><span class="fu">csproj</span> `</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  <span class="op">--</span>configuration Release <span class="op">--</span>no-build <span class="op">--</span>no-restore <span class="op">--</span>filter <span class="st">&quot;Category!=LiveModel&quot;</span></span></code></pre></div>
+<h2 id="restored-offline-evidence">Restored offline evidence</h2>
+<p>The final restored offline acceptance completed without provider
+calls:</p>
+<table>
+<thead>
+<tr>
+<th>Evidence</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Admitted-check self-test</td>
+<td>Exit 0; five benchmark plus six production checks passed healthy
+evidence and failed their declared ablations</td>
+</tr>
+<tr>
+<td>Benchmark persistence</td>
+<td>Two cases · five checks · three arms · two repetitions · six
+physical run directories · ten native paired comparisons</td>
+</tr>
+<tr>
+<td>Product gates</td>
+<td>Exit 0 · 6/6 measured pass</td>
+</tr>
+<tr>
+<td>Registered diagnostic controls</td>
+<td>Exit 0 · NC-01 through NC-43 caught · 43/43</td>
+</tr>
+<tr>
+<td>Catalogue integrity self-test</td>
+<td>Expected exit 1 after isolated 99→98 defect; subsequent restored run
+exit 0 with 6/6 gates</td>
+</tr>
+<tr>
+<td>Generated report</td>
+<td>Process-equivalent exit 0 · canonical benchmark run
+<code>2026-09-09_07-33-47_d9bcf6ef</code></td>
+</tr>
+</tbody>
+</table>
+<p>The committed <a href="reports/evals-offline.html">offline HTML
+report</a> and <a href="reports/evals-offline.json">offline JSON
+report</a> are generated evidence from that run. Their run IDs and
+measured values are receipts, not constants promised by the
+architecture.</p>
+<h2 id="package-and-ownership-boundary">Package and ownership
+boundary</h2>
+<ul>
+<li>The eval project consumes the published <code>AgentEval</code>
+<code>0.35.0-beta</code> package.</li>
+<li>It has no source-checkout AgentEval project reference and no
+vendored substitute API.</li>
+<li>The subject project does not reference its evaluator or the
+application.</li>
+<li>The offline and paid source lanes are explicit:
+<code>Evals/Offline</code> and <code>Evals/Live</code>.</li>
+<li>Eleven admitted domain checks enter through native AgentEval
+admission; the 43 mutation rows are separately labelled diagnostics and
+do not inflate the six product gates.</li>
+</ul>
+<h2 id="eval06-diagnostic-verification">Eval06 diagnostic
+verification</h2>
+<p>Credential-free fixtures verify all safety states without calling a
+provider: complete resistance, known compromise, clean inconclusive
+measurement, timeout/transport/execution errors, malformed or truncated
+census, cancellation, persistence, replay, and tamper rejection.</p>
+<p>Schema 8 and live-session schema 1.2 retain only allow-listed
+per-probe outcome and failure facts: attack, probe id, stage, code, safe
+detail, severity, fidelity, and technique. The board, timeline, console,
+inspector, and HTML report distinguish a red
+<code>INFRASTRUCTURE ERROR</code> from an amber, clean
+<code>NOT MEASURED</code> result. <code>Errored</code> is a subset of
+<code>Inconclusive</code>; those counts must not be added. Raw prompts,
+responses, extraction canaries, system instructions, endpoints, provider
+messages, and exception text remain excluded.</p>
+<h2 id="historical-live-run-disclosure">Historical live-run
+disclosure</h2>
+<p>No paid live result is used as final acceptance evidence. One saved
+Eval06 session from development recorded all four planned probe attempts
+but ended <code>InfrastructureError</code>/exit 4: one resisted, zero
+compromised, and three inconclusive probes, all three carrying the
+allow-listed <code>Execution</code> error category. Jailbreak
+contributed two execution errors; system-prompt extraction contributed
+one resisted probe and one execution error.</p>
+<p>That older receipt cannot reveal the underlying exception: AgentEval
+ran with <code>IncludeEvidence=false</code>, and the released runner
+intentionally suppressed the raw message and did not retain a more
+precise safe target-versus-evaluator stage. VITRINE now says this
+explicitly rather than guessing. A useful upstream AgentEval follow-up
+is to retain a safe failure stage and exception type while continuing to
+exclude raw evidence.</p>
+<p>During implementation, one accidental live Sofia Demo01 subject
+command ran before the paid-command boundary was corrected. It printed
+no endpoint, credential, token, or secret and is not used as acceptance
+evidence. The standalone CLI now keeps selectors 1–6 offline unless both
+<code>--live</code> and <code>--confirm-paid</code> are present, and also
+requires <code>--confirm-paid</code> for <code>--real-vectors</code> and
+<code>--rebuild-embeddings</code>. Every intentional paid run must be interpreted from its own
+gitignored
+<code>.agenteval/live/live-sessions/&lt;session-id&gt;/outcome.json</code>
+receipt.</p>
+<h2 id="claim-boundary">Claim boundary</h2>
+<ul>
+<li>The repository demonstrates an engineering method and measurements
+of a synthetic sample—not Digitec Galaxus production quality, customer
+behavior, or business impact.</li>
+<li>A predecessor synthetic-sample run showed stated-need satisfaction
+of 0.889 versus a tag-join oracle's 1.000 at matched k. This tree's
+offline acceptance does not rerun that paid cohort. The public tree
+retains a <a href="evidence/vitrine-synthetic-live-2026-09-04-eval02b-02c.html">bounded aggregate receipt</a>.</li>
+<li>Next-purchase prediction is not shown and was underpowered in that
+predecessor experiment: four informative pairs, minimum attainable
+two-sided p = 0.125.</li>
+<li>A trivial tag-join baseline can score 1.000 on several authored
+questions with zero model calls; a green integration result is not
+automatically evidence of product value.</li>
+</ul>
+<div class="note"><strong>Reading boundary.</strong> This is an independent, synthetic portfolio sample prepared for Digitec Galaxus. It is not affiliated with, commissioned by, or endorsed by the company, and it makes no claim about company production systems or customer data.</div>
+</article>
+</main>
+<footer><div class="wrap">VITRINE · independent Digitec Galaxus job-application sample · <a href="index.html">documentation hub</a> · <a href="https://github.com/AgentEvalHQ/AgentEval">AgentEval</a></div></footer>
+</body>
+</html>
