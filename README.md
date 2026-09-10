@@ -204,3 +204,6 @@ The current credential-free receipt is:
 See the [dated verification page](https://azuresamurai.blog/Vitrine/Vitrine-Verification.html) for the exact receipt and
 incidents, and [MIGRATION.md](MIGRATION.md) for every admitted check, native floor, ablation, and
 deliberately retained diagnostic/collector boundary.
+
+For repeatable portfolio assessment, use the stable [scoring rubric](docs/SCORING-RUBRIC.md) and
+the immutable [2026-09-10 scorecard for implementation commit 67ab737](docs/Vitrine-Scorecard-2026-09-10.md).

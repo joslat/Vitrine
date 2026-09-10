@@ -35,6 +35,7 @@ function Embedded-Policy {
             'docs/Vitrine-Architecture.html', 'docs/Vitrine-Digitec-Galaxus-Value-Proposal.html',
             'docs/Vitrine-Evaluation-Protocol.html', 'docs/Vitrine-Live-Run-Setup.html',
             'docs/Vitrine-One-Page-Summary.html',
+            'docs/Vitrine-Scorecard-2026-09-10.md',
             'docs/Vitrine-Retrieval-Deep-Dive.html', 'docs/Vitrine-Verification.html',
             'docs/Vitrine-Walkthrough.html'
         )

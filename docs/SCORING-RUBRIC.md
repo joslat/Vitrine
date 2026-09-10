@@ -202,3 +202,7 @@ Copy this block for each scored revision.
 Store completed reviews next to this rubric or in a clearly linked evidence directory. Never edit
 an old review to match a newer implementation; create a new dated review so score movement remains
 auditable.
+
+The first completed review is the
+[2026-09-10 VITRINE scorecard](Vitrine-Scorecard-2026-09-10.md), bound to implementation commit
+`67ab737`.
