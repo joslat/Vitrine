@@ -9,6 +9,7 @@ using AgentEval.MAF;
 using AgentEval.Output;
 using AgentEval.RedTeam;
 using AgentEval.RedTeam.Attacks;
+using Galaxus.RecommendationAgent;
 using Galaxus.RecommendationAgent.Agents;
 using Galaxus.RecommendationAgent.Tools;
 using Microsoft.Agents.AI;
@@ -37,7 +38,7 @@ internal sealed class AgentEvalRedTeamSafetyEvaluator : ILiveSafetyEvaluator
     internal static readonly IReadOnlyList<string> AttackNames = ["Jailbreak", "SystemPromptExtraction"];
 
     public string TargetId => Target;
-    public string ModelId => LiveEvalServices.SafeModelId(Galaxus.RecommendationAgent.Config.Model);
+    public string ModelId => Config.Deployments.SubjectLabel;
 
     public async Task<LiveSafetySummary> RunAsync(
         LiveSafetyRequest request,
@@ -45,10 +46,10 @@ internal sealed class AgentEvalRedTeamSafetyEvaluator : ILiveSafetyEvaluator
     {
         ArgumentNullException.ThrowIfNull(request);
         var canary = $"VITRINE-EVAL-CANARY-{Guid.NewGuid():N}";
-        var targetUsage = new SafetyUsageMeter(ModelId);
-        var judgeUsage = new SafetyUsageMeter(ModelId);
+        var targetUsage = new SafetyUsageMeter(Config.Deployments.SubjectLabel);
+        var judgeUsage = new SafetyUsageMeter(Config.Deployments.JudgeLabel);
         var target = new FreshRobinTarget(canary, request.SubjectMaxOutputTokens, targetUsage);
-        using var rawJudge = CreateBudgetedClient(request.JudgeMaxOutputTokens);
+        using var rawJudge = CreateBudgetedClient(request.JudgeMaxOutputTokens, Config.JudgeDeployment);
         var trackedJudge = new UsageTrackingChatClient(rawJudge, judgeUsage,
             new SafetyModelCallGate(checked(request.MaxProbesPerAttack * AttackNames.Count)));
         var timeout = TimeSpan.FromSeconds(request.TimeoutSeconds);
@@ -115,8 +116,8 @@ internal sealed class AgentEvalRedTeamSafetyEvaluator : ILiveSafetyEvaluator
     private static string AttackName(string name) => AttackNames.Contains(name, StringComparer.Ordinal)
         ? name : "unknown";
 
-    private static IChatClient CreateBudgetedClient(int maximumOutputTokens) =>
-        RecommendationAgentFactory.CreateConfiguredChatClient().AsBuilder()
+    private static IChatClient CreateBudgetedClient(int maximumOutputTokens, string deployment) =>
+        RecommendationAgentFactory.CreateConfiguredChatClient(deployment).AsBuilder()
             .ConfigureOptions(options => options.MaxOutputTokens = maximumOutputTokens).Build();
 
     private sealed class FreshRobinTarget(
@@ -130,7 +131,7 @@ internal sealed class AgentEvalRedTeamSafetyEvaluator : ILiveSafetyEvaluator
             string prompt,
             CancellationToken cancellationToken = default)
         {
-            using var raw = CreateBudgetedClient(maximumOutputTokens);
+            using var raw = CreateBudgetedClient(maximumOutputTokens, Config.Model);
             using var toolBudget = ToolCallBudget.BeginScope();
             var tracked = new UsageTrackingChatClient(raw, usage,
                 new SafetyModelCallGate(MaxTargetModelCallsPerProbe));

@@ -41,6 +41,7 @@ public sealed class DiscoveryModelCall
     private readonly IChatClient _chatClient;
     private readonly IDiscoveryProgressSink _progress;
     private readonly TimeSpan _timeout;
+    private int _logicalAttemptSequence;
 
     /// <summary>
     /// The wall-clock ceiling on ONE model call.
@@ -89,6 +90,7 @@ public sealed class DiscoveryModelCall
     /// <param name="userMessage">The turn's single user message.</param>
     /// <param name="state">The run state; its model-call counter is incremented per attempt.</param>
     /// <param name="cancellationToken">Cancellation.</param>
+    /// <param name="isUsable">Optional stage-level semantic usability predicate.</param>
     /// <returns>The parsed envelope, or null when two attempts failed.</returns>
     public async ValueTask<T?> InvokeAsync<T>(
         string nodeId,
@@ -96,7 +98,8 @@ public sealed class DiscoveryModelCall
         string instructions,
         string userMessage,
         DiscoveryState state,
-        CancellationToken cancellationToken) where T : class
+        CancellationToken cancellationToken,
+        Func<T, bool>? isUsable = null) where T : class
     {
         ArgumentNullException.ThrowIfNull(state);
 
@@ -107,19 +110,27 @@ public sealed class DiscoveryModelCall
                 : "\n\nYour previous reply could not be parsed. Reply with the JSON object ONLY: "
                   + "no reasoning, no code fence, no text before or after it.";
 
-            var text = await RunAsync(nodeId, agentName, instructions + suffix, userMessage, state, cancellationToken)
+            var attemptNumber = StartLogicalAttempt();
+            var text = await RunProviderAttemptAsync(
+                    nodeId, agentName, instructions + suffix, userMessage, state, attemptNumber, cancellationToken)
                 .ConfigureAwait(false);
 
             if (text is null)
             {
-                _progress.Publish(DiscoveryEvent.Degraded(nodeId,
+                _progress.Publish(DiscoveryEvent.ModelAttemptUnusable(nodeId, attemptNumber,
                     $"attempt {attempt} of 2: the model call failed outright"));
                 continue;
             }
 
-            if (TryParse<T>(text, out var parsed) && parsed is not null) return parsed;
+            if (TryParse<T>(text, out var parsed) && parsed is not null)
+            {
+                if (isUsable?.Invoke(parsed) ?? true) return parsed;
+                _progress.Publish(DiscoveryEvent.ModelAttemptUnusable(nodeId, attemptNumber,
+                    $"attempt {attempt} of 2: parsed output did not meet the stage usability contract"));
+                continue;
+            }
 
-            _progress.Publish(DiscoveryEvent.Degraded(nodeId,
+            _progress.Publish(DiscoveryEvent.ModelAttemptUnusable(nodeId, attemptNumber,
                 $"attempt {attempt} of 2: no JSON object could be parsed out of {text.Length} character(s) of response"));
         }
 
@@ -147,6 +158,28 @@ public sealed class DiscoveryModelCall
         string instructions,
         string userMessage,
         DiscoveryState state,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        var attemptNumber = StartLogicalAttempt();
+        var text = await RunProviderAttemptAsync(
+            nodeId, agentName, instructions, userMessage, state, attemptNumber, cancellationToken)
+            .ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(text))
+            _progress.Publish(DiscoveryEvent.ModelAttemptUnusable(nodeId, attemptNumber,
+                "the direct model-stage attempt failed before a usable response"));
+        return text;
+    }
+
+    private int StartLogicalAttempt() => Interlocked.Increment(ref _logicalAttemptSequence);
+
+    private async ValueTask<string?> RunProviderAttemptAsync(
+        string nodeId,
+        string agentName,
+        string instructions,
+        string userMessage,
+        DiscoveryState state,
+        int attemptNumber,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(state);
@@ -178,7 +211,8 @@ public sealed class DiscoveryModelCall
 
             state.ModelCalls++;
             _progress.Publish(DiscoveryEvent.ModelRequestStarted(
-                nodeId, agentName, instructions, userMessage, MaxOutputTokensPerCall, operationId));
+                nodeId, agentName, instructions, userMessage, MaxOutputTokensPerCall, operationId,
+                attemptNumber));
 
             var response = await agent
                 .RunAsync([new ChatMessage(ChatRole.User, userMessage)], session, cancellationToken: deadline.Token)
@@ -190,7 +224,7 @@ public sealed class DiscoveryModelCall
             state.Spend.Record(response.Usage);
 
             _progress.Publish(DiscoveryEvent.ModelResponseReceived(
-                nodeId, agentName, response.Text, operationId));
+                nodeId, agentName, response.Text, operationId, attemptNumber));
 
             return response.Text;
         }
@@ -198,7 +232,8 @@ public sealed class DiscoveryModelCall
         {
             // The CALLER cancelled. That is not a degradation, it is the answer.
             if (state.ModelCalls > callsBeforeThisAttempt)
-                _progress.Publish(DiscoveryEvent.ModelRequestCancelled(nodeId, agentName, operationId));
+                _progress.Publish(DiscoveryEvent.ModelRequestCancelled(
+                    nodeId, agentName, operationId, attemptNumber));
             throw;
         }
         catch (OperationCanceledException)
@@ -208,7 +243,7 @@ public sealed class DiscoveryModelCall
             if (state.ModelCalls > callsBeforeThisAttempt) state.Spend.RecordNoResponse();
             if (state.ModelCalls > callsBeforeThisAttempt)
                 _progress.Publish(DiscoveryEvent.ModelRequestFailed(
-                    nodeId, agentName, typeof(TimeoutException), operationId));
+                    nodeId, agentName, typeof(TimeoutException), operationId, attemptNumber));
             _progress.Publish(DiscoveryEvent.Degraded(nodeId,
                 $"no response within {_timeout.TotalSeconds:0} s — the call was abandoned so the loop keeps moving"));
             return null;
@@ -221,7 +256,7 @@ public sealed class DiscoveryModelCall
             if (state.ModelCalls > callsBeforeThisAttempt) state.Spend.RecordNoResponse();
             if (state.ModelCalls > callsBeforeThisAttempt)
                 _progress.Publish(DiscoveryEvent.ModelRequestFailed(
-                    nodeId, agentName, ex.GetType(), operationId));
+                    nodeId, agentName, ex.GetType(), operationId, attemptNumber));
             _progress.Publish(DiscoveryEvent.Degraded(nodeId,
                 $"{ex.GetType().Name}: message withheld to prevent configuration disclosure"));
             return null;
@@ -379,7 +414,12 @@ public sealed class ModelInterestMapper(Catalogue catalogue, DiscoveryModelCall 
             InterestMapperPrompt.Instructions,
             BuildSignalList(state, classified),
             state,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            static parsed => parsed.Interests is { Count: > 0 } interests
+                && interests.All(static item => item is not null)
+                && interests.Any(static item => !string.IsNullOrWhiteSpace(item.Label))
+                && (parsed.AntiInterests?.All(static item => item is not null) ?? true))
+            .ConfigureAwait(false);
 
         if (envelope?.Interests is { Count: > 0 })
         {
@@ -388,7 +428,7 @@ public sealed class ModelInterestMapper(Catalogue catalogue, DiscoveryModelCall 
         else
         {
             state.DegradedNotes.Add("InterestMapper: fell back to the code-derived map");
-            _progress.Publish(DiscoveryEvent.Degraded("InterestMapper",
+            _progress.Publish(DiscoveryEvent.ModelFallbackSelected("InterestMapper",
                 "no usable interest map came back — the code-derived map stands. This is a WARNING, not a failure: " +
                 "the loop still has a map, and the console says which one"));
         }
@@ -618,7 +658,14 @@ public sealed class ModelCoverageReviewer(
             CoverageReviewerPrompt.Instructions,
             BuildReviewerContext(state),
             state,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            static parsed => parsed.CoveredInterestIds is not null
+                && parsed.CoveredInterestIds.All(static item => item is not null)
+                && parsed.Gaps is not null
+                && parsed.Gaps.All(static item => item is not null)
+                && parsed.StopReason is CoverageVerdict.CoverageSufficient
+                    or CoverageVerdict.GapsRemain
+                    or CoverageVerdict.GapsUnresolvable).ConfigureAwait(false);
 
         if (verdict is null)
         {
@@ -633,7 +680,7 @@ public sealed class ModelCoverageReviewer(
                 "toward more work. This is safe ONLY because the round cap does not depend on the reviewer");
 
             state.DegradedNotes.Add("CoverageReviewer: synthesised a conservative verdict");
-            _progress.Publish(DiscoveryEvent.Degraded("CoverageReviewer", verdict.Assessment));
+            _progress.Publish(DiscoveryEvent.ModelFallbackSelected("CoverageReviewer", verdict.Assessment));
         }
 
         CoverageVerdictProjection.Project(state, verdict, _catalogue, _progress, _calibration);
@@ -785,7 +832,11 @@ public sealed class ModelRanker(
             DiscoveryRankerPrompt.Instructions,
             BuildRankerContext(state, _catalogue),
             state,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            static parsed => parsed.Selections is { Count: > 0 } selections
+                && selections.All(static item => item is not null)
+                && selections.Any(static item => !string.IsNullOrWhiteSpace(item.ProductId)))
+            .ConfigureAwait(false);
 
         state.Ranked.Clear();
         state.SelectionWasDeterministic = envelope?.Selections is not { Count: > 0 };
@@ -826,7 +877,7 @@ public sealed class ModelRanker(
         else
         {
             state.DegradedNotes.Add("Ranker: fell back to the deterministic selection");
-            _progress.Publish(DiscoveryEvent.Degraded("Ranker",
+            _progress.Publish(DiscoveryEvent.ModelFallbackSelected("Ranker",
                 "no usable selection came back — the deterministic selection stands"));
             state.Ranked.AddRange(DeterministicRanker.Select(state, _catalogue, _calibration));
         }
@@ -957,7 +1008,7 @@ public sealed class ModelPresenter(Catalogue catalogue, DiscoveryModelCall model
         if (string.IsNullOrWhiteSpace(prose))
         {
             state.DegradedNotes.Add("Presenter: fell back to the composed answer");
-            _progress.Publish(DiscoveryEvent.Degraded("Presenter",
+            _progress.Publish(DiscoveryEvent.ModelFallbackSelected("Presenter",
                 "no prose came back — the deterministic composition stands. The LIST is unaffected either way: " +
                 "it is rendered from the screened selection, not from anything the model wrote"));
         }

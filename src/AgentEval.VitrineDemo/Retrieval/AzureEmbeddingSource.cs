@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 José Luis Latorre Millas
 
-using Azure.AI.OpenAI;
 using Microsoft.Extensions.AI;
 
 namespace Galaxus.RecommendationAgent.Retrieval;
@@ -14,7 +13,7 @@ namespace Galaxus.RecommendationAgent.Retrieval;
 /// <para>
 /// This is the source <c>--rebuild-embeddings</c> runs against to produce the committed assets,
 /// and the fallback <see cref="PrecomputedEmbeddingSource"/> reaches for on a cache miss when
-/// credentials are present. It is NOT the default demo path — the default must run with no key
+/// live configuration is ready. It is NOT the default demo path — the default must run with no key
 /// and no network, which is what <see cref="ConceptEmbeddingSource"/> is for.
 /// </para>
 /// <para>
@@ -120,18 +119,10 @@ public sealed class AzureEmbeddingSource : IEmbeddingSource, IDisposable
     /// <exception cref="InvalidOperationException">Azure OpenAI is not configured.</exception>
     public static AzureEmbeddingSource Create(string? deployment = null)
     {
-        var configuration = Config.CaptureLiveConfiguration();
-        if (configuration is null)
-        {
-            throw new InvalidOperationException(
-                "Azure OpenAI is not configured (AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY). " +
-                "The offline retrieval path needs no key — use ConceptEmbeddingSource instead.");
-        }
-
+        var azureClient = AzureOpenAiClientFactory.CreateConfigured(out var configuration);
         var model = string.IsNullOrWhiteSpace(deployment)
             ? configuration.EmbeddingDeployment
             : deployment.Trim();
-        var azureClient = new AzureOpenAIClient(configuration.Endpoint, configuration.Key);
 
         IEmbeddingGenerator<string, Embedding<float>> generator =
             azureClient.GetEmbeddingClient(model).AsIEmbeddingGenerator();
@@ -148,10 +139,11 @@ public sealed class AzureEmbeddingSource : IEmbeddingSource, IDisposable
     /// <param name="deployment">Embedding deployment name; null uses <see cref="Config.EmbeddingDeployment"/>.</param>
     public static bool TryCreate(out AzureEmbeddingSource? source, out string? reason, string? deployment = null)
     {
-        if (Config.CaptureLiveConfiguration() is null)
+        var readiness = Config.Readiness;
+        if (!readiness.IsReady)
         {
             source = null;
-            reason = "AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY are not set.";
+            reason = readiness.BlockingReason;
             return false;
         }
 

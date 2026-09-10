@@ -24,8 +24,9 @@ For the current end-to-end operating path, read the
 [README](../../README.md).
 For the optional provider-backed path, use the canonical
 [Microsoft Foundry live-run setup](https://azuresamurai.blog/Vitrine/Vitrine-Live-Run-Setup.html);
-the current client requires the Azure OpenAI resource endpoint and API key, not a Foundry project
-endpoint or `az login` session.
+the current client requires an Azure OpenAI resource endpoint—not a Foundry project endpoint—and
+explicitly supports API-key compatibility, a local `DefaultAzureCredential`, or a deterministic
+hosted `ManagedIdentityCredential`.
 
 ## Run the subject
 
@@ -94,7 +95,7 @@ criteria, and tool expectations remain in the eval project so they cannot leak i
 The main source areas are:
 
 - `Agents/` — Demo01 execution and its zero-model/scripted/live arm selection.
-- `Demos/` — Demo01 and Demo02 orchestration, run options, and executable controls.
+- `Demos/` — Demo01 and Demo02 orchestration and run options. The former Demo01 post-run guardrail matrix now lives as twelve named credential-free regression tests; the canonical 43-control evaluation panel is unchanged.
 - `Domain/` — shared product, customer, signal, and recommendation contracts.
 - `Evaluation/` — subject-side observation policy; expectations and verdicts stay in the eval project.
 - `Workflows/` — Demo02 state, executors, routes, loop conditions, and typed workflow events.

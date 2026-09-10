@@ -231,7 +231,6 @@ public static class Demo01_RecommendationAgent
             result.ProviderUsage);
         if (result.BudgetSummary is not null) PrintBudgetNote(result.BudgetSummary);
         if (result.AgentText is not null) PrintRobinsProse(result.AgentText);
-        await GuardrailControls.RunAsync().ConfigureAwait(false);
     }
 
     /// <summary>
@@ -272,7 +271,8 @@ public static class Demo01_RecommendationAgent
             {
                 RecommendationExecutionArm.ZeroModelBaseline => "offline baseline — no model call",
                 RecommendationExecutionArm.ScriptedAgent => "scripted ChatClient — deterministic local chat boundary",
-                RecommendationExecutionArm.LiveAzure => $"live agent · deployment {Config.Model}",
+                RecommendationExecutionArm.LiveAzure =>
+                    $"live agent · subject deployment {Config.Deployments.SubjectLabel} · {Config.Readiness.AuthenticationLabel}",
                 _ => throw new InvalidOperationException("The Demo01 report arm was not recognized."),
             };
 
@@ -884,17 +884,11 @@ public static class Demo01_RecommendationAgent
     private static void PrintMissingCredentials()
     {
         Console.ForegroundColor = ConsoleColor.Yellow;
-        Console.WriteLine(@"
-  ⚠️  Skipping the live run — Azure OpenAI credentials required.
-
-     Set the following environment variables and try again:
-       AZURE_OPENAI_ENDPOINT
-       AZURE_OPENAI_API_KEY
-       AZURE_OPENAI_DEPLOYMENT          (optional, defaults to gpt-5-mini)
-
-     Or run the deterministic half with no key at all:
-       dotnet run --project src/AgentEval.VitrineDemo -- 1 --offline
-");
+        Console.WriteLine("\n  ⚠️  Skipping the live run — Azure OpenAI is not locally ready.");
+        Console.WriteLine($"     {Config.Readiness.BlockingReason}");
+        Console.WriteLine("     Configure API-key, local Entra, or managed-identity authentication as documented in");
+        Console.WriteLine("     docs/Vitrine-Live-Run-Setup.html, or run the deterministic path:");
+        Console.WriteLine("       dotnet run --project src/AgentEval.VitrineDemo -- 1 --offline\n");
         Console.ResetColor();
     }
 

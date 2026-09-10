@@ -295,6 +295,8 @@ internal static class EvaluationReportBoundary {
         ArgumentNullException.ThrowIfNull(result);
         var configuredApiKey = NonBlankEnvironmentValue("AZURE_OPENAI_API_KEY");
         var configuredEndpoint = NonBlankEnvironmentValue("AZURE_OPENAI_ENDPOINT");
+        var configuredManagedIdentityClientId =
+            NonBlankEnvironmentValue("AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID");
         var visited = new HashSet<object>(ReferenceEqualityComparer.Instance);
         if (Visit(result)) throw new InvalidDataException(UnsafeReportMessage);
         bool Visit(object? current) {
@@ -302,6 +304,8 @@ internal static class EvaluationReportBoundary {
             if (current is string text)
                 return configuredApiKey is not null && text.Contains(configuredApiKey, StringComparison.Ordinal)
                     || configuredEndpoint is not null && text.Contains(configuredEndpoint, StringComparison.OrdinalIgnoreCase)
+                    || configuredManagedIdentityClientId is not null
+                        && text.Contains(configuredManagedIdentityClientId, StringComparison.OrdinalIgnoreCase)
                     || !string.Equals(RecommendationRuntimeEvents.SafePreview(text), text, StringComparison.Ordinal);
             var type = current.GetType();
             if (type.IsValueType) return false;

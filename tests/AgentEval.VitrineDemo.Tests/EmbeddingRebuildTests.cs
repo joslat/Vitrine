@@ -123,6 +123,7 @@ public sealed class EmbeddingRebuildTests
             Assert.Equal(0, result.ExitCode);
             Assert.Contains("SCRIPTED AGENT", result.Output, StringComparison.Ordinal);
             Assert.Contains("deterministic local chat boundary", result.Output, StringComparison.Ordinal);
+            Assert.DoesNotContain("Guardrail controls (scripted", result.Output, StringComparison.Ordinal);
             Assert.True(File.Exists(reportPath));
             var html = await File.ReadAllTextAsync(reportPath);
             Assert.Contains("scripted ChatClient — deterministic local chat boundary", html, StringComparison.Ordinal);

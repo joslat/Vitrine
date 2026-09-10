@@ -234,7 +234,7 @@ public sealed class ModelPathEndToEndTests
     private static void RequireLiveCredentialsAfterExplicitOptIn()
     {
         Assert.True(Config.IsConfigured,
-            "VITRINE_RUN_LIVE_MODEL_TESTS=1 was set, but AZURE_OPENAI_ENDPOINT and "
-            + "AZURE_OPENAI_API_KEY are required. Values are intentionally never reported.");
+            "VITRINE_RUN_LIVE_MODEL_TESTS=1 was set, but the selected Azure OpenAI authentication "
+            + $"path is not locally ready: {Config.Readiness.BlockingReason} Values are intentionally never reported.");
     }
 }

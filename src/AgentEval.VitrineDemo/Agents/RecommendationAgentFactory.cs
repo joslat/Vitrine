@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 José Luis Latorre Millas
 
-using Azure.AI.OpenAI;
 using Galaxus.RecommendationAgent.Guardrails;
 using Galaxus.RecommendationAgent.Observability;
 using Galaxus.RecommendationAgent.Tools;
@@ -55,7 +54,7 @@ public static class RecommendationAgentFactory
     /// Creates the SHIPPED agent: thirteen read-only tools, connected to Azure OpenAI using
     /// <see cref="Config"/>'s three-step deployment ladder.
     /// </summary>
-    /// <exception cref="InvalidOperationException">Azure credentials are not configured, or the tool surface is not read-only.</exception>
+    /// <exception cref="InvalidOperationException">Azure live configuration is not ready, or the tool surface is not read-only.</exception>
     public static ChatClientAgent Create() => Create(CreateConfiguredChatClient());
 
     /// <summary>Creates the live Azure-backed shipped agent with invocation-time observation.</summary>
@@ -116,7 +115,7 @@ public static class RecommendationAgentFactory
     /// <c>PlaceOrder</c> behind an approval requirement. Used only by the two eval cases that
     /// exercise the human-confirmation gate. Never shipped in Demo 1.
     /// </summary>
-    /// <exception cref="InvalidOperationException">Azure credentials are not configured, or the commit tools are not approval-gated.</exception>
+    /// <exception cref="InvalidOperationException">Azure live configuration is not ready, or the commit tools are not approval-gated.</exception>
     public static ChatClientAgent CreateWithCommitTools() => CreateWithCommitTools(CreateConfiguredChatClient());
 
     /// <summary>
@@ -212,12 +211,22 @@ public static class RecommendationAgentFactory
     ];
 
     /// <summary>Builds the Azure OpenAI chat client from <see cref="Config"/>.</summary>
-    public static IChatClient CreateConfiguredChatClient()
+    public static IChatClient CreateConfiguredChatClient() =>
+        CreateConfiguredChatClient(Config.Model);
+
+    /// <summary>
+    /// Builds an Azure OpenAI chat client for an explicit deployment through the same resource and
+    /// authentication composition used by the subject and embedding paths. Evals use this overload
+    /// with <see cref="Config.JudgeDeployment"/> so judge routing can be independent.
+    /// </summary>
+    /// <param name="deployment">Deployment name in the configured Azure OpenAI resource.</param>
+    public static IChatClient CreateConfiguredChatClient(string deployment)
     {
-        var configuration = Config.CaptureLiveConfiguration()
-            ?? throw new InvalidOperationException("Azure OpenAI is not configured.");
-        var azureClient = new AzureOpenAIClient(configuration.Endpoint, configuration.Key);
-        return azureClient.GetChatClient(configuration.ModelDeployment).AsIChatClient();
+        ArgumentException.ThrowIfNullOrWhiteSpace(deployment);
+        if (!Config.IsValidDeploymentName(deployment))
+            throw new ArgumentException("The Azure OpenAI deployment name contains unsupported characters.", nameof(deployment));
+        var azureClient = AzureOpenAiClientFactory.CreateConfigured(out _);
+        return azureClient.GetChatClient(deployment.Trim()).AsIChatClient();
     }
 }
 

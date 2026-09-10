@@ -71,9 +71,7 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
     public string EvidenceBoundary =>
         "The UI observes execution. Criteria, floors, scoring, controls, and verdicts remain in AgentEval.VitrineDemo.Evals.";
 
-    public string LiveReadiness => Config.IsConfigured
-        ? $"Local live configuration found · deployment {Config.Model} · provider not contacted"
-        : "Live unavailable · no local credentials detected; every default path remains offline.";
+    public string LiveReadiness => Config.Readiness.SafeSummary;
 
     public IReadOnlyList<VitrineRunMode> Modes { get; } = Enum.GetValues<VitrineRunMode>();
 

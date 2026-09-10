@@ -80,6 +80,24 @@ public enum DiscoveryEventKind
 }
 
 /// <summary>
+/// Typed model-stage outcome metadata carried by a discovery event. This stays separate from
+/// <see cref="DiscoveryEventKind"/> so a final deterministic fallback remains a visible degraded
+/// warning in existing renderers while live evaluation can distinguish it from a recoverable
+/// attempt-level warning without inspecting prose.
+/// </summary>
+public enum DiscoveryModelStageDisposition
+{
+    /// <summary>The event is not a terminal model-stage outcome.</summary>
+    None,
+
+    /// <summary>One bounded attempt was unusable; a later retry may still recover the stage.</summary>
+    AttemptUnusable,
+
+    /// <summary>The stage exhausted or rejected its model result and selected its bounded fallback.</summary>
+    FinalFallback,
+}
+
+/// <summary>
 /// One domain event from inside the loop. This is the SECOND observability channel, beside
 /// MAF's own <c>WatchStreamAsync</c> stream — MAF tells you which executor ran, this tells you
 /// what it decided.
@@ -102,6 +120,15 @@ public sealed record DiscoveryEvent(
     TimeSpan? Elapsed = null,
     string? OperationId = null)
 {
+    /// <summary>
+    /// Optional typed model-stage outcome. Older event producers and consumers observe
+    /// <see cref="DiscoveryModelStageDisposition.None"/> and remain compatible.
+    /// </summary>
+    public DiscoveryModelStageDisposition ModelStageDisposition { get; init; }
+
+    /// <summary>Globally monotonic, one-based logical attempt sequence within one workflow run.</summary>
+    public int ModelAttemptNumber { get; init; }
+
     /// <summary>The run header.</summary>
     /// <param name="state">The state, for the customer strip.</param>
     /// <param name="mode">"live" or "offline (deterministic)".</param>
@@ -152,7 +179,8 @@ public sealed record DiscoveryEvent(
         string instructions,
         string userMessage,
         int maxOutputTokens,
-        string operationId) =>
+        string operationId,
+        int modelAttemptNumber = 0) =>
         new(DiscoveryEventKind.ModelRequestStarted, nodeId,
             $"{agentName} model request · no tools registered · max output {maxOutputTokens}",
             Detail:
@@ -161,42 +189,57 @@ public sealed record DiscoveryEvent(
                     $"INSTRUCTIONS\n{instructions}\n\nUSER INPUT\n{userMessage}"),
             ],
             ModelCalls: 1,
-            OperationId: operationId);
+            OperationId: operationId)
+        {
+            ModelAttemptNumber = modelAttemptNumber,
+        };
 
     /// <summary>One sanitized model response paired to its request.</summary>
     public static DiscoveryEvent ModelResponseReceived(
         string nodeId,
         string agentName,
         string? response,
-        string operationId) =>
+        string operationId,
+        int modelAttemptNumber = 0) =>
         new(DiscoveryEventKind.ModelResponseReceived, nodeId,
             $"{agentName} model response",
             Detail: [RecommendationRuntimeEvents.SafePreview(string.IsNullOrWhiteSpace(response)
                 ? "[no observable text or function content]"
                 : response)],
             ModelCalls: 1,
-            OperationId: operationId);
+            OperationId: operationId)
+        {
+            ModelAttemptNumber = modelAttemptNumber,
+        };
 
     /// <summary>Caller cancellation at the model boundary; response is absent, never empty-success.</summary>
     public static DiscoveryEvent ModelRequestCancelled(
         string nodeId,
         string agentName,
-        string operationId) =>
+        string operationId,
+        int modelAttemptNumber = 0) =>
         new(DiscoveryEventKind.ModelRequestCancelled, nodeId,
             $"{agentName} model request cancelled by caller; no response was produced.",
             ModelCalls: 1,
-            OperationId: operationId);
+            OperationId: operationId)
+        {
+            ModelAttemptNumber = modelAttemptNumber,
+        };
 
     /// <summary>Failure at the model boundary. Free-form exception text is never retained.</summary>
     public static DiscoveryEvent ModelRequestFailed(
         string nodeId,
         string agentName,
         Type failureType,
-        string operationId) =>
+        string operationId,
+        int modelAttemptNumber = 0) =>
         new(DiscoveryEventKind.ModelRequestFailed, nodeId,
             $"{agentName} model request failed with {failureType.Name}; message withheld.",
             ModelCalls: 1,
-            OperationId: operationId);
+            OperationId: operationId)
+        {
+            ModelAttemptNumber = modelAttemptNumber,
+        };
 
     /// <summary>The interest map panel.</summary>
     /// <param name="nodeId">Executor id.</param>
@@ -327,6 +370,28 @@ public sealed record DiscoveryEvent(
     /// <param name="message">What happened and what it fell back to.</param>
     public static DiscoveryEvent Degraded(string nodeId, string message) =>
         new(DiscoveryEventKind.Degraded, nodeId, message);
+
+    /// <summary>
+    /// A required live model stage selected its bounded deterministic fallback. The human-readable
+    /// message remains suitable for the console, while <see cref="ModelStageDisposition"/> gives
+    /// evaluators a stable signal that does not depend on parsing that message.
+    /// </summary>
+    public static DiscoveryEvent ModelFallbackSelected(string nodeId, string message) =>
+        new DiscoveryEvent(DiscoveryEventKind.Degraded, nodeId, message)
+        {
+            ModelStageDisposition = DiscoveryModelStageDisposition.FinalFallback,
+        };
+
+    /// <summary>
+    /// One model attempt could not be used. The bounded attempt number provides stable linkage
+    /// without retaining response or exception text; a later attempt may still recover the stage.
+    /// </summary>
+    public static DiscoveryEvent ModelAttemptUnusable(string nodeId, int attemptNumber, string message) =>
+        new DiscoveryEvent(DiscoveryEventKind.Degraded, nodeId, message)
+        {
+            ModelStageDisposition = DiscoveryModelStageDisposition.AttemptUnusable,
+            ModelAttemptNumber = attemptNumber,
+        };
 
     /// <summary>The run summary.</summary>
     /// <param name="state">The final state.</param>

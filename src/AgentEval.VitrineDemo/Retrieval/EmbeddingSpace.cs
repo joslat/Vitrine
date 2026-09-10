@@ -307,7 +307,7 @@ public static class EmbeddingSpace
             return FallBack(
                 requested,
                 $"the {index.CachedVectorCount} committed '{index.ModelId}' product vectors validated, but a QUERY "
-              + "must be embedded at search time and AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY are not set. An "
+              + "must be embedded at search time and Azure OpenAI live configuration is not ready. An "
               + "index with no way to embed a query returns nothing at all, which is worse than a different space",
                 index.LoadWarnings);
         }

@@ -6,15 +6,15 @@
 Exports one sanitized public receipt from a VITRINE live-evaluation outcome.
 
 .DESCRIPTION
-Reads a schema-1.3 outcome.json produced by Eval03 or Eval06, validates its shape and
+Reads a schema-1.3 or schema-1.4 outcome.json produced by Eval02, Eval03 or Eval06, validates its shape and
 typed vocabulary, and writes a strictly allow-listed JSON receipt plus a self-contained
 HTML view. Queries, expected answers, ground truth, subject responses, tool arguments,
 judge explanations, provider detail, run paths, endpoints, credentials and canaries are
-never copied. Both output files are staged beside their destinations and replaced only
-after the complete export has been rendered.
+never copied. Both output files are staged beside their destinations after the complete
+export is rendered; if the second replacement fails, rollback restores the prior pair.
 
 .PARAMETER InputPath
-Path to the private schema-1.3 live-session outcome.json.
+Path to the private schema-1.3 or schema-1.4 live-session outcome.json.
 
 .PARAMETER JsonPath
 Destination for the public JSON receipt.
@@ -29,7 +29,8 @@ pwsh ./eng/export-live-evidence.ps1 `
   -HtmlPath ./docs/evidence/vitrine-live-eval03.html
 
 .NOTES
-This exporter accepts only liveEval03AgentVsWorkflow and liveEval06SafetyProbes. It fails closed
+This exporter accepts only liveEval02Workflow, liveEval03AgentVsWorkflow and
+liveEval06SafetyProbes. It fails closed
 on an unsupported schema, an unknown property, an unknown enum-like value, inconsistent
 counts, or unsafe text selected for publication.
 #>
@@ -45,7 +46,13 @@ param(
 
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
-    [string]$HtmlPath
+    [string]$HtmlPath,
+
+    [Parameter(Mandatory = $false)]
+    [string]$ImplementationCommit,
+
+    [Parameter(Mandatory = $false, DontShow = $true)]
+    [switch]$TestFailSecondPublish
 )
 
 Set-StrictMode -Version Latest
@@ -136,6 +143,12 @@ function Identifier([object]$Value, [string]$Path, [int]$Maximum = 100) {
     return $text
 }
 
+function CommitSha([object]$Value, [string]$Path) {
+    $text = Text $Value $Path 40
+    if ($text -cnotmatch '^[a-f0-9]{40}$') { Fail $Path 'must be a full lower-case 40-hex Git commit.' }
+    return $text
+}
+
 function EnumValue([object]$Value, [string]$Path, [string[]]$Allowed) {
     $text = Text $Value $Path 100
     if ($Allowed -cnotcontains $text) {
@@ -152,17 +165,27 @@ function PrivateModelId([object]$Value, [string]$Path) {
     return $label
 }
 
-function PublicDefinitionVersion([object]$Value, [string]$Path, [string]$Plan, [string]$JudgeModelId) {
+function PublicDefinitionVersion(
+    [object]$Value,
+    [string]$Path,
+    [string]$Plan,
+    [string]$JudgeModelId,
+    [string[]]$ScenarioIds,
+    [string]$RubricHash,
+    [double]$PassThreshold,
+    [long]$JudgeMaxOutputTokens) {
     $version = Identifier $Value $Path 1000
-    if ($Plan -ceq 'liveEval03AgentVsWorkflow') {
-        # Eval03's internal version carries the configured judge deployment between these
-        # delimiters. Preserve the reproducibility fields while removing that private name.
-        $privateSegment = ".judge.$JudgeModelId.tokens."
-        if ($version.Contains($privateSegment, [StringComparison]::Ordinal)) {
-            return $version.Replace($privateSegment, '.judge.configured-model.tokens.', [StringComparison]::Ordinal)
+    if ($Plan -in @('liveEval02Workflow', 'liveEval03AgentVsWorkflow')) {
+        $thresholdBits = '{0:X16}' -f [BitConverter]::DoubleToInt64Bits($PassThreshold)
+        $expected = "1.1.0+cases.$($ScenarioIds -join '.').rubric.$($RubricHash.Substring(0, 16)).threshold.$thresholdBits.judge.$JudgeModelId.tokens.$JudgeMaxOutputTokens"
+        if ($version -cne $expected) {
+            Fail $Path 'does not match the deterministic use-case definition identity.'
         }
+        $privateSegment = ".judge.$JudgeModelId.tokens."
+        $version = $version.Replace(
+            $privateSegment, '.judge.configured-model.tokens.', [StringComparison]::Ordinal)
     }
-    return $version
+    return PublicText $version $Path 1000
 }
 
 function Boolean([object]$Value, [string]$Path) {
@@ -325,7 +348,7 @@ function Failure([object]$Value, [string]$Path) {
     Assert-Shape $Value $Path @('code', 'detail') @('scenarioId', 'armId', 'repetition', 'checkKey')
     $code = EnumValue (Property $Value 'code') "$Path.code" @(
         'configurationUnavailable', 'cancelled', 'subjectProviderFailure', 'subjectExecutionFailed',
-        'judgeExecutionFailed', 'benchmarkExecutionFailed', 'safetyExecutionFailed')
+        'judgeExecutionFailed', 'benchmarkExecutionFailed', 'safetyExecutionFailed', 'subjectModelStageUnusable')
     # Validate, then deliberately replace free-form source detail with a stable public diagnostic.
     [void](Text (Property $Value 'detail') "$Path.detail" 320 -AllowEmpty)
     $details = @{
@@ -336,6 +359,7 @@ function Failure([object]$Value, [string]$Path) {
         judgeExecutionFailed = 'The judge did not produce a complete criterion verdict.'
         benchmarkExecutionFailed = 'The benchmark stopped before all planned evidence was measured.'
         safetyExecutionFailed = 'The safety scan did not produce a complete, fully measured result.'
+        subjectModelStageUnusable = 'A required workflow model stage selected its bounded fallback after unusable model output.'
     }
     $result = [ordered]@{ code = $code; detail = $details[$code] }
     if (Has-Property $Value 'scenarioId') { $result.scenarioId = Identifier (Property $Value 'scenarioId') "$Path.scenarioId" }
@@ -372,24 +396,147 @@ function Assert-Tools([object]$Value, [string]$Path) {
     }
 }
 
-function Assert-Workflow([object]$Value, [string]$Path) {
-    Assert-Shape $Value $Path @('executors', 'routes', 'discoveryRounds', 'maximumRounds', 'superSteps', 'stopReason',
+function Project-WorkflowEvidence([object]$Value, [string]$Path, [string]$SchemaVersion) {
+    $baseProperties = @('executors', 'routes', 'discoveryRounds', 'maximumRounds', 'superSteps', 'stopReason',
         'looped', 'failureCount', 'degradationCount', 'degradationKinds', 'unknownExecutorCount', 'unknownRouteCount')
+    $providerProperties = @('providerStages', 'providerFailedAttemptCount',
+        'recoveredProviderFailedAttemptCount', 'terminalProviderStageCount')
+    if ($SchemaVersion -ceq '1.4') {
+        Assert-Shape $Value $Path ($baseProperties + $providerProperties)
+    } else {
+        Assert-Shape $Value $Path $baseProperties
+    }
+    $allowedExecutors = @('InterestMapper', 'Discovery', 'CoverageReviewer', 'Ranker', 'Presenter')
+    $executors = @()
     $index = 0
     foreach ($executor in (Items (Property $Value 'executors') "$Path.executors")) {
         $executorPath = "$Path.executors[$index]"
         Assert-Shape $executor $executorPath @('executorId', 'executionCount')
-        [void](Text (Property $executor 'executorId') "$executorPath.executorId" 100)
-        [void](Integer (Property $executor 'executionCount') "$executorPath.executionCount")
+        $executors += ,[ordered]@{
+            executorId = EnumValue (Property $executor 'executorId') "$executorPath.executorId" $allowedExecutors
+            executionCount = Integer (Property $executor 'executionCount') "$executorPath.executionCount"
+        }
         $index++
     }
-    Assert-StringArray (Property $Value 'routes') "$Path.routes" 200
-    Assert-StringArray (Property $Value 'degradationKinds') "$Path.degradationKinds" 200
-    foreach ($name in @('discoveryRounds', 'maximumRounds', 'superSteps', 'failureCount', 'degradationCount', 'unknownExecutorCount', 'unknownRouteCount')) {
-        [void](Integer (Property $Value $name) "$Path.$name")
+    $routes = @()
+    $index = 0
+    foreach ($route in (Items (Property $Value 'routes') "$Path.routes")) {
+        $routes += EnumValue $route "$Path.routes[$index]" @('map-to-discovery', 'discovery-to-review',
+            'review-to-more-discovery', 'review-to-ranker', 'ranker-to-presenter')
+        $index++
     }
-    [void](Text (Property $Value 'stopReason') "$Path.stopReason" 200 -AllowEmpty)
-    [void](Boolean (Property $Value 'looped') "$Path.looped")
+    $allowedDegradationKinds = @()
+    foreach ($executorId in ($allowedExecutors + @('unknown'))) {
+        foreach ($suffix in @('fallback', 'degradation', 'attempt-unusable', 'model-failure', 'provider-recovered', 'final-fallback',
+            'provider-unrecovered', 'provider-cancelled')) {
+            $allowedDegradationKinds += "$executorId`:$suffix"
+        }
+    }
+    $degradationKinds = @()
+    $index = 0
+    foreach ($kind in (Items (Property $Value 'degradationKinds') "$Path.degradationKinds")) {
+        $degradationKinds += EnumValue $kind "$Path.degradationKinds[$index]" $allowedDegradationKinds
+        $index++
+    }
+    $result = [ordered]@{
+        executors = $executors
+        routes = $routes
+        discoveryRounds = Integer (Property $Value 'discoveryRounds') "$Path.discoveryRounds"
+        maximumRounds = Integer (Property $Value 'maximumRounds') "$Path.maximumRounds"
+        superSteps = Integer (Property $Value 'superSteps') "$Path.superSteps"
+        stopReason = EnumValue (Property $Value 'stopReason') "$Path.stopReason" @('None', 'CoverageSufficient',
+            'GapsRemain', 'RoundLimitReached', 'NoProgress', 'GapsUnresolvable', 'not-measured')
+        looped = Boolean (Property $Value 'looped') "$Path.looped"
+        failureCount = Integer (Property $Value 'failureCount') "$Path.failureCount"
+        degradationCount = Integer (Property $Value 'degradationCount') "$Path.degradationCount"
+        degradationKinds = $degradationKinds
+        unknownExecutorCount = Integer (Property $Value 'unknownExecutorCount') "$Path.unknownExecutorCount"
+        unknownRouteCount = Integer (Property $Value 'unknownRouteCount') "$Path.unknownRouteCount"
+    }
+    if ($SchemaVersion -ceq '1.3') { return $result }
+
+    $providerStages = @()
+    $seenProviderStages = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $failedAttempts = 0L
+    $recoveredFailedAttempts = 0L
+    $terminalStages = 0L
+    $totalAttempts = 0L
+    $index = 0
+    foreach ($stage in (Items (Property $Value 'providerStages') "$Path.providerStages")) {
+        $stagePath = "$Path.providerStages[$index]"
+        Assert-Shape $stage $stagePath @('executorId', 'attemptCount', 'responseCount', 'unusableAttemptCount', 'failedAttemptCount',
+            'cancelledAttemptCount', 'status', 'lastUnusableAttemptNumber', 'lastUsableResponseAttemptNumber')
+        $executorId = EnumValue (Property $stage 'executorId') "$stagePath.executorId" @(
+            'InterestMapper', 'CoverageReviewer', 'Ranker', 'Presenter')
+        if (-not $seenProviderStages.Add($executorId)) { Fail $stagePath 'duplicates a model-backed executor.' }
+        $attempts = Integer (Property $stage 'attemptCount') "$stagePath.attemptCount"
+        $responses = Integer (Property $stage 'responseCount') "$stagePath.responseCount"
+        $unusable = Integer (Property $stage 'unusableAttemptCount') "$stagePath.unusableAttemptCount"
+        $failures = Integer (Property $stage 'failedAttemptCount') "$stagePath.failedAttemptCount"
+        $cancellations = Integer (Property $stage 'cancelledAttemptCount') "$stagePath.cancelledAttemptCount"
+        $lastUnusable = Integer (Property $stage 'lastUnusableAttemptNumber') "$stagePath.lastUnusableAttemptNumber"
+        $lastUsable = Integer (Property $stage 'lastUsableResponseAttemptNumber') "$stagePath.lastUsableResponseAttemptNumber"
+        $status = EnumValue (Property $stage 'status') "$stagePath.status" @(
+            'completed', 'recovered', 'finalFallback', 'unrecovered', 'cancelled')
+        if ($attempts -le 0 -or $unusable -gt $attempts -or $failures -gt $unusable -or
+            $attempts -lt $responses + $failures + $cancellations -or
+            $attempts -gt $responses + $cancellations + $unusable -or
+            $unusable + $cancellations -gt $attempts -or
+            (($unusable -eq 0) -ne ($lastUnusable -eq 0)) -or
+            ($lastUsable -gt 0 -and $responses -eq 0)) {
+            Fail $stagePath 'contains an impossible typed attempt census.'
+        }
+        $consistent = switch ($status) {
+            'completed' { $responses -eq $attempts -and $unusable -eq 0 -and $failures -eq 0 -and
+                $cancellations -eq 0 -and $lastUnusable -eq 0 -and $lastUsable -gt 0 }
+            'recovered' { $attempts -gt $unusable -and $unusable -gt 0 -and $responses -gt 0 -and
+                $cancellations -eq 0 -and $lastUnusable -gt 0 -and $lastUsable -gt $lastUnusable }
+            'finalFallback' { $unusable -gt 0 -and $cancellations -eq 0 -and $lastUnusable -gt 0 }
+            'unrecovered' { $true }
+            'cancelled' { $cancellations -gt 0 }
+        }
+        if (-not $consistent) { Fail $stagePath 'status contradicts the typed attempt census.' }
+        $providerStages += ,[ordered]@{
+            executorId = $executorId
+            attemptCount = $attempts
+            responseCount = $responses
+            unusableAttemptCount = $unusable
+            failedAttemptCount = $failures
+            cancelledAttemptCount = $cancellations
+            status = $status
+            lastUnusableAttemptNumber = $lastUnusable
+            lastUsableResponseAttemptNumber = $lastUsable
+        }
+        $failedAttempts += $failures
+        if ($status -ceq 'recovered') { $recoveredFailedAttempts += $failures }
+        if ($status -in @('finalFallback', 'unrecovered', 'cancelled')) { $terminalStages++ }
+        $totalAttempts += $attempts
+        $index++
+    }
+    $seenLastAttemptNumbers = [Collections.Generic.HashSet[long]]::new()
+    $index = 0
+    foreach ($stage in $providerStages) {
+        foreach ($name in @('lastUnusableAttemptNumber', 'lastUsableResponseAttemptNumber')) {
+            $attemptNumber = [long]$stage[$name]
+            if ($attemptNumber -gt 0 -and ($attemptNumber -gt $totalAttempts -or
+                -not $seenLastAttemptNumbers.Add($attemptNumber))) {
+                Fail "$Path.providerStages[$index].$name" 'must identify one unique attempt within the global attempt census.'
+            }
+        }
+        $index++
+    }
+    $reportedFailed = Integer (Property $Value 'providerFailedAttemptCount') "$Path.providerFailedAttemptCount"
+    $reportedRecovered = Integer (Property $Value 'recoveredProviderFailedAttemptCount') "$Path.recoveredProviderFailedAttemptCount"
+    $reportedTerminal = Integer (Property $Value 'terminalProviderStageCount') "$Path.terminalProviderStageCount"
+    if ($reportedFailed -ne $failedAttempts -or $reportedRecovered -ne $recoveredFailedAttempts -or
+        $reportedTerminal -ne $terminalStages) {
+        Fail $Path 'provider-stage aggregate counts do not match providerStages.'
+    }
+    $result['providerStages'] = $providerStages
+    $result['providerFailedAttemptCount'] = $reportedFailed
+    $result['recoveredProviderFailedAttemptCount'] = $reportedRecovered
+    $result['terminalProviderStageCount'] = $reportedTerminal
+    return $result
 }
 
 function Check([object]$Value, [string]$Path) {
@@ -752,7 +899,28 @@ function Html([object]$Value) {
             foreach ($criterion in $trial.criteria) {
                 [void]$builder.Append('<li><code>').Append((H $criterion.id)).Append('</code> · ').Append((H $criterion.measurement)).Append(' · met ').Append((H (Display (OptionalProperty $criterion 'met')))).AppendLine('</li>')
             }
-            [void]$builder.AppendLine('</ul></section>')
+            [void]$builder.AppendLine('</ul>')
+            if (Has-Property $trial 'workflow') {
+                $workflow = Property $trial 'workflow'
+                if (Has-Property $workflow 'providerStages') {
+                    [void]$builder.Append('<p><strong>Provider-stage reliability:</strong> failed attempts ')
+                    [void]$builder.Append((H $workflow.providerFailedAttemptCount)).Append(' · recovered failed attempts ')
+                    [void]$builder.Append((H $workflow.recoveredProviderFailedAttemptCount)).Append(' · terminal stages ')
+                    [void]$builder.Append((H $workflow.terminalProviderStageCount)).AppendLine('</p><ul>')
+                    foreach ($stage in $workflow.providerStages) {
+                        [void]$builder.Append('<li><code>').Append((H $stage.executorId)).Append('</code> · ')
+                        [void]$builder.Append((H $stage.status)).Append(' · attempts ').Append((H $stage.attemptCount))
+                        [void]$builder.Append(' · responses ').Append((H $stage.responseCount)).Append(' · unusable ')
+                        [void]$builder.Append((H $stage.unusableAttemptCount)).Append(' · failed ')
+                        [void]$builder.Append((H $stage.failedAttemptCount)).Append(' · cancelled ')
+                        [void]$builder.Append((H $stage.cancelledAttemptCount)).AppendLine('</li>')
+                    }
+                    [void]$builder.AppendLine('</ul>')
+                } else {
+                    [void]$builder.AppendLine('<p class="muted">Typed provider-stage recovery evidence was not available in this historical schema-1.3 source.</p>')
+                }
+            }
+            [void]$builder.AppendLine('</section>')
         }
     }
     if ($null -ne $Value.safety) {
@@ -781,22 +949,44 @@ function Resolve-OutputPath([string]$Path) {
     return [IO.Path]::GetFullPath($Path, (Get-Location).Path)
 }
 
-function Write-PairAtomically([string]$Json, [string]$Html, [string]$JsonDestination, [string]$HtmlDestination) {
+function Write-PairWithRollback([string]$Json, [string]$Html, [string]$JsonDestination, [string]$HtmlDestination) {
     $jsonDirectory = [IO.Path]::GetDirectoryName($JsonDestination)
     $htmlDirectory = [IO.Path]::GetDirectoryName($HtmlDestination)
     [IO.Directory]::CreateDirectory($jsonDirectory) | Out-Null
     [IO.Directory]::CreateDirectory($htmlDirectory) | Out-Null
     $jsonTemporary = Join-Path $jsonDirectory ('.' + [IO.Path]::GetFileName($JsonDestination) + '.tmp-' + [Guid]::NewGuid().ToString('N'))
     $htmlTemporary = Join-Path $htmlDirectory ('.' + [IO.Path]::GetFileName($HtmlDestination) + '.tmp-' + [Guid]::NewGuid().ToString('N'))
+    $jsonBackup = Join-Path $jsonDirectory ('.' + [IO.Path]::GetFileName($JsonDestination) + '.bak-' + [Guid]::NewGuid().ToString('N'))
+    $htmlBackup = Join-Path $htmlDirectory ('.' + [IO.Path]::GetFileName($HtmlDestination) + '.bak-' + [Guid]::NewGuid().ToString('N'))
     $encoding = [Text.UTF8Encoding]::new($false)
+    $jsonExisted = [IO.File]::Exists($JsonDestination)
+    $htmlExisted = [IO.File]::Exists($HtmlDestination)
     try {
         [IO.File]::WriteAllText($jsonTemporary, $Json, $encoding)
         [IO.File]::WriteAllText($htmlTemporary, $Html, $encoding)
-        [IO.File]::Move($jsonTemporary, $JsonDestination, $true)
-        [IO.File]::Move($htmlTemporary, $HtmlDestination, $true)
+        if ($jsonExisted) { [IO.File]::Copy($JsonDestination, $jsonBackup, $true) }
+        if ($htmlExisted) { [IO.File]::Copy($HtmlDestination, $htmlBackup, $true) }
+        try {
+            [IO.File]::Move($jsonTemporary, $JsonDestination, $true)
+            if ($TestFailSecondPublish) { throw 'Injected second-output publication failure.' }
+            [IO.File]::Move($htmlTemporary, $HtmlDestination, $true)
+        } catch {
+            $publishError = $_
+            try {
+                if ($jsonExisted) { [IO.File]::Copy($jsonBackup, $JsonDestination, $true) }
+                elseif ([IO.File]::Exists($JsonDestination)) { [IO.File]::Delete($JsonDestination) }
+                if ($htmlExisted) { [IO.File]::Copy($htmlBackup, $HtmlDestination, $true) }
+                elseif ([IO.File]::Exists($HtmlDestination)) { [IO.File]::Delete($HtmlDestination) }
+            } catch {
+                throw "Paired output publication failed and rollback could not restore both destinations: $($_.Exception.GetType().Name)."
+            }
+            throw $publishError
+        }
     } finally {
         if ([IO.File]::Exists($jsonTemporary)) { [IO.File]::Delete($jsonTemporary) }
         if ([IO.File]::Exists($htmlTemporary)) { [IO.File]::Delete($htmlTemporary) }
+        if ([IO.File]::Exists($jsonBackup)) { [IO.File]::Delete($jsonBackup) }
+        if ([IO.File]::Exists($htmlBackup)) { [IO.File]::Delete($htmlBackup) }
     }
 }
 
@@ -821,8 +1011,19 @@ try {
 Assert-Shape $source '$' @('schemaVersion', 'plan', 'terminalStatus', 'exitCode', 'sessionId', 'startedAtUtc',
     'completedAtUtc', 'workload', 'scenarios', 'configuration', 'runs', 'trials', 'arms',
     'scenarioAcceptances', 'comparisons', 'failures') @('passThreshold', 'safety')
-if ((Property $source 'schemaVersion') -cne '1.3') { Fail '$.schemaVersion' 'only schema 1.3 is supported.' }
-$plan = EnumValue (Property $source 'plan') '$.plan' @('liveEval03AgentVsWorkflow', 'liveEval06SafetyProbes')
+$schemaVersion = EnumValue (Property $source 'schemaVersion') '$.schemaVersion' @('1.3', '1.4')
+$plan = EnumValue (Property $source 'plan') '$.plan' @(
+    'liveEval02Workflow', 'liveEval03AgentVsWorkflow', 'liveEval06SafetyProbes')
+if ($plan -ceq 'liveEval02Workflow' -and $schemaVersion -cne '1.4') {
+    Fail '$.schemaVersion' 'Eval02 export requires schema 1.4 typed provider-stage evidence.'
+}
+$implementationCommitValue = $null
+if (-not [string]::IsNullOrWhiteSpace($ImplementationCommit)) {
+    $implementationCommitValue = CommitSha $ImplementationCommit '-ImplementationCommit'
+}
+if ($plan -ceq 'liveEval02Workflow' -and $null -eq $implementationCommitValue) {
+    Fail '-ImplementationCommit' 'is required when publishing Eval02 evidence.'
+}
 $terminal = EnumValue (Property $source 'terminalStatus') '$.terminalStatus' @('passed', 'qualityFailed', 'notMeasured', 'infrastructureError', 'cancelled')
 $exitCode = Integer (Property $source 'exitCode') '$.exitCode' 0 130
 $exitMap = @{ passed = 0; qualityFailed = 1; notMeasured = 3; infrastructureError = 4; cancelled = 130 }
@@ -894,6 +1095,11 @@ Assert-Shape $configurationSource '$.configuration' @('definitionKey', 'definiti
 $rubricHash = Text (Property $configurationSource 'judgeRubricHash') '$.configuration.judgeRubricHash' 64
 if ($rubricHash -cnotmatch '^[a-f0-9]{64}$') { Fail '$.configuration.judgeRubricHash' 'must be a lower-case SHA-256 digest.' }
 $privateJudgeModelId = PrivateModelId (Property $configurationSource 'judgeModelId') '$.configuration.judgeModelId'
+$subjectMaxOutputTokens = Integer (Property $configurationSource 'subjectMaxOutputTokens') '$.configuration.subjectMaxOutputTokens' 1
+$judgeMaxOutputTokens = Integer (Property $configurationSource 'judgeMaxOutputTokens') '$.configuration.judgeMaxOutputTokens' 1
+$definitionPassThreshold = if ($plan -in @('liveEval02Workflow', 'liveEval03AgentVsWorkflow')) {
+    Number (Property $source 'passThreshold') '$.passThreshold' 0 1
+} else { 0.0 }
 $subjects = @()
 $armIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 $armArchitectures = @{}
@@ -920,6 +1126,10 @@ if ($plan -ceq 'liveEval03AgentVsWorkflow' -and ($subjects.Count -ne 2 -or
     @($subjects | Where-Object architecture -ceq 'workflow').Count -ne 1)) {
     Fail '$.configuration.subjects' 'Eval03 requires exactly one agent arm and one workflow arm.'
 }
+if ($plan -ceq 'liveEval02Workflow' -and
+    ($subjects.Count -ne 1 -or $subjects[0].architecture -cne 'workflow')) {
+    Fail '$.configuration.subjects' 'Eval02 requires exactly one workflow arm.'
+}
 if ($plan -ceq 'liveEval06SafetyProbes' -and ($subjects.Count -ne 1 -or $subjects[0].architecture -cne 'agent')) {
     Fail '$.configuration.subjects' 'Eval06 requires exactly one agent arm.'
 }
@@ -929,8 +1139,9 @@ $policy = EnumValue (Property $acceptanceSource 'policy') '$.configuration.accep
 $acceptance = [ordered]@{ policy = $policy }
 if (Has-Property $acceptanceSource 'confidenceLevel') { $acceptance.confidenceLevel = Number (Property $acceptanceSource 'confidenceLevel') '$.configuration.acceptance.confidenceLevel' 0 1 }
 if (Has-Property $acceptanceSource 'minimumLowerBound') { $acceptance.minimumLowerBound = Number (Property $acceptanceSource 'minimumLowerBound') '$.configuration.acceptance.minimumLowerBound' 0 1 }
-if ($plan -ceq 'liveEval03AgentVsWorkflow' -and ($policy -cne 'everyTrialMustPass' -or $acceptance.Count -ne 1)) {
-    Fail '$.configuration.acceptance' 'Eval03 requires everyTrialMustPass acceptance with no Wilson threshold.'
+if ($plan -in @('liveEval02Workflow', 'liveEval03AgentVsWorkflow') -and
+    ($policy -cne 'everyTrialMustPass' -or $acceptance.Count -ne 1)) {
+    Fail '$.configuration.acceptance' 'Eval02 and Eval03 require everyTrialMustPass acceptance with no Wilson threshold.'
 }
 if ($plan -ceq 'liveEval06SafetyProbes' -and ($policy -cne 'notApplicable' -or $acceptance.Count -ne 1)) {
     Fail '$.configuration.acceptance' 'Eval06 requires notApplicable acceptance with no numeric threshold.'
@@ -938,11 +1149,13 @@ if ($plan -ceq 'liveEval06SafetyProbes' -and ($policy -cne 'notApplicable' -or $
 
 $configuration = [ordered]@{
     definitionKey = Identifier (Property $configurationSource 'definitionKey') '$.configuration.definitionKey' 100
-    definitionVersion = PublicDefinitionVersion (Property $configurationSource 'definitionVersion') '$.configuration.definitionVersion' $plan $privateJudgeModelId
+    definitionVersion = PublicDefinitionVersion (Property $configurationSource 'definitionVersion') `
+        '$.configuration.definitionVersion' $plan $privateJudgeModelId `
+        @($scenarios | ForEach-Object id) $rubricHash $definitionPassThreshold $judgeMaxOutputTokens
     judgeModelLabel = 'configured-judge-model'
     judgeRubricSha256 = $rubricHash
-    subjectMaxOutputTokens = Integer (Property $configurationSource 'subjectMaxOutputTokens') '$.configuration.subjectMaxOutputTokens' 1
-    judgeMaxOutputTokens = Integer (Property $configurationSource 'judgeMaxOutputTokens') '$.configuration.judgeMaxOutputTokens' 1
+    subjectMaxOutputTokens = $subjectMaxOutputTokens
+    judgeMaxOutputTokens = $judgeMaxOutputTokens
     subjects = $subjects
     acceptance = $acceptance
 }
@@ -971,16 +1184,17 @@ if (Has-Property $configurationSource 'safety') {
         Fail '$.configuration.safety.attacks' 'must contain the two canonical attack categories exactly once.'
     }
 }
-if ($plan -ceq 'liveEval03AgentVsWorkflow' -and (Has-Property $configurationSource 'safety')) { Fail '$.configuration.safety' 'is not valid for Eval03.' }
+if ($plan -in @('liveEval02Workflow', 'liveEval03AgentVsWorkflow') -and
+    (Has-Property $configurationSource 'safety')) { Fail '$.configuration.safety' 'is not valid for Eval02 or Eval03.' }
 if ($plan -ceq 'liveEval06SafetyProbes' -and -not (Has-Property $configurationSource 'safety')) { Fail '$.configuration.safety' 'is required for Eval06.' }
-if ($plan -ceq 'liveEval03AgentVsWorkflow') {
+if ($plan -in @('liveEval02Workflow', 'liveEval03AgentVsWorkflow')) {
     $expectedCalls = $workload.scenarioCount * $workload.armCount * $workload.repetitions
     if ($workload.scenarioCount -lt 1 -or $workload.repetitions -lt 1 -or
         $workload.plannedSubjectCalls -ne $expectedCalls -or
         $workload.plannedJudgeEvaluations -ne $expectedCalls -or
         $workload.safetyAttackCount -ne 0 -or $workload.plannedSafetyProbes -ne 0 -or
         $workload.maximumSafetyModelCalls -ne 0) {
-        Fail '$.workload' 'Eval03 workload arithmetic is invalid.'
+        Fail '$.workload' 'Eval02/Eval03 workload arithmetic is invalid.'
     }
 } else {
     if ($workload.scenarioCount -ne 0 -or $workload.repetitions -ne 1 -or
@@ -1029,7 +1243,9 @@ foreach ($trial in (Items (Property $source 'trials') '$.trials')) {
     }
     [void](Text (Property $trial 'responsePreview') "$path.responsePreview" 16000 -AllowEmpty)
     Assert-Tools (Property $trial 'tools') "$path.tools"
-    if (Has-Property $trial 'workflow') { Assert-Workflow (Property $trial 'workflow') "$path.workflow" }
+    $workflow = if (Has-Property $trial 'workflow') {
+        Project-WorkflowEvidence (Property $trial 'workflow') "$path.workflow" $schemaVersion
+    } else { $null }
     $checks = @(); $checkIndex = 0
     $trialCheckIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     foreach ($check in (Items (Property $trial 'checks') "$path.checks")) {
@@ -1065,10 +1281,30 @@ foreach ($trial in (Items (Property $source 'trials') '$.trials')) {
     }
     if (Has-Property $trial 'passed') { $row.passed = Boolean (Property $trial 'passed') "$path.passed" }
     if (Has-Property $trial 'failure') { $row.failure = Failure (Property $trial 'failure') "$path.failure" }
+    if ($null -ne $workflow) { $row.workflow = $workflow }
     if ($row.measurement -ceq 'measured' -and $null -eq $row.passed) { Fail $path 'a measured trial requires a verdict.' }
     if ($row.measurement -cne 'measured' -and $null -ne $row.passed) { Fail $path 'an unmeasured trial cannot carry a verdict.' }
     if ($row.subjectStatus -in @('failed', 'cancelled') -and $row.measurement -cne 'notMeasured') {
         Fail $path 'a failed or cancelled subject must be notMeasured.'
+    }
+    if ($schemaVersion -ceq '1.4' -and $null -ne $workflow -and
+        $workflow.terminalProviderStageCount -gt 0 -and
+        $row.measurement -cne 'notMeasured') {
+        Fail $path 'a terminal workflow provider stage must be notMeasured.'
+    }
+    if ($schemaVersion -ceq '1.4' -and $null -ne $workflow -and $row.measurement -ceq 'measured' -and
+        $workflow.providerFailedAttemptCount -ne $workflow.recoveredProviderFailedAttemptCount) {
+        Fail $path 'a measured workflow trial contains an unrecovered provider attempt.'
+    }
+    if ($schemaVersion -ceq '1.4' -and $architecture -ceq 'workflow' -and
+        $row.measurement -ceq 'measured') {
+        $requiredProviderStages = @('InterestMapper', 'Ranker', 'Presenter')
+        $providerStageIds = @($workflow.providerStages | ForEach-Object { $_.executorId })
+        foreach ($requiredStage in $requiredProviderStages) {
+            if ($providerStageIds -cnotcontains $requiredStage) {
+                Fail "$path.workflow.providerStages" "a measured workflow trial is missing required stage '$requiredStage'."
+            }
+        }
     }
     $measuredChecks = @($row.checks | Where-Object measurement -ceq 'measured')
     $incompleteChecks = @($row.checks | Where-Object measurement -ceq 'notMeasured')
@@ -1110,8 +1346,9 @@ foreach ($decision in (Items (Property $source 'scenarioAcceptances') '$.scenari
     }
     $scenarioAcceptances += ,$projectedDecision; $index++
 }
-if ($plan -ceq 'liveEval03AgentVsWorkflow' -and $scenarioAcceptances.Count -ne 0) {
-    Fail '$.scenarioAcceptances' 'Eval03 uses every-trial acceptance and must not contain stochastic scenario decisions.'
+if ($plan -in @('liveEval02Workflow', 'liveEval03AgentVsWorkflow') -and
+    $scenarioAcceptances.Count -ne 0) {
+    Fail '$.scenarioAcceptances' 'Eval02 and Eval03 use every-trial acceptance and must not contain stochastic scenario decisions.'
 }
 if ($plan -ceq 'liveEval06SafetyProbes' -and $scenarioAcceptances.Count -ne 0) {
     Fail '$.scenarioAcceptances' 'Eval06 does not use scenario acceptance decisions.'
@@ -1126,15 +1363,19 @@ foreach ($comparison in (Items (Property $source 'comparisons') '$.comparisons')
     }
     $comparisons += ,$projectedComparison; $index++
 }
+if ($plan -ceq 'liveEval02Workflow' -and $comparisons.Count -ne 0) {
+    Fail '$.comparisons' 'Eval02 has one arm and cannot contain a paired comparison.'
+}
 $failures = @(); $index = 0
 foreach ($failure in (Items (Property $source 'failures') '$.failures')) {
     $failures += ,(Failure $failure "$.failures[$index]"); $index++
 }
 
 if ($trials.Count -gt $workload.plannedSubjectCalls) { Fail '$.trials' 'contains more trials than the planned workload.' }
-if ($plan -ceq 'liveEval03AgentVsWorkflow' -and $terminal -in @('passed', 'qualityFailed', 'notMeasured')) {
-    if ($trials.Count -ne $workload.plannedSubjectCalls) { Fail '$.trials' 'a terminal Eval03 result must contain every planned trial.' }
-    if ($arms.Count -ne $subjects.Count) { Fail '$.arms' 'a terminal Eval03 result must contain every configured arm summary.' }
+if ($plan -in @('liveEval02Workflow', 'liveEval03AgentVsWorkflow') -and
+    $terminal -in @('passed', 'qualityFailed', 'notMeasured')) {
+    if ($trials.Count -ne $workload.plannedSubjectCalls) { Fail '$.trials' 'a terminal Eval02/Eval03 result must contain every planned trial.' }
+    if ($arms.Count -ne $subjects.Count) { Fail '$.arms' 'a terminal Eval02/Eval03 result must contain every configured arm summary.' }
 }
 foreach ($arm in $arms) {
     if ($arm.repetitions -ne $workload.repetitions) { Fail '$.arms' 'arm repetition policy does not match the workload.' }
@@ -1157,18 +1398,19 @@ foreach ($arm in $arms) {
         }
     }
 }
-if ($plan -ceq 'liveEval03AgentVsWorkflow' -and $terminal -in @('passed', 'qualityFailed', 'notMeasured')) {
+if ($plan -in @('liveEval02Workflow', 'liveEval03AgentVsWorkflow') -and
+    $terminal -in @('passed', 'qualityFailed', 'notMeasured')) {
     $measuredTrials = @($trials | Where-Object measurement -ceq 'measured')
     if ($terminal -ceq 'passed' -and
         ($measuredTrials.Count -ne $trials.Count -or @($trials | Where-Object { (OptionalProperty $_ 'passed') -ne $true }).Count -gt 0)) {
-        Fail '$.terminalStatus' 'passed does not match Eval03 every-trial acceptance.'
+        Fail '$.terminalStatus' 'passed does not match Eval02/Eval03 every-trial acceptance.'
     }
     if ($terminal -ceq 'qualityFailed' -and
         ($measuredTrials.Count -ne $trials.Count -or @($trials | Where-Object { (OptionalProperty $_ 'passed') -eq $false }).Count -eq 0)) {
-        Fail '$.terminalStatus' 'qualityFailed does not match Eval03 every-trial acceptance.'
+        Fail '$.terminalStatus' 'qualityFailed does not match Eval02/Eval03 every-trial acceptance.'
     }
     if ($terminal -ceq 'notMeasured' -and $measuredTrials.Count -ne 0) {
-        Fail '$.terminalStatus' 'notMeasured contains a measured Eval03 trial.'
+        Fail '$.terminalStatus' 'notMeasured contains a measured Eval02/Eval03 trial.'
     }
 }
 
@@ -1194,9 +1436,9 @@ foreach ($trial in $trials) {
 
 $safety = $null
 if (Has-Property $source 'safety') { $safety = Safety (Property $source 'safety') '$.safety' }
-if ($plan -ceq 'liveEval03AgentVsWorkflow') {
-    if (-not (Has-Property $source 'passThreshold')) { Fail '$.passThreshold' 'is required for Eval03.' }
-    if (Has-Property $source 'safety') { Fail '$.safety' 'is not valid for Eval03.' }
+if ($plan -in @('liveEval02Workflow', 'liveEval03AgentVsWorkflow')) {
+    if (-not (Has-Property $source 'passThreshold')) { Fail '$.passThreshold' 'is required for Eval02 and Eval03.' }
+    if (Has-Property $source 'safety') { Fail '$.safety' 'is not valid for Eval02 or Eval03.' }
     $passThreshold = Number (Property $source 'passThreshold') '$.passThreshold' 0 1
 } else {
     if (Has-Property $source 'passThreshold') { Fail '$.passThreshold' 'is not valid for Eval06.' }
@@ -1232,8 +1474,8 @@ $usageTotals = [ordered]@{
     judge = UsageRollup $judgeUsages '$.trials[*].judgeUsage'
 }
 $public = [ordered]@{
-    publicEvidenceSchemaVersion = '1.0'
-    source = [ordered]@{ schemaVersion = '1.3'; sha256 = $sha256 }
+    publicEvidenceSchemaVersion = '1.1'
+    source = [ordered]@{ schemaVersion = $schemaVersion; sha256 = $sha256 }
     plan = $plan
     terminalStatus = $terminal
     exitCode = $exitCode
@@ -1253,11 +1495,14 @@ $public = [ordered]@{
     safety = $safety
     publicationBoundary = 'Allow-listed aggregates only; raw prompts, queries, expected answers, ground truth, model responses, tool arguments, judge explanations, provider errors, endpoints, credentials, canaries, absolute paths and run directories are not published.'
 }
+if ($null -ne $implementationCommitValue) {
+    $public.source['implementationCommit'] = $implementationCommitValue
+}
 if ($null -ne $passThreshold) { $public.passThreshold = $passThreshold }
 
 $json = $public | ConvertTo-Json -Depth 100
 $html = Html $public
-Write-PairAtomically ($json + [Environment]::NewLine) $html $script:resolvedJson $resolvedHtml
+Write-PairWithRollback ($json + [Environment]::NewLine) $html $script:resolvedJson $resolvedHtml
 Write-Host "Sanitized live evidence exported:"
 Write-Host "  JSON $script:resolvedJson"
 Write-Host "  HTML $resolvedHtml"

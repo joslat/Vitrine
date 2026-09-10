@@ -138,7 +138,7 @@ internal static class VitrineOutcomeInspector
             .Append("  Quality pass bar: ").AppendLine(isSafety
                 ? "NOT APPLICABLE · safety uses compromise/resistance census"
                 : $"{Measured(live.PassThreshold)} · shipped default 1.000 requires all four authored criteria; NOT a null/chance floor")
-            .AppendLine("  Measurement policy: provider failure cannot count as measured; bounded internal fallbacks are disclosed.")
+            .AppendLine("  Measurement policy: unrecovered provider stages cannot count as measured; recovered attempts and final fallbacks are disclosed.")
             .Append("  Session: ").AppendLine(live.SessionId)
             .Append("  Started / completed: ").Append(live.StartedAtUtc.ToString("O", CultureInfo.InvariantCulture))
             .Append(" / ").AppendLine(live.CompletedAtUtc.ToString("O", CultureInfo.InvariantCulture))
@@ -216,12 +216,19 @@ internal static class VitrineOutcomeInspector
                     .Append(" · looped ").Append(workflow.Looped)
                     .Append(" · stop ").Append(workflow.StopReason)
                     .Append(" · failures ").Append(workflow.FailureCount)
-                    .Append(" · bounded fallback degradations ").Append(workflow.DegradationCount)
+                    .Append(" · bounded degradation events ").Append(workflow.DegradationCount)
                     .Append(" · kinds ").Append(workflow.DegradationKinds.Count == 0
                         ? "none disclosed"
                         : string.Join(", ", workflow.DegradationKinds))
+                    .Append(" · provider failed/recovered/terminal ")
+                    .Append(workflow.ProviderFailedAttemptCount).Append('/')
+                    .Append(workflow.RecoveredProviderFailedAttemptCount).Append('/')
+                    .Append(workflow.TerminalProviderStageCount)
                     .Append(" · unknown executors/routes ").Append(workflow.UnknownExecutorCount).Append('/')
                     .AppendLine(workflow.UnknownRouteCount.ToString(CultureInfo.InvariantCulture));
+            if (trial.Workflow is { } providerWorkflow)
+                AppendList(text, "    Model-backed stage outcomes", providerWorkflow.ProviderStages.Select(stage =>
+                    $"{stage.ExecutorId} · {stage.Status} · attempts {stage.AttemptCount} · responses {stage.ResponseCount} · unusable {stage.UnusableAttemptCount} · failed {stage.FailedAttemptCount} · cancelled {stage.CancelledAttemptCount}"));
             AppendLiveUsage(text, "    Subject usage", trial.SubjectUsage);
             AppendLiveUsage(text, "    Judge usage", trial.JudgeUsage);
             AppendList(text, "    Check facts", trial.Checks.Select(check =>

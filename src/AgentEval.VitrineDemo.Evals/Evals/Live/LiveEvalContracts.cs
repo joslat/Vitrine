@@ -50,6 +50,7 @@ public enum LiveEvalFailureCode
     JudgeExecutionFailed,
     BenchmarkExecutionFailed,
     SafetyExecutionFailed,
+    SubjectModelStageUnusable,
 }
 
 /// <summary>Bounded options for paid evaluation execution.</summary>
@@ -120,6 +121,45 @@ public sealed record LiveToolEvidence(
 /// <summary>One allow-listed workflow executor and how often its start event was observed.</summary>
 public sealed record LiveExecutorEvidence(string ExecutorId, int ExecutionCount);
 
+/// <summary>Sanitized terminal status of one model-backed workflow stage.</summary>
+public enum LiveWorkflowProviderStageStatus
+{
+    /// <summary>The stage completed without an observed provider-attempt failure.</summary>
+    Completed,
+
+    /// <summary>One or more unusable logical attempts were followed by a usable response.</summary>
+    Recovered,
+
+    /// <summary>The stage selected its bounded deterministic fallback after unusable attempts.</summary>
+    FinalFallback,
+
+    /// <summary>A provider attempt never recovered and no explicit fallback outcome was observed.</summary>
+    Unrecovered,
+
+    /// <summary>The caller cancelled the stage.</summary>
+    Cancelled,
+}
+
+/// <summary>
+/// Allow-listed attempt census for one model-backed executor. Operation ids, response text, and
+/// exception detail deliberately do not cross this evidence boundary.
+/// </summary>
+public sealed record LiveWorkflowProviderStageEvidence(
+    string ExecutorId,
+    int AttemptCount,
+    int ResponseCount,
+    int UnusableAttemptCount,
+    int FailedAttemptCount,
+    int CancelledAttemptCount,
+    LiveWorkflowProviderStageStatus Status)
+{
+    /// <summary>Global logical-attempt sequence of the last unusable attempt, or zero.</summary>
+    public int LastUnusableAttemptNumber { get; init; }
+
+    /// <summary>Global logical-attempt sequence of the last usable response, or zero.</summary>
+    public int LastUsableResponseAttemptNumber { get; init; }
+}
+
 /// <summary>Allow-listed workflow topology and bounded-run facts.</summary>
 public sealed record LiveWorkflowEvidence(
     IReadOnlyList<LiveExecutorEvidence> Executors,
@@ -133,7 +173,23 @@ public sealed record LiveWorkflowEvidence(
     int DegradationCount,
     IReadOnlyList<string> DegradationKinds,
     int UnknownExecutorCount = 0,
-    int UnknownRouteCount = 0);
+    int UnknownRouteCount = 0)
+{
+    /// <summary>
+    /// Typed, sanitized model-stage outcomes introduced by live-session schema 1.4. The additive
+    /// default keeps in-process callers that construct the earlier evidence shape compatible.
+    /// </summary>
+    public IReadOnlyList<LiveWorkflowProviderStageEvidence> ProviderStages { get; init; } = [];
+
+    /// <summary>Provider attempts that failed after a request was observed.</summary>
+    public int ProviderFailedAttemptCount { get; init; }
+
+    /// <summary>Failed provider attempts belonging to stages that subsequently recovered.</summary>
+    public int RecoveredProviderFailedAttemptCount { get; init; }
+
+    /// <summary>Stages ending in fallback, unrecovered failure, or caller cancellation.</summary>
+    public int TerminalProviderStageCount { get; init; }
+}
 
 /// <summary>Provider usage that remains absent when the provider did not report it.</summary>
 public sealed record LiveUsageEvidence(

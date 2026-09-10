@@ -342,15 +342,19 @@ public static class VitrineHtmlReport
                     .Append(Metric("Looped", workflow.Looped ? "yes" : "no"))
                     .Append(Metric("Stop reason", workflow.StopReason))
                     .Append(Metric("Failures", workflow.FailureCount.ToString(CultureInfo.InvariantCulture)))
-                    .Append(Metric("Bounded fallback degradations", workflow.DegradationCount.ToString(CultureInfo.InvariantCulture)))
-                    .Append(Metric("Fallback kinds", workflow.DegradationKinds.Count == 0
+                    .Append(Metric("Bounded degradation events", workflow.DegradationCount.ToString(CultureInfo.InvariantCulture)))
+                    .Append(Metric("Degradation kinds", workflow.DegradationKinds.Count == 0
                         ? "none disclosed"
                         : string.Join(", ", workflow.DegradationKinds)))
+                    .Append(Metric("Provider attempts",
+                        $"failed {workflow.ProviderFailedAttemptCount} · recovered {workflow.RecoveredProviderFailedAttemptCount} · terminal stages {workflow.TerminalProviderStageCount}"))
                     .Append(Metric("Unknown executors/routes", $"{workflow.UnknownExecutorCount}/{workflow.UnknownRouteCount}"))
                     .Append("</div>");
                 RenderStringList(html, "Executor counts", workflow.Executors.Select(executor =>
                     $"{executor.ExecutorId} × {executor.ExecutionCount}"));
                 RenderStringList(html, "Routes observed", workflow.Routes);
+                RenderStringList(html, "Model-backed stage outcomes", workflow.ProviderStages.Select(stage =>
+                    $"{stage.ExecutorId} · {stage.Status} · attempts {stage.AttemptCount} · responses {stage.ResponseCount} · unusable {stage.UnusableAttemptCount} · failed {stage.FailedAttemptCount} · cancelled {stage.CancelledAttemptCount}"));
             }
             RenderLiveUsage(html, "Subject usage", trial.SubjectUsage);
             RenderLiveUsage(html, "Judge usage", trial.JudgeUsage);

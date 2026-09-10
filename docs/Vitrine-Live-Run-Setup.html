@@ -20,7 +20,7 @@
 <header class="hero"><div class="wrap">
   <div class="eyebrow">VITRINE · Operator reference</div>
   <h1>Microsoft Foundry live-run setup</h1>
-  <p class="lead">Provision the two deployment types VITRINE understands, set credentials for one
+  <p class="lead">Provision the deployment types VITRINE understands, select authentication for one
     PowerShell session, run the smallest useful smoke, and keep claims inside the evidence.</p>
 </div></header>
 <nav class="topnav" aria-label="VITRINE documentation">
@@ -38,7 +38,7 @@
 <aside class="toc" aria-label="On this page"><strong>On this page</strong><ul>
   <li><a href="#boundary">Know the boundary</a></li>
   <li><a href="#foundry">Prepare Foundry</a></li>
-  <li><a href="#variables">Set four variables</a></li>
+  <li><a href="#variables">Choose authentication and deployments</a></li>
   <li><a href="#local-check">Check locally</a></li>
   <li><a href="#smoke">Run a small smoke</a></li>
   <li><a href="#vectors">Optional real vectors</a></li>
@@ -52,10 +52,12 @@
     <code>--live --confirm-paid</code>. A paid evaluation needs a named Eval01–Eval06 plan and the
     same confirmation. Real-vector queries and embedding-index rebuilds are separate paid actions
     behind <code>--confirm-paid</code>.</p>
-  <blockquote><p><strong>Current authentication contract:</strong> VITRINE constructs
-    <code>AzureOpenAIClient</code> with an Azure OpenAI endpoint and API key. Microsoft Entra ID,
-    managed identity, a Foundry project endpoint, and <code>az login</code> are not authentication
-    paths in the current code. Do not configure them and assume readiness.</p></blockquote>
+  <blockquote><p><strong>Current authentication contract:</strong> VITRINE constructs one
+    Azure OpenAI resource-client shape for chat, workflow, evaluation judge, and optional
+    embeddings. Choose <code>api-key</code>, <code>default-credential</code> for local Microsoft
+    Entra development, or <code>managed-identity</code> for an Azure-hosted workload. Selection is
+    deterministic: a selected identity path never silently falls back to an API key after an
+    authentication failure. A Foundry project endpoint is still not accepted.</p></blockquote>
   <p>A one-case smoke can establish that this checkout reached a named deployment and produced one
     observed result. It does not establish stochastic reliability, production fitness, business
     impact, or the behavior of another model/version.</p>
@@ -63,19 +65,24 @@
   <h2 id="foundry">Prepare the Microsoft Foundry resource</h2>
   <ol>
     <li>Use a subscription, region, and Microsoft Foundry/Azure OpenAI resource where you are
-      authorized to deploy models and read the resource endpoint and key. Availability, quota,
+      authorized to deploy models and read the resource endpoint. Availability, quota,
       model versions, and deployment types vary by region and subscription.</li>
     <li>Deploy one chat model. The repository default is <code>gpt-5-mini</code>; a compatible
       alternative must support chat completions, tool/function calling, and the structured-output
       work used by the workflow and evaluator.</li>
     <li>Record the <strong>deployment name</strong> you assigned. VITRINE sends this value to the
       SDK. A catalogue model ID or model-family label is not interchangeable with a deployment
-      name unless you deliberately made them identical.</li>
-    <li>From the same resource/deployment details, copy the Azure OpenAI inference/resource
-      endpoint and one API key. A common endpoint form is
+      name unless you deliberately made them identical. A judge can share this deployment or use
+      a separately named deployment through <code>AZURE_OPENAI_JUDGE_DEPLOYMENT</code>.</li>
+    <li>From the resource details, copy the Azure OpenAI inference/resource endpoint. A common endpoint form is
       <code><span>https:</span><span>//&lt;resource-name&gt;.openai.azure.com/</span></code>. Do not substitute a Foundry project
       endpoint containing <code>/api/projects/...</code>; the current application does not create
       an <code>AIProjectClient</code>.</li>
+    <li>Choose one authentication path. For API-key compatibility, copy a key from that same
+      resource. For local Entra development, sign in through a supported developer tool and give
+      that principal the <strong>Cognitive Services OpenAI User</strong> role on the resource. For
+      an Azure-hosted app, enable a system- or user-assigned managed identity and give that identity
+      the same role.</li>
     <li>Only if you intend to use <code>--real-vectors</code> or rebuild the vector asset, also
       deploy <code>text-embedding-3-small</code>. Normal Demo01, Demo02, and Eval01–Eval06 runs use
       the authored concept-vector space by default and need no embedding deployment.</li>
@@ -84,26 +91,54 @@
     <a href="https://learn.microsoft.com/azure/foundry/foundry-models/how-to/deploy-foundry-models">deploy a Foundry model</a>
     and why an Azure OpenAI API call uses the
     <a href="https://learn.microsoft.com/azure/developer/ai/how-to/switching-endpoints">deployment name rather than the underlying model name</a>.
+    Follow Microsoft's
+    <a href="https://learn.microsoft.com/azure/foundry/foundry-models/how-to/configure-entra-id">Foundry Entra configuration</a>
+    and <a href="https://learn.microsoft.com/dotnet/azure/sdk/authentication/best-practices">.NET authentication guidance</a>
+    for role assignment and environment-specific credential choice.
     Those pages own portal and service details; this page owns VITRINE's configuration contract.</p>
 
-  <h2 id="variables">Set the four understood environment variables</h2>
+  <h2 id="variables">Choose authentication and deployments</h2>
   <table>
     <thead><tr><th>Variable</th><th>Required when</th><th>Meaning</th></tr></thead>
     <tbody>
-      <tr><td><code>AZURE_OPENAI_ENDPOINT</code></td><td>Every live operation</td><td>Absolute Azure OpenAI inference/resource endpoint copied from the same resource as the key.</td></tr>
-      <tr><td><code>AZURE_OPENAI_API_KEY</code></td><td>Every live operation</td><td>API key for that resource. VITRINE never intentionally prints, persists, fingerprints, or hashes it.</td></tr>
-      <tr><td><code>AZURE_OPENAI_DEPLOYMENT</code></td><td>Chat subject/judge; set explicitly</td><td>Your chat <em>deployment name</em>. If absent, code resolves <code>gpt-5-mini</code>; that fallback works only if a deployment with exactly that name exists.</td></tr>
+      <tr><td><code>AZURE_OPENAI_ENDPOINT</code></td><td>Every live operation</td><td>Absolute HTTPS Azure OpenAI inference/resource endpoint. Never use the Foundry project endpoint.</td></tr>
+      <tr><td><code>AZURE_OPENAI_AUTH_MODE</code></td><td>Recommended for every live operation</td><td><code>api-key</code>, <code>default-credential</code>, or <code>managed-identity</code>. If absent, API-key mode is retained only for backward compatibility.</td></tr>
+      <tr><td><code>AZURE_OPENAI_API_KEY</code></td><td><code>api-key</code> only</td><td>API key from the endpoint's resource. VITRINE never intentionally prints, persists, fingerprints, or hashes it.</td></tr>
+      <tr><td><code>AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID</code></td><td>Optional in <code>managed-identity</code></td><td>User-assigned identity client GUID. If absent, VITRINE deterministically uses the system-assigned identity. It is never printed.</td></tr>
+      <tr><td><code>AZURE_OPENAI_DEPLOYMENT</code></td><td>Subject chat; set explicitly</td><td>Your subject chat <em>deployment name</em>. If absent, code resolves <code>gpt-5-mini</code>; that works only if a deployment with exactly that name exists.</td></tr>
+      <tr><td><code>AZURE_OPENAI_JUDGE_DEPLOYMENT</code></td><td>Optional for paid evals</td><td>Separate LLM-judge deployment name. If absent, the judge explicitly shares the subject deployment; the UI/banner says so.</td></tr>
       <tr><td><code>AZURE_OPENAI_EMBEDDING_DEPLOYMENT</code></td><td>Embedding-index rebuild</td><td>Deployment name stamped onto a rebuilt index; defaults to <code>text-embedding-3-small</code>. A shipped <code>--real-vectors</code> query instead follows the committed index stamp, and a normal concept-vector run makes no embedding call.</td></tr>
     </tbody>
   </table>
-  <p>Set them only in the PowerShell session that will launch VITRINE:</p>
+  <p>Set the common target once in the PowerShell session that will launch VITRINE:</p>
   <pre><code>$vitrineAzureOpenAiResource = '&lt;resource-name&gt;'
 $env:AZURE_OPENAI_ENDPOINT = 'https://' + $vitrineAzureOpenAiResource + '.openai.azure.com/'
 $env:AZURE_OPENAI_DEPLOYMENT = '&lt;chat-deployment-name&gt;'
+
+# Optional: uncomment to keep subject and judge on separate deployments.
+# $env:AZURE_OPENAI_JUDGE_DEPLOYMENT = '&lt;judge-deployment-name&gt;'</code></pre>
+  <p>Then choose exactly one authentication mode. For the backward-compatible API-key path:</p>
+  <pre><code>$env:AZURE_OPENAI_AUTH_MODE = 'api-key'
 $env:AZURE_OPENAI_API_KEY = Read-Host 'Azure OpenAI API key' -MaskInput
 
-# Optional: only for --rebuild-embeddings. The committed real-vector index
-# already names text-embedding-3-small for live query embedding.
+# Close this PowerShell session when finished so its secret leaves the process environment.</code></pre>
+  <p>For local Entra development, first authenticate the developer account with Azure CLI,
+    Azure PowerShell, Visual Studio, or VS Code, then select the local credential chain:</p>
+  <pre><code>az login
+$env:AZURE_OPENAI_AUTH_MODE = 'default-credential'
+Remove-Item Env:AZURE_OPENAI_API_KEY -ErrorAction SilentlyContinue</code></pre>
+  <p>For an Azure-hosted production process, select a deterministic managed identity. Omit the
+    client-id variable for the system-assigned identity:</p>
+  <pre><code>$env:AZURE_OPENAI_AUTH_MODE = 'managed-identity'
+
+# Optional: only for a user-assigned identity; use its client GUID.
+$env:AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID = '&lt;user-assigned-client-id&gt;'</code></pre>
+  <p>An explicit identity mode never falls back to <code>AZURE_OPENAI_API_KEY</code>. Fix the role,
+    identity, endpoint, or network problem reported by Azure; switch modes deliberately if that is
+    the operator's intent.</p>
+  <p>Only for an embedding-asset rebuild, add:</p>
+  <pre><code># The committed real-vector index already names text-embedding-3-small
+# for live query embedding.
 $env:AZURE_OPENAI_EMBEDDING_DEPLOYMENT = 'text-embedding-3-small'</code></pre>
   <p>Do not put the key in source, command history, screenshots, or checked-in logs. Do not create
     a <code>.env</code> secret for this path—the current application does not load one, and a local
@@ -112,24 +147,37 @@ $env:AZURE_OPENAI_EMBEDDING_DEPLOYMENT = 'text-embedding-3-small'</code></pre>
     session removes the session-scoped variables.</p>
 
   <h2 id="local-check">Separate local readiness from provider connectivity</h2>
-  <p>This zero-call check reports only whether the two required variable <em>names</em> hold
-    non-empty values. It never prints either value:</p>
-  <pre><code>$required = 'AZURE_OPENAI_ENDPOINT', 'AZURE_OPENAI_API_KEY'
+  <p>This zero-call check reports only whether the variables required by the selected mode hold
+    non-empty values. It never prints an endpoint, key, or managed-identity client id:</p>
+  <pre><code>$authMode = if ([string]::IsNullOrWhiteSpace($env:AZURE_OPENAI_AUTH_MODE)) {
+  'api-key'
+} else {
+  $env:AZURE_OPENAI_AUTH_MODE
+}
+$required = @('AZURE_OPENAI_ENDPOINT')
+if ($authMode -eq 'api-key') { $required += 'AZURE_OPENAI_API_KEY' }
 $required | ForEach-Object {
   $configured = -not [string]::IsNullOrWhiteSpace(
     [Environment]::GetEnvironmentVariable($_))
   '{0}: {1}' -f $_, $(if ($configured) { 'SET' } else { 'MISSING' })
 }
 
-'Chat deployment: {0}' -f $(if ($env:AZURE_OPENAI_DEPLOYMENT) {
+'Authentication mode: {0}' -f $authMode
+'Subject deployment: {0}' -f $(if ($env:AZURE_OPENAI_DEPLOYMENT) {
   $env:AZURE_OPENAI_DEPLOYMENT
 } else {
   'gpt-5-mini (code default; a deployment with this exact name must exist)'
+})
+'Judge deployment: {0}' -f $(if ($env:AZURE_OPENAI_JUDGE_DEPLOYMENT) {
+  $env:AZURE_OPENAI_JUDGE_DEPLOYMENT
+} else {
+  'shares subject deployment'
 })</code></pre>
-  <p><strong>SET is not CONNECTED.</strong> Current readiness validates non-empty endpoint/key
-    values and an absolute endpoint URI. It does not contact Foundry, validate the key, find the
-    deployment, inspect its underlying model, or check quota. Only an explicitly confirmed live
-    call establishes those facts.</p>
+  <p><strong>SET is not CONNECTED.</strong> VITRINE's typed readiness validates an absolute HTTPS
+    endpoint, a recognized auth mode, that mode's required local values, and resolved deployment
+    names. It does not acquire a token, contact Foundry, validate a key or role, find a deployment,
+    inspect its underlying model, or check quota. Only an explicitly confirmed live call establishes
+    those facts.</p>
 
   <h2 id="smoke">Run the smallest useful live smoke</h2>
   <p>Build first without invoking a provider:</p>
@@ -209,9 +257,9 @@ dotnet build AgentEval.VitrineDemo.slnx -c Release --no-restore</code></pre>
     <tbody>
       <tr><td>Readiness says configuration is missing</td><td>Local process environment</td><td>Run the SET/MISSING check in the same PowerShell process tree that launches <code>dotnet</code>. A value set in another terminal is not inherited.</td></tr>
       <tr><td>Endpoint is rejected before a call</td><td>Local URI/configuration</td><td>Copy the absolute Azure OpenAI resource endpoint again. Do not use the Foundry project endpoint or a portal page URL.</td></tr>
-      <tr><td>HTTP 401</td><td>Credential/resource pairing</td><td>Use a current key from the same resource as the endpoint; rotate a possibly exposed key. Never print it to compare.</td></tr>
-      <tr><td>HTTP 403</td><td>Resource/network policy</td><td>Check disabled-key policy, private-network/firewall rules, and whether this machine may reach the endpoint. Current VITRINE cannot fall back to Entra ID.</td></tr>
-      <tr><td>HTTP 404 / deployment not found</td><td>Endpoint or deployment routing</td><td>Verify <code>AZURE_OPENAI_DEPLOYMENT</code> is the deployment name in that exact resource—not merely <code>gpt-5-mini</code> as a model ID.</td></tr>
+      <tr><td>HTTP 401</td><td>Credential/resource pairing</td><td>In API-key mode, use a current key from the endpoint's resource and rotate a possibly exposed key. In an identity mode, confirm the expected developer or managed identity is active. Never print either value to compare.</td></tr>
+      <tr><td>HTTP 403</td><td>Role or network policy</td><td>For Entra modes, verify <strong>Cognitive Services OpenAI User</strong> at the intended resource scope. Also check disabled-key policy, private-network/firewall rules, and whether this host may reach the endpoint. There is no runtime fallback between auth modes.</td></tr>
+      <tr><td>HTTP 404 / deployment not found</td><td>Endpoint or deployment routing</td><td>Verify the subject and, for evals, judge deployment names exist in that exact resource—not merely as model-family IDs.</td></tr>
       <tr><td>HTTP 429 / timeout</td><td>Quota, capacity, or transient service load</td><td>Stop broad/repeated plans, inspect quota/capacity, and retry one bounded scenario. Do not reinterpret an infrastructure failure as a quality failure.</td></tr>
       <tr><td>Real vectors visibly fall back</td><td>Embedding credentials, asset, or space probe</td><td>Read the printed reason. Confirm the stamped embedding deployment exists and the identity cosine clears its declared floor; otherwise keep the result labelled concept-space.</td></tr>
       <tr><td>UI warning while console lines look green</td><td>Aggregate measurement semantics</td><td>Expand the warning card. A completed stage, green child check, missing measurement, diagnostic-only row, or plan-level terminal rule are different states; preserve the board and session receipt when reporting the issue.</td></tr>
@@ -222,7 +270,7 @@ dotnet build AgentEval.VitrineDemo.slnx -c Release --no-restore</code></pre>
     explains how to distinguish execution progress, evidence state, and evaluator verdict.</p>
 </article>
 </main>
-<footer><div class="wrap">VITRINE operator reference · current code uses Azure OpenAI endpoint +
-  API key authentication · offline remains the default.</div></footer>
+<footer><div class="wrap">VITRINE operator reference · Azure OpenAI resource endpoint + explicit
+  API-key, local Entra, or managed-identity authentication · offline remains the default.</div></footer>
 </body>
 </html>

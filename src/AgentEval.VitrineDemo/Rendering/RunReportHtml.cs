@@ -64,7 +64,8 @@ public static class RunReportHtml
     private static readonly string[] ForbiddenEnvironmentValues =
     [
         "AZURE_OPENAI_API_KEY",
-        "AZURE_OPENAI_ENDPOINT"
+        "AZURE_OPENAI_ENDPOINT",
+        "AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID"
     ];
 
     /// <summary>

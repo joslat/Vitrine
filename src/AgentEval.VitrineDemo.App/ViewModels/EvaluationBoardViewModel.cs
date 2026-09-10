@@ -1724,6 +1724,7 @@ public sealed class EvaluationBoardViewModel : BindableBase
             : $"rounds {trial.Workflow.DiscoveryRounds}/{trial.Workflow.MaximumRounds} · super-steps {trial.Workflow.SuperSteps} · " +
               $"looped {trial.Workflow.Looped} · stop {trial.Workflow.StopReason} · failures {trial.Workflow.FailureCount} · " +
               $"{DegradationSummary(trial.Workflow.DegradationCount, trial.Workflow.DegradationKinds)} · " +
+              $"{ProviderStageSummary(trial.Workflow)} · " +
               $"unknown executors/routes {trial.Workflow.UnknownExecutorCount}/{trial.Workflow.UnknownRouteCount} · " +
               $"executors {string.Join(", ", trial.Workflow.Executors.Select(item => $"{item.ExecutorId}×{item.ExecutionCount}"))} · " +
               $"routes {(trial.Workflow.Routes.Count == 0 ? "none" : string.Join(", ", trial.Workflow.Routes))}.";
@@ -1782,6 +1783,7 @@ public sealed class EvaluationBoardViewModel : BindableBase
             : $"rounds {trial.Workflow.DiscoveryRounds}/{trial.Workflow.MaximumRounds} · super-steps {trial.Workflow.SuperSteps} · " +
               $"looped {trial.Workflow.Looped} · stop {trial.Workflow.StopReason} · failures {trial.Workflow.FailureCount} · " +
               $"{DegradationSummary(trial.Workflow.DegradationCount, trial.Workflow.DegradationKinds)} · " +
+              $"{ProviderStageSummary(trial.Workflow)} · " +
               $"unknown executors/routes {trial.Workflow.UnknownExecutorCount}/{trial.Workflow.UnknownRouteCount} · " +
               $"executors {string.Join(", ", trial.Workflow.Executors.Select(item => $"{item.ExecutorId}×{item.ExecutionCount}"))} · " +
               $"routes {(trial.Workflow.Routes.Count == 0 ? "none" : string.Join(", ", trial.Workflow.Routes))}.";
@@ -2104,8 +2106,20 @@ public sealed class EvaluationBoardViewModel : BindableBase
             : "QUALITY PASS BAR NOT MEASURED · evaluator threshold absent; this is not a null/chance floor.";
 
     private static string DegradationSummary(int count, IReadOnlyList<string> kinds) =>
-        $"bounded internal fallback degradations {count} · kinds " +
+        $"bounded degradation events {count} · kinds " +
         (kinds.Count == 0 ? "none disclosed" : string.Join(", ", kinds));
+
+    private static string ProviderStageSummary(LiveWorkflowEvidence workflow) =>
+        $"provider attempts failed/recovered/terminal {workflow.ProviderFailedAttemptCount}/" +
+        $"{workflow.RecoveredProviderFailedAttemptCount}/{workflow.TerminalProviderStageCount} · stages " +
+        (workflow.ProviderStages.Count == 0 ? "none observed" : string.Join(", ", workflow.ProviderStages.Select(stage =>
+            $"{stage.ExecutorId}:{stage.Status}({stage.AttemptCount} attempts,{stage.ResponseCount} responses,{stage.UnusableAttemptCount} unusable,{stage.FailedAttemptCount} failed,{stage.CancelledAttemptCount} cancelled)")));
+
+    private static string ProviderStageSummary(VitrineLiveWorkflowSnapshot workflow) =>
+        $"provider attempts failed/recovered/terminal {workflow.ProviderFailedAttemptCount}/" +
+        $"{workflow.RecoveredProviderFailedAttemptCount}/{workflow.TerminalProviderStageCount} · stages " +
+        (workflow.ProviderStages.Count == 0 ? "none observed" : string.Join(", ", workflow.ProviderStages.Select(stage =>
+            $"{stage.ExecutorId}:{stage.Status}({stage.AttemptCount} attempts,{stage.ResponseCount} responses,{stage.UnusableAttemptCount} unusable,{stage.FailedAttemptCount} failed,{stage.CancelledAttemptCount} cancelled)")));
 
     private static string JudgeExplanation(string? explanation) =>
         string.IsNullOrWhiteSpace(explanation)

@@ -2,7 +2,6 @@
 // Copyright (c) 2026 José Luis Latorre Millas
 
 using System.Diagnostics;
-using Azure.AI.OpenAI;
 using Galaxus.RecommendationAgent.Catalog;
 using Galaxus.RecommendationAgent.Retrieval;
 using Microsoft.Agents.AI.Workflows;
@@ -296,7 +295,7 @@ public static class GalaxusDiscoveryLoop
     /// a default persona: running the wrong persona's history produces a plausible, wrong demo.
     /// </exception>
     /// <exception cref="InvalidOperationException">
-    /// The live arm was requested and Azure credentials are not configured. Run with
+    /// The live arm was requested and the selected Azure authentication path is not locally ready. Run with
     /// <see cref="DiscoveryLoopOptions.Offline"/> to use the deterministic arm instead.
     /// </exception>
     public static async ValueTask<DiscoveryRunResult> RunAsync(
@@ -495,15 +494,7 @@ public static class GalaxusDiscoveryLoop
 
     private static IChatClient CreateChatClient()
     {
-        var configuration = Config.CaptureLiveConfiguration();
-        if (configuration is null)
-        {
-            throw new InvalidOperationException(
-                "Azure OpenAI credentials are not configured. Set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY, " +
-                "or run the loop with DiscoveryLoopOptions { Offline = true } — the deterministic arm needs no key.");
-        }
-
-        var azureClient = new AzureOpenAIClient(configuration.Endpoint, configuration.Key);
+        var azureClient = AzureOpenAiClientFactory.CreateConfigured(out var configuration);
         return azureClient.GetChatClient(configuration.ModelDeployment).AsIChatClient();
     }
 }

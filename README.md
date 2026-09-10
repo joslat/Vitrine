@@ -158,13 +158,18 @@ dotnet run --project src/AgentEval.VitrineDemo.Evals -- `
 dotnet run --project src/AgentEval.VitrineDemo -- 1 --live --confirm-paid
 ```
 
-The current live client uses an Azure OpenAI inference/resource endpoint and API key. It reads
-`AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT`, and—only for optional
-live embedding work—`AZURE_OPENAI_EMBEDDING_DEPLOYMENT`. The
+The live client uses an Azure OpenAI inference/resource endpoint and one explicit authentication
+mode: `api-key`, local-development `DefaultAzureCredential`, or deterministic hosted
+`ManagedIdentityCredential` (system- or user-assigned). An unset `AZURE_OPENAI_AUTH_MODE` keeps
+the API-key path only for backward compatibility; an explicitly selected identity mode never
+silently falls back to a key. `AZURE_OPENAI_JUDGE_DEPLOYMENT` can separate the judge from the
+subject and otherwise explicitly resolves to the subject deployment. Optional live embedding work
+uses the same resource/authentication composition with `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`. The
 [Microsoft Foundry live-run guide](https://azuresamurai.blog/Vitrine/Vitrine-Live-Run-Setup.html)
-explains deployment names, safe session-scoped PowerShell setup, local readiness versus provider
-connectivity, the smallest CLI/UI smoke, and troubleshooting. VITRINE never prints, persists,
-fingerprints, or hashes the key or endpoint URL. Raw Eval06 prompts, responses, extraction
+explains required variables, the **Cognitive Services OpenAI User** role, safe session-scoped
+setup, local readiness versus provider connectivity, the smallest CLI/UI smoke, and
+troubleshooting. VITRINE never prints, persists, fingerprints, or hashes the key, token,
+managed-identity client id, or endpoint URL. Raw Eval06 prompts, responses, extraction
 canaries, system instructions, provider messages, and exception text are excluded from its receipt.
 
 Eval process classes are: `0` pass, `1` measured failure, `2` invalid arguments, `3` not measured,
@@ -193,7 +198,7 @@ available under the [MIT License](LICENSE).
 The current credential-free receipt is:
 
 - Release build: 0 warnings, 0 errors.
-- `Category!=LiveModel`: 407/407 passed, 0 failed, 0 skipped.
+- `Category!=LiveModel`: 449/449 passed, 0 failed, 0 skipped.
 - Offline admitted-check self-test: exit 0.
 - Offline check stages: 6/6 completed; all 5/5 mandatory evaluation gates pass, the matched-quality
   diagnostic is reported separately, and 43/43 registered mutation diagnostics are caught.

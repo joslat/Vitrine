@@ -7,7 +7,9 @@ namespace AgentEval.VitrineDemo.Evals.Live;
 
 internal static class LiveSessionStore
 {
-    private const string SchemaVersion = "1.3";
+    // 1.4 adds typed, sanitized workflow provider-stage attempt/recovery evidence. The public
+    // exporter continues to accept historical 1.3 receipts under their original strict shape.
+    private const string SchemaVersion = "1.4";
     private static readonly SemaphoreSlim IndexGate = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {

@@ -454,8 +454,9 @@ static async Task ShowMenuAsync(ParsedArgs parsed)
         else if (!Config.IsConfigured)
         {
             Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("  ⚠️  Live mode was confirmed, but Azure OpenAI credentials were not found.");
-            Console.WriteLine("     Set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT.");
+            Console.WriteLine("  ⚠️  Live mode was confirmed, but Azure OpenAI is not locally ready.");
+            Console.WriteLine($"     {Config.Readiness.BlockingReason}");
+            Console.WriteLine("     See docs/Vitrine-Live-Run-Setup.html for API-key, local Entra, and managed-identity setup.");
             Console.WriteLine("     Remove --live to keep every menu entry offline.\n");
             Console.ResetColor();
         }
@@ -520,7 +521,7 @@ static async Task<int> RebuildEmbeddingsAsync()
     {
         Console.ForegroundColor = ConsoleColor.Yellow;
         Console.WriteLine($"\n  ⚠️  Cannot rebuild the embedding assets: {reason}");
-        Console.WriteLine("     Set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY and (optionally)");
+        Console.WriteLine("     Configure the endpoint and one supported authentication mode, plus (optionally)");
         Console.WriteLine("     AZURE_OPENAI_EMBEDDING_DEPLOYMENT, then run --rebuild-embeddings again.");
         Console.WriteLine("     The demo itself needs none of this: its default retrieval path is offline.");
         Console.ResetColor();

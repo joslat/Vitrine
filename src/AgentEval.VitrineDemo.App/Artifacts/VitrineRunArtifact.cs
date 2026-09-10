@@ -218,6 +218,19 @@ public sealed record VitrineLiveToolSnapshot(
 
 public sealed record VitrineLiveExecutorSnapshot(string ExecutorId, int ExecutionCount);
 
+public sealed record VitrineLiveWorkflowProviderStageSnapshot(
+    string ExecutorId,
+    int AttemptCount,
+    int ResponseCount,
+    int UnusableAttemptCount,
+    int FailedAttemptCount,
+    int CancelledAttemptCount,
+    string Status)
+{
+    public int LastUnusableAttemptNumber { get; init; }
+    public int LastUsableResponseAttemptNumber { get; init; }
+}
+
 public sealed record VitrineLiveWorkflowSnapshot(
     IReadOnlyList<VitrineLiveExecutorSnapshot> Executors,
     IReadOnlyList<string> Routes,
@@ -230,7 +243,13 @@ public sealed record VitrineLiveWorkflowSnapshot(
     int DegradationCount,
     IReadOnlyList<string> DegradationKinds,
     int UnknownExecutorCount,
-    int UnknownRouteCount);
+    int UnknownRouteCount)
+{
+    public IReadOnlyList<VitrineLiveWorkflowProviderStageSnapshot> ProviderStages { get; init; } = [];
+    public int ProviderFailedAttemptCount { get; init; }
+    public int RecoveredProviderFailedAttemptCount { get; init; }
+    public int TerminalProviderStageCount { get; init; }
+}
 
 public sealed record VitrineLiveUsageSnapshot(
     string Status,
@@ -549,5 +568,5 @@ public sealed record VitrineRunArtifact(
     string IntegritySha256)
 {
     public const int MinimumSupportedSchemaVersion = 7;
-    public const int CurrentSchemaVersion = 9;
+    public const int CurrentSchemaVersion = 10;
 }

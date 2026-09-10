@@ -174,24 +174,590 @@ public sealed class LiveUseCaseEvalTests
         Assert.Contains("nadia-cross-category", one, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("sk-privatecredentialvalue")]
+    [InlineData("Bearer private-token")]
+    [InlineData("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature")]
+    public void SafeModelIdRejectsCredentialShapedAdapterLabels(string value)
+    {
+        Assert.Equal("configured-model", LiveEvalServices.SafeModelId(value));
+        Assert.Equal("judge-model-v1", LiveEvalServices.SafeModelId("judge-model-v1"));
+    }
+
     [Fact]
-    public void WorkflowProviderFailureOrCancellationCannotMasqueradeAsCleanLiveEvidence()
+    public void WorkflowProviderClassificationIsRetryAwareAndStillFailsClosed()
     {
         Assert.False(LiveEvalServices.HasWorkflowProviderTerminalFailure(
         [
+            DiscoveryEvent.ModelRequestStarted(
+                DiscoveryExecutorIds.InterestMapper, "mapper", "instructions", "input", 10, "operation-1", 1),
             DiscoveryEvent.ModelResponseReceived(
-                DiscoveryExecutorIds.InterestMapper, "mapper", "response", "operation-1"),
+                DiscoveryExecutorIds.InterestMapper, "mapper", "response", "operation-1", 1),
         ]));
-        Assert.True(LiveEvalServices.HasWorkflowProviderTerminalFailure(
+
+        DiscoveryEvent[] recovered =
         [
+            DiscoveryEvent.ModelRequestStarted(
+                DiscoveryExecutorIds.Ranker, "ranker", "instructions", "input", 10, "operation-2", 1),
             DiscoveryEvent.ModelRequestFailed(
-                DiscoveryExecutorIds.CoverageReviewer, "reviewer", typeof(TimeoutException), "operation-2"),
-        ]));
-        Assert.True(LiveEvalServices.HasWorkflowProviderTerminalFailure(
+                DiscoveryExecutorIds.Ranker, "ranker", typeof(TimeoutException), "operation-2", 1),
+            DiscoveryEvent.ModelAttemptUnusable(
+                DiscoveryExecutorIds.Ranker, 1, "attempt unusable"),
+            DiscoveryEvent.ModelRequestStarted(
+                DiscoveryExecutorIds.Ranker, "ranker", "instructions", "input", 10, "operation-3", 2),
+            DiscoveryEvent.ModelResponseReceived(
+                DiscoveryExecutorIds.Ranker, "ranker", "response", "operation-3", 2),
+        ];
+        Assert.False(LiveEvalServices.HasWorkflowProviderTerminalFailure(recovered));
+        var recoveredAssessment = LiveEvalServices.AssessWorkflowProvider(recovered);
+        var recoveredStage = Assert.Single(recoveredAssessment.Stages);
+        Assert.Equal(LiveWorkflowProviderStageStatus.Recovered, recoveredStage.Status);
+        Assert.Equal(2, recoveredStage.AttemptCount);
+        Assert.Equal(1, recoveredStage.FailedAttemptCount);
+        Assert.Equal(1, recoveredStage.LastUnusableAttemptNumber);
+        Assert.Equal(2, recoveredStage.LastUsableResponseAttemptNumber);
+        Assert.Equal(1, recoveredAssessment.RecoveredFailedAttemptCount);
+        Assert.Equal(0, recoveredAssessment.TerminalStageCount);
+
+        DiscoveryEvent[] exhausted =
         [
+            DiscoveryEvent.ModelRequestStarted(
+                DiscoveryExecutorIds.CoverageReviewer, "reviewer", "instructions", "input", 10, "operation-4", 1),
+            DiscoveryEvent.ModelRequestFailed(
+                DiscoveryExecutorIds.CoverageReviewer, "reviewer", typeof(TimeoutException), "operation-4", 1),
+            DiscoveryEvent.ModelAttemptUnusable(
+                DiscoveryExecutorIds.CoverageReviewer, 1, "attempt unusable"),
+            DiscoveryEvent.ModelRequestStarted(
+                DiscoveryExecutorIds.CoverageReviewer, "reviewer", "instructions", "input", 10, "operation-5", 2),
+            DiscoveryEvent.ModelRequestFailed(
+                DiscoveryExecutorIds.CoverageReviewer, "reviewer", typeof(TimeoutException), "operation-5", 2),
+            DiscoveryEvent.ModelAttemptUnusable(
+                DiscoveryExecutorIds.CoverageReviewer, 2, "attempt unusable"),
+            DiscoveryEvent.ModelFallbackSelected(
+                DiscoveryExecutorIds.CoverageReviewer, "bounded fallback selected"),
+        ];
+        Assert.True(LiveEvalServices.HasWorkflowProviderTerminalFailure(exhausted));
+        var exhaustedStage = Assert.Single(LiveEvalServices.AssessWorkflowProvider(exhausted).Stages);
+        Assert.Equal(LiveWorkflowProviderStageStatus.FinalFallback, exhaustedStage.Status);
+        Assert.Equal(2, exhaustedStage.FailedAttemptCount);
+
+        DiscoveryEvent[] parseFallback =
+        [
+            DiscoveryEvent.ModelRequestStarted(
+                DiscoveryExecutorIds.InterestMapper, "mapper", "instructions", "input", 10, "operation-6", 1),
+            DiscoveryEvent.ModelResponseReceived(
+                DiscoveryExecutorIds.InterestMapper, "mapper", "not-json", "operation-6", 1),
+            DiscoveryEvent.ModelAttemptUnusable(
+                DiscoveryExecutorIds.InterestMapper, 1, "parse result unusable"),
+            DiscoveryEvent.ModelRequestStarted(
+                DiscoveryExecutorIds.InterestMapper, "mapper", "instructions", "input", 10, "operation-7", 2),
+            DiscoveryEvent.ModelResponseReceived(
+                DiscoveryExecutorIds.InterestMapper, "mapper", "still-not-json", "operation-7", 2),
+            DiscoveryEvent.ModelAttemptUnusable(
+                DiscoveryExecutorIds.InterestMapper, 2, "parse result unusable"),
+            DiscoveryEvent.ModelFallbackSelected(
+                DiscoveryExecutorIds.InterestMapper, "bounded fallback selected"),
+        ];
+        Assert.True(LiveEvalServices.HasWorkflowProviderTerminalFailure(parseFallback));
+        var parseStage = Assert.Single(LiveEvalServices.AssessWorkflowProvider(parseFallback).Stages);
+        Assert.Equal(LiveWorkflowProviderStageStatus.FinalFallback, parseStage.Status);
+        Assert.Equal(0, parseStage.FailedAttemptCount);
+        Assert.Equal(2, parseStage.ResponseCount);
+
+        DiscoveryEvent[] laterInvocationFallback =
+        [
+            DiscoveryEvent.ModelRequestStarted(
+                DiscoveryExecutorIds.CoverageReviewer, "reviewer", "instructions", "input", 10, "review-1", 1),
+            DiscoveryEvent.ModelResponseReceived(
+                DiscoveryExecutorIds.CoverageReviewer, "reviewer", "usable", "review-1", 1),
+            DiscoveryEvent.ModelRequestStarted(
+                DiscoveryExecutorIds.CoverageReviewer, "reviewer", "instructions", "input", 10, "review-2", 2),
+            DiscoveryEvent.ModelResponseReceived(
+                DiscoveryExecutorIds.CoverageReviewer, "reviewer", "not-json", "review-2", 2),
+            DiscoveryEvent.ModelAttemptUnusable(
+                DiscoveryExecutorIds.CoverageReviewer, 2, "parse result unusable"),
+            DiscoveryEvent.ModelRequestStarted(
+                DiscoveryExecutorIds.CoverageReviewer, "reviewer", "instructions", "input", 10, "review-3", 3),
+            DiscoveryEvent.ModelResponseReceived(
+                DiscoveryExecutorIds.CoverageReviewer, "reviewer", "still-not-json", "review-3", 3),
+            DiscoveryEvent.ModelAttemptUnusable(
+                DiscoveryExecutorIds.CoverageReviewer, 3, "parse result unusable"),
+            DiscoveryEvent.ModelFallbackSelected(
+                DiscoveryExecutorIds.CoverageReviewer, "later invocation fallback"),
+        ];
+        var laterFallbackStage = Assert.Single(
+            LiveEvalServices.AssessWorkflowProvider(laterInvocationFallback).Stages);
+        Assert.Equal(LiveWorkflowProviderStageStatus.FinalFallback, laterFallbackStage.Status);
+        Assert.Equal(3, laterFallbackStage.AttemptCount);
+        Assert.Equal(2, laterFallbackStage.UnusableAttemptCount);
+        Assert.Equal(1, laterFallbackStage.LastUsableResponseAttemptNumber);
+        Assert.Equal(3, laterFallbackStage.LastUnusableAttemptNumber);
+
+        DiscoveryEvent[] cancelled =
+        [
+            DiscoveryEvent.ModelRequestStarted(
+                DiscoveryExecutorIds.Presenter, "presenter", "instructions", "input", 10, "operation-8", 1),
             DiscoveryEvent.ModelRequestCancelled(
-                DiscoveryExecutorIds.Presenter, "presenter", "operation-3"),
-        ]));
+                DiscoveryExecutorIds.Presenter, "presenter", "operation-8", 1),
+        ];
+        Assert.True(LiveEvalServices.HasWorkflowProviderTerminalFailure(cancelled));
+        Assert.Equal(LiveWorkflowProviderStageStatus.Cancelled,
+            Assert.Single(LiveEvalServices.AssessWorkflowProvider(cancelled).Stages).Status);
+
+        DiscoveryEvent[] responseWithoutStart =
+        [
+            DiscoveryEvent.ModelResponseReceived(
+                DiscoveryExecutorIds.Presenter, "presenter", "response", "operation-9", 1),
+        ];
+        Assert.Equal(LiveWorkflowProviderStageStatus.Unrecovered,
+            Assert.Single(LiveEvalServices.AssessWorkflowProvider(responseWithoutStart).Stages).Status);
+
+        DiscoveryEvent[] conflictingGlobalAttemptOwner =
+        [
+            DiscoveryEvent.ModelRequestStarted(
+                DiscoveryExecutorIds.InterestMapper, "mapper", "instructions", "input", 10, "owner-1", 1),
+            DiscoveryEvent.ModelResponseReceived(
+                DiscoveryExecutorIds.InterestMapper, "mapper", "response", "owner-1", 1),
+            DiscoveryEvent.ModelRequestStarted(
+                DiscoveryExecutorIds.Ranker, "ranker", "instructions", "input", 10, "owner-2", 1),
+            DiscoveryEvent.ModelResponseReceived(
+                DiscoveryExecutorIds.Ranker, "ranker", "response", "owner-2", 1),
+        ];
+        Assert.All(LiveEvalServices.AssessWorkflowProvider(conflictingGlobalAttemptOwner).Stages,
+            static stage => Assert.Equal(LiveWorkflowProviderStageStatus.Unrecovered, stage.Status));
+
+        Assert.Equal(LiveWorkflowProviderStageStatus.Unrecovered,
+            Assert.Single(LiveEvalServices.AssessWorkflowProvider(
+            [
+                DiscoveryEvent.ModelFallbackSelected(
+                    DiscoveryExecutorIds.Presenter, "fallback without typed attempts"),
+            ]).Stages).Status);
+    }
+
+    [Fact]
+    public async Task IntermediateParseFailureIsTypedAndLaterParseSuccessIsRecovered()
+    {
+        var progress = new RecordingDiscoveryProgressSink();
+        using var client = new SequenceChatClient("not-json", "{\"selections\":[]}");
+        var model = new DiscoveryModelCall(client, progress);
+
+        var envelope = await model.InvokeAsync<RankerEnvelope>(
+            DiscoveryExecutorIds.Ranker,
+            "GalaxusRanker",
+            "Return JSON.",
+            "Rank these candidates.",
+            new DiscoveryState
+            {
+                CustomerId = "parse-recovery-fixture",
+                Market = "CH",
+                Language = "en",
+            },
+            CancellationToken.None);
+
+        Assert.NotNull(envelope);
+        var unusable = Assert.Single(progress.Events, static item =>
+            item.ModelStageDisposition == DiscoveryModelStageDisposition.AttemptUnusable);
+        Assert.Equal(1, unusable.ModelAttemptNumber);
+        Assert.False(LiveEvalServices.HasWorkflowProviderTerminalFailure(progress.Events));
+        var stage = Assert.Single(LiveEvalServices.AssessWorkflowProvider(progress.Events).Stages);
+        Assert.Equal(LiveWorkflowProviderStageStatus.Recovered, stage.Status);
+        Assert.Equal(2, stage.AttemptCount);
+        Assert.Equal(2, stage.ResponseCount);
+        Assert.Equal(1, stage.UnusableAttemptCount);
+        Assert.Equal(0, stage.FailedAttemptCount);
+        Assert.Equal(1, stage.LastUnusableAttemptNumber);
+        Assert.Equal(2, stage.LastUsableResponseAttemptNumber);
+    }
+
+    [Fact]
+    public async Task RepeatedExecutorInvocationsUseDistinctGlobalAttemptIdentity()
+    {
+        var progress = new RecordingDiscoveryProgressSink();
+        using var client = new SequenceChatClient(
+            "not-json", "{\"selections\":[]}",
+            "still-not-json", "{\"selections\":[]}");
+        var model = new DiscoveryModelCall(client, progress);
+        var state = new DiscoveryState
+        {
+            CustomerId = "repeat-executor-fixture",
+            Market = "CH",
+            Language = "en",
+        };
+
+        Assert.NotNull(await model.InvokeAsync<RankerEnvelope>(
+            DiscoveryExecutorIds.CoverageReviewer, "reviewer", "Return JSON.", "Review.",
+            state, CancellationToken.None));
+        Assert.NotNull(await model.InvokeAsync<RankerEnvelope>(
+            DiscoveryExecutorIds.CoverageReviewer, "reviewer", "Return JSON.", "Review again.",
+            state, CancellationToken.None));
+
+        var requestAttempts = progress.Events
+            .Where(static item => item.Kind == DiscoveryEventKind.ModelRequestStarted)
+            .Select(static item => item.ModelAttemptNumber).ToArray();
+        Assert.Equal([1, 2, 3, 4], requestAttempts);
+        Assert.All(progress.Events, static item => Assert.True(item.Kind is
+            DiscoveryEventKind.ModelRequestStarted
+            or DiscoveryEventKind.ModelResponseReceived
+            or DiscoveryEventKind.Degraded));
+        var stage = Assert.Single(LiveEvalServices.AssessWorkflowProvider(progress.Events).Stages);
+        Assert.Equal(LiveWorkflowProviderStageStatus.Recovered, stage.Status);
+        Assert.Equal(4, stage.AttemptCount);
+        Assert.Equal(4, stage.ResponseCount);
+        Assert.Equal(2, stage.UnusableAttemptCount);
+        Assert.Equal(3, stage.LastUnusableAttemptNumber);
+        Assert.Equal(4, stage.LastUsableResponseAttemptNumber);
+    }
+
+    [Fact]
+    public async Task DirectPresenterFailureAndWhitespaceAreTypedAsUnusableAttempts()
+    {
+        var failedProgress = new RecordingDiscoveryProgressSink();
+        using (var client = new FailOnceChatClient("unused"))
+        {
+            var model = new DiscoveryModelCall(client, failedProgress);
+            var response = await model.RunAsync(
+                DiscoveryExecutorIds.Presenter, "presenter", "Present.", "Input.",
+                new DiscoveryState { CustomerId = "presenter-failure", Market = "CH", Language = "en" },
+                CancellationToken.None);
+            Assert.Null(response);
+        }
+        var failedStage = Assert.Single(LiveEvalServices.AssessWorkflowProvider(failedProgress.Events).Stages);
+        Assert.Equal(1, failedStage.AttemptCount);
+        Assert.Equal(1, failedStage.UnusableAttemptCount);
+        Assert.Equal(LiveWorkflowProviderStageStatus.Unrecovered, failedStage.Status);
+
+        var whitespaceProgress = new RecordingDiscoveryProgressSink();
+        using (var client = new SequenceChatClient("   "))
+        {
+            var model = new DiscoveryModelCall(client, whitespaceProgress);
+            var response = await model.RunAsync(
+                DiscoveryExecutorIds.Presenter, "presenter", "Present.", "Input.",
+                new DiscoveryState { CustomerId = "presenter-whitespace", Market = "CH", Language = "en" },
+                CancellationToken.None);
+            Assert.True(string.IsNullOrWhiteSpace(response));
+        }
+        whitespaceProgress.Publish(DiscoveryEvent.ModelFallbackSelected(
+            DiscoveryExecutorIds.Presenter, "bounded presenter fallback"));
+        var whitespaceStage = Assert.Single(
+            LiveEvalServices.AssessWorkflowProvider(whitespaceProgress.Events).Stages);
+        Assert.Equal(1, whitespaceStage.AttemptCount);
+        Assert.Equal(1, whitespaceStage.UnusableAttemptCount);
+        Assert.Equal(LiveWorkflowProviderStageStatus.FinalFallback, whitespaceStage.Status);
+    }
+
+    [Fact]
+    public async Task RankerRetriesSemanticallyEmptyEnvelopesBeforeTypedFinalFallback()
+    {
+        var progress = new RecordingDiscoveryProgressSink();
+        using var client = new SequenceChatClient("{\"selections\":[]}", "{\"selections\":[]}");
+        var model = new DiscoveryModelCall(client, progress);
+        var ranker = new ModelRanker(Catalogue.Default, model, progress);
+
+        await ranker.RankAsync(new DiscoveryState
+        {
+            CustomerId = "empty-ranker-fixture",
+            Market = "CH",
+            Language = "en",
+        }, CancellationToken.None);
+
+        var unusable = progress.Events.Where(static item =>
+            item.ModelStageDisposition == DiscoveryModelStageDisposition.AttemptUnusable).ToArray();
+        Assert.Equal(2, unusable.Length);
+        Assert.Equal([1, 2], unusable.Select(static item => item.ModelAttemptNumber).ToArray());
+        Assert.Single(progress.Events, static item =>
+            item.ModelStageDisposition == DiscoveryModelStageDisposition.FinalFallback);
+        var stage = Assert.Single(LiveEvalServices.AssessWorkflowProvider(progress.Events).Stages);
+        Assert.Equal(LiveWorkflowProviderStageStatus.FinalFallback, stage.Status);
+        Assert.Equal(2, stage.AttemptCount);
+        Assert.Equal(2, stage.ResponseCount);
+        Assert.Equal(2, stage.UnusableAttemptCount);
+        Assert.Equal(2, stage.LastUnusableAttemptNumber);
+    }
+
+    [Fact]
+    public async Task CoverageReviewerRetriesStructurallyEmptyVerdictsAndClassifiesRecoveryOrFallback()
+    {
+        const string validVerdict =
+            "{\"covered_interest_ids\":[],\"gaps\":[],\"new_interest\":null," +
+            "\"stop_reason\":\"COVERAGE_SUFFICIENT\",\"assessment\":\"complete\"}";
+        string[] unusableVerdicts =
+        {
+            "{}",
+            "{\"covered_interest_ids\":[],\"gaps\":[null]," +
+                "\"stop_reason\":\"GAPS_REMAIN\",\"assessment\":\"invalid gap\"}",
+            "{\"covered_interest_ids\":[null],\"gaps\":[]," +
+                "\"stop_reason\":\"COVERAGE_SUFFICIENT\",\"assessment\":\"invalid id\"}",
+        };
+        foreach (var unusableVerdict in unusableVerdicts)
+        {
+            var recoveredProgress = new RecordingDiscoveryProgressSink();
+            using var client = new SequenceChatClient(unusableVerdict, validVerdict);
+            var reviewer = new ModelCoverageReviewer(
+                Catalogue.Default, new DiscoveryModelCall(client, recoveredProgress), recoveredProgress);
+            await reviewer.ReviewAsync(new DiscoveryState
+            {
+                CustomerId = "coverage-recovery-fixture",
+                Market = "CH",
+                Language = "en",
+            }, CancellationToken.None);
+            var recovered = Assert.Single(
+                LiveEvalServices.AssessWorkflowProvider(recoveredProgress.Events).Stages);
+            Assert.Equal(LiveWorkflowProviderStageStatus.Recovered, recovered.Status);
+            Assert.Equal(2, recovered.AttemptCount);
+            Assert.Equal(1, recovered.UnusableAttemptCount);
+            Assert.Equal(1, recovered.LastUnusableAttemptNumber);
+            Assert.Equal(2, recovered.LastUsableResponseAttemptNumber);
+        }
+
+        var fallbackProgress = new RecordingDiscoveryProgressSink();
+        using (var client = new SequenceChatClient("{}", "{}"))
+        {
+            var reviewer = new ModelCoverageReviewer(
+                Catalogue.Default, new DiscoveryModelCall(client, fallbackProgress), fallbackProgress);
+            await reviewer.ReviewAsync(new DiscoveryState
+            {
+                CustomerId = "coverage-fallback-fixture",
+                Market = "CH",
+                Language = "en",
+            }, CancellationToken.None);
+        }
+
+        Assert.Equal(2, fallbackProgress.Events.Count(static item =>
+            item.ModelStageDisposition == DiscoveryModelStageDisposition.AttemptUnusable));
+        Assert.Single(fallbackProgress.Events, static item =>
+            item.ModelStageDisposition == DiscoveryModelStageDisposition.FinalFallback);
+        var fallback = Assert.Single(
+            LiveEvalServices.AssessWorkflowProvider(fallbackProgress.Events).Stages);
+        Assert.Equal(LiveWorkflowProviderStageStatus.FinalFallback, fallback.Status);
+        Assert.Equal(2, fallback.AttemptCount);
+        Assert.Equal(2, fallback.ResponseCount);
+        Assert.Equal(2, fallback.UnusableAttemptCount);
+    }
+
+    [Fact]
+    public async Task MapperAndRankerRetryNullOrBlankStructuralRows()
+    {
+        const string validMap =
+            "{\"interests\":[{\"label\":\"coffee\",\"kind\":\"DIRECT\",\"confidence\":0.8," +
+            "\"evidence\":[],\"rationale\":\"fixture\",\"query_terms\":[\"coffee\"]," +
+            "\"category_hints\":[],\"attribute_hints\":{}}],\"anti_interests\":[]," +
+            "\"constraints\":[],\"summary\":\"fixture\"}";
+        string[] invalidMaps =
+        [
+            "{\"interests\":[null],\"anti_interests\":[]}",
+            "{\"interests\":[{}],\"anti_interests\":[]}",
+            "{\"interests\":[{\"label\":\"coffee\"}],\"anti_interests\":[null]}",
+        ];
+        foreach (var invalidMap in invalidMaps)
+        {
+            var progress = new RecordingDiscoveryProgressSink();
+            using var client = new SequenceChatClient(invalidMap, validMap);
+            var mapper = new ModelInterestMapper(
+                Catalogue.Default, new DiscoveryModelCall(client, progress), progress);
+            await mapper.MapAsync(new DiscoveryState
+            {
+                CustomerId = "mapper-structural-fixture",
+                Market = "CH",
+                Language = "en",
+            }, CancellationToken.None);
+            var stage = Assert.Single(LiveEvalServices.AssessWorkflowProvider(progress.Events).Stages);
+            Assert.Equal(LiveWorkflowProviderStageStatus.Recovered, stage.Status);
+            Assert.Equal(1, stage.UnusableAttemptCount);
+        }
+
+        const string validSelection =
+            "{\"selections\":[{\"product_id\":\"GLX-1003\",\"interest_id\":\"missing\"}]}";
+        foreach (var invalidSelection in new[]
+                 {
+                     "{\"selections\":[null]}",
+                     "{\"selections\":[{}]}",
+                 })
+        {
+            var progress = new RecordingDiscoveryProgressSink();
+            using var client = new SequenceChatClient(invalidSelection, validSelection);
+            var ranker = new ModelRanker(
+                Catalogue.Default, new DiscoveryModelCall(client, progress), progress);
+            await ranker.RankAsync(new DiscoveryState
+            {
+                CustomerId = "ranker-structural-fixture",
+                Market = "CH",
+                Language = "en",
+            }, CancellationToken.None);
+            var stage = Assert.Single(LiveEvalServices.AssessWorkflowProvider(progress.Events).Stages);
+            Assert.Equal(LiveWorkflowProviderStageStatus.Recovered, stage.Status);
+            Assert.Equal(1, stage.UnusableAttemptCount);
+        }
+    }
+
+    [Fact]
+    public async Task WorkflowProviderNormalizerFailsClosedOnUndefinedAndRejectsImpossibleEvidence()
+    {
+        var workspace = TemporaryWorkspace();
+        try
+        {
+            var valid = MeasuredWorkflow("answer");
+            var validStages = valid.Workflow!.ProviderStages;
+            var invalidStatusStages = validStages.Select(stage =>
+                stage.ExecutorId == DiscoveryExecutorIds.Ranker
+                    ? stage with { Status = (LiveWorkflowProviderStageStatus)999 }
+                    : stage).ToArray();
+            var invalidStatusObservation = valid with
+            {
+                Workflow = valid.Workflow! with { ProviderStages = invalidStatusStages },
+            };
+            var judge = new FakeJudge();
+            var invalidStatus = await Eval02_Workflow.RunAsync(true, OneScenario(workspace),
+                new(FakeSubject.Agent(MeasuredAgent("unused")),
+                    FakeSubject.Workflow(invalidStatusObservation), judge));
+            Assert.Equal(LiveEvalTerminalStatus.NotMeasured, invalidStatus.TerminalStatus);
+            Assert.Empty(judge.Requests);
+            Assert.Equal(LiveWorkflowProviderStageStatus.Unrecovered,
+                Assert.Single(invalidStatus.Trials).Workflow!.ProviderStages.Single(stage =>
+                    stage.ExecutorId == DiscoveryExecutorIds.Ranker).Status);
+
+            var laterFallbackStages = validStages.Append(new LiveWorkflowProviderStageEvidence(
+                DiscoveryExecutorIds.CoverageReviewer, 3, 3, 2, 0, 0,
+                LiveWorkflowProviderStageStatus.FinalFallback)
+            {
+                LastUnusableAttemptNumber = 6,
+                LastUsableResponseAttemptNumber = 4,
+            }).ToArray();
+            var laterFallback = await Eval02_Workflow.RunAsync(true, OneScenario(workspace),
+                new(FakeSubject.Agent(MeasuredAgent("unused")), FakeSubject.Workflow(valid with
+                {
+                    Workflow = valid.Workflow! with { ProviderStages = laterFallbackStages },
+                }), new FakeJudge()));
+            Assert.Equal(LiveEvalTerminalStatus.NotMeasured, laterFallback.TerminalStatus);
+            var laterFallbackTrial = Assert.Single(laterFallback.Trials);
+            Assert.Equal(LiveEvalFailureCode.SubjectModelStageUnusable,
+                laterFallbackTrial.Failure?.Code);
+            Assert.Equal(LiveWorkflowProviderStageStatus.FinalFallback,
+                laterFallbackTrial.Workflow!.ProviderStages.Single(stage =>
+                    stage.ExecutorId == DiscoveryExecutorIds.CoverageReviewer).Status);
+
+            var impossibleStages = validStages.Select(stage =>
+                stage.ExecutorId == DiscoveryExecutorIds.Ranker
+                    ? stage with { UnusableAttemptCount = stage.AttemptCount + 1,
+                        LastUnusableAttemptNumber = 2 }
+                    : stage).ToArray();
+            var impossible = await Eval02_Workflow.RunAsync(true, OneScenario(workspace),
+                new(FakeSubject.Agent(MeasuredAgent("unused")), FakeSubject.Workflow(valid with
+                {
+                    Workflow = valid.Workflow! with { ProviderStages = impossibleStages },
+                }), new FakeJudge()));
+            Assert.Equal(LiveEvalTerminalStatus.InfrastructureError, impossible.TerminalStatus);
+            Assert.Empty(impossible.Trials);
+
+            var hiddenAttemptStages = validStages.Select(stage =>
+                stage.ExecutorId == DiscoveryExecutorIds.Ranker
+                    ? stage with
+                    {
+                        AttemptCount = 10,
+                        ResponseCount = 1,
+                        UnusableAttemptCount = 1,
+                        Status = LiveWorkflowProviderStageStatus.Recovered,
+                        LastUnusableAttemptNumber = 4,
+                        LastUsableResponseAttemptNumber = 10,
+                    }
+                    : stage).ToArray();
+            var hiddenAttempt = await Eval02_Workflow.RunAsync(true, OneScenario(workspace),
+                new(FakeSubject.Agent(MeasuredAgent("unused")), FakeSubject.Workflow(valid with
+                {
+                    Workflow = valid.Workflow! with { ProviderStages = hiddenAttemptStages },
+                }), new FakeJudge()));
+            Assert.Equal(LiveEvalTerminalStatus.InfrastructureError, hiddenAttempt.TerminalStatus);
+            Assert.Empty(hiddenAttempt.Trials);
+
+            var duplicateAttemptIdentityStages = validStages.Select(stage =>
+                stage.ExecutorId == DiscoveryExecutorIds.Ranker
+                    ? stage with { LastUsableResponseAttemptNumber = 1 }
+                    : stage).ToArray();
+            var duplicateAttemptIdentity = await Eval02_Workflow.RunAsync(true, OneScenario(workspace),
+                new(FakeSubject.Agent(MeasuredAgent("unused")), FakeSubject.Workflow(valid with
+                {
+                    Workflow = valid.Workflow! with { ProviderStages = duplicateAttemptIdentityStages },
+                }), new FakeJudge()));
+            Assert.Equal(LiveEvalTerminalStatus.InfrastructureError, duplicateAttemptIdentity.TerminalStatus);
+            Assert.Empty(duplicateAttemptIdentity.Trials);
+
+            var outOfRangeAttemptIdentityStages = validStages.Select(stage =>
+                stage.ExecutorId == DiscoveryExecutorIds.Ranker
+                    ? stage with { LastUsableResponseAttemptNumber = 99 }
+                    : stage).ToArray();
+            var outOfRangeAttemptIdentity = await Eval02_Workflow.RunAsync(true, OneScenario(workspace),
+                new(FakeSubject.Agent(MeasuredAgent("unused")), FakeSubject.Workflow(valid with
+                {
+                    Workflow = valid.Workflow! with { ProviderStages = outOfRangeAttemptIdentityStages },
+                }), new FakeJudge()));
+            Assert.Equal(LiveEvalTerminalStatus.InfrastructureError, outOfRangeAttemptIdentity.TerminalStatus);
+            Assert.Empty(outOfRangeAttemptIdentity.Trials);
+
+            var discoveryStages = validStages.ToArray();
+            discoveryStages[0] = discoveryStages[0] with { ExecutorId = DiscoveryExecutorIds.Discovery };
+            var discovery = await Eval02_Workflow.RunAsync(true, OneScenario(workspace),
+                new(FakeSubject.Agent(MeasuredAgent("unused")), FakeSubject.Workflow(valid with
+                {
+                    Workflow = valid.Workflow! with { ProviderStages = discoveryStages },
+                }), new FakeJudge()));
+            Assert.Equal(LiveEvalTerminalStatus.InfrastructureError, discovery.TerminalStatus);
+            Assert.Empty(discovery.Trials);
+
+            var empty = await Eval02_Workflow.RunAsync(true, OneScenario(workspace),
+                new(FakeSubject.Agent(MeasuredAgent("unused")), FakeSubject.Workflow(valid with
+                {
+                    Workflow = valid.Workflow! with { ProviderStages = [] },
+                }), new FakeJudge()));
+            Assert.Equal(LiveEvalTerminalStatus.InfrastructureError, empty.TerminalStatus);
+            Assert.Empty(empty.Trials);
+        }
+        finally
+        {
+            DeleteTemporaryWorkspace(workspace);
+        }
+    }
+
+    [Fact]
+    public void TrailingUnusableAttemptWithoutOutcomeFailsClosed()
+    {
+        DiscoveryEvent[] truncated =
+        [
+            DiscoveryEvent.ModelRequestStarted(
+                DiscoveryExecutorIds.Ranker, "ranker", "instructions", "input", 10, "operation-truncated", 1),
+            DiscoveryEvent.ModelResponseReceived(
+                DiscoveryExecutorIds.Ranker, "ranker", "not-json", "operation-truncated", 1),
+            DiscoveryEvent.ModelAttemptUnusable(
+                DiscoveryExecutorIds.Ranker, 1, "parse result unusable"),
+        ];
+
+        Assert.True(LiveEvalServices.HasWorkflowProviderTerminalFailure(truncated));
+        Assert.Equal(LiveWorkflowProviderStageStatus.Unrecovered,
+            Assert.Single(LiveEvalServices.AssessWorkflowProvider(truncated).Stages).Status);
+    }
+
+    [Fact]
+    public void PreRequestStageFailureCountsLogicalAttemptWithoutInventingProviderFailure()
+    {
+        DiscoveryEvent[] recovered =
+        [
+            DiscoveryEvent.ModelAttemptUnusable(
+                DiscoveryExecutorIds.Ranker, 1, "session creation failed before a provider request"),
+            DiscoveryEvent.ModelRequestStarted(
+                DiscoveryExecutorIds.Ranker, "ranker", "instructions", "input", 10, "operation-2", 2),
+            DiscoveryEvent.ModelResponseReceived(
+                DiscoveryExecutorIds.Ranker, "ranker", "{\"selections\":[]}", "operation-2", 2),
+        ];
+
+        var assessment = LiveEvalServices.AssessWorkflowProvider(recovered);
+        var stage = Assert.Single(assessment.Stages);
+
+        Assert.Equal(LiveWorkflowProviderStageStatus.Recovered, stage.Status);
+        Assert.Equal(2, stage.AttemptCount);
+        Assert.Equal(1, stage.ResponseCount);
+        Assert.Equal(1, stage.UnusableAttemptCount);
+        Assert.Equal(0, stage.FailedAttemptCount);
+        Assert.Equal(0, assessment.FailedAttemptCount);
+        Assert.Equal(0, assessment.RecoveredFailedAttemptCount);
+        Assert.False(assessment.HasTerminalFailure);
     }
 
     [Fact]
@@ -215,6 +781,9 @@ public sealed class LiveUseCaseEvalTests
             CancellationToken.None);
 
         Assert.NotNull(envelope);
+        Assert.False(LiveEvalServices.HasWorkflowProviderTerminalFailure(progress.Events));
+        Assert.Equal(LiveWorkflowProviderStageStatus.Recovered,
+            Assert.Single(LiveEvalServices.AssessWorkflowProvider(progress.Events).Stages).Status);
         var projected = progress.Events
             .Where(static item => item.Kind is DiscoveryEventKind.Degraded
                 or DiscoveryEventKind.ModelRequestFailed or DiscoveryEventKind.ModelRequestCancelled)
@@ -222,9 +791,10 @@ public sealed class LiveUseCaseEvalTests
             .ToArray();
         Assert.Equal(3, projected.Length);
         Assert.All(projected, static item => Assert.StartsWith("Ranker:", item, StringComparison.Ordinal));
-        Assert.DoesNotContain("unknown:fallback", projected, StringComparer.Ordinal);
+        Assert.DoesNotContain("unknown:degradation", projected, StringComparer.Ordinal);
         Assert.Contains("Ranker:model-failure", projected, StringComparer.Ordinal);
-        Assert.Contains("Ranker:fallback", projected, StringComparer.Ordinal);
+        Assert.Contains("Ranker:degradation", projected, StringComparer.Ordinal);
+        Assert.Contains("Ranker:attempt-unusable", projected, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -1009,7 +1579,7 @@ public sealed class LiveUseCaseEvalTests
             Assert.NotNull(erroredProbe.Failure);
 
             var json = File.ReadAllText(result.Persistence.OutcomePath);
-            Assert.Contains("\"schemaVersion\": \"1.3\"", json, StringComparison.Ordinal);
+            Assert.Contains("\"schemaVersion\": \"1.4\"", json, StringComparison.Ordinal);
             Assert.Contains("\"diagnostic\": \"An unexpected probe execution fault occurred;", json,
                 StringComparison.Ordinal);
             Assert.Contains("\"stage\": \"probe-execution\"", json, StringComparison.Ordinal);
@@ -1118,7 +1688,27 @@ public sealed class LiveUseCaseEvalTests
                 DiscoveryRouteIds.ReviewToRanker,
                 DiscoveryRouteIds.RankerToPresenter,
             ],
-            1, 3, 5, DiscoveryStopReason.CoverageSufficient.ToString(), false, 0, 0, []),
+            1, 3, 5, DiscoveryStopReason.CoverageSufficient.ToString(), false, 0, 0, [])
+        {
+            ProviderStages =
+            [
+                new(DiscoveryExecutorIds.InterestMapper, 1, 1, 0, 0, 0,
+                    LiveWorkflowProviderStageStatus.Completed)
+                {
+                    LastUsableResponseAttemptNumber = 1,
+                },
+                new(DiscoveryExecutorIds.Ranker, 1, 1, 0, 0, 0,
+                    LiveWorkflowProviderStageStatus.Completed)
+                {
+                    LastUsableResponseAttemptNumber = 2,
+                },
+                new(DiscoveryExecutorIds.Presenter, 1, 1, 0, 0, 0,
+                    LiveWorkflowProviderStageStatus.Completed)
+                {
+                    LastUsableResponseAttemptNumber = 3,
+                },
+            ],
+        },
         new LiveUsageEvidence("measured", 4, 200, 40, 240, 0.002));
 
     private static string TemporaryWorkspace() => Path.Combine(
@@ -1218,6 +1808,37 @@ public sealed class LiveUseCaseEvalTests
 
             return Task.FromResult(new ChatResponse(
                 new ChatMessage(ChatRole.Assistant, recoveredJson)));
+        }
+
+        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            var response = await GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
+            foreach (var message in response.Messages)
+                yield return new ChatResponseUpdate(message.Role, message.Contents);
+        }
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        public void Dispose() { }
+    }
+
+    private sealed class SequenceChatClient(params string[] responses) : IChatClient
+    {
+        private int _next;
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var index = Interlocked.Increment(ref _next) - 1;
+            if (index >= responses.Length) throw new InvalidOperationException("fixture response exhausted");
+            return Task.FromResult(new ChatResponse(
+                new ChatMessage(ChatRole.Assistant, responses[index])));
         }
 
         public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(

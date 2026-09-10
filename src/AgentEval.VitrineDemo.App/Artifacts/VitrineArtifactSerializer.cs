@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using AgentEval.Evals.Meta;
 using AgentEval.RedTeam.Reporting;
@@ -93,7 +94,7 @@ public static class VitrineArtifactSerializer
         EnsureSafeIntegrityInput(artifact);
         var frozen = Freeze(artifact);
         if (!Verify(frozen)) throw new InvalidDataException("Artifact integrity verification failed.");
-        return JsonSerializer.Serialize(frozen, Options);
+        return SerializeArtifactJson(frozen);
     }
 
     public static VitrineRunArtifact Deserialize(string json)
@@ -104,6 +105,8 @@ public static class VitrineArtifactSerializer
         if (artifact.SchemaVersion is < VitrineRunArtifact.MinimumSupportedSchemaVersion
             or > VitrineRunArtifact.CurrentSchemaVersion)
             throw new InvalidDataException($"Unsupported VITRINE artifact schema {artifact.SchemaVersion}.");
+        if (artifact.SchemaVersion < 10 && ContainsLegacyProviderStageProperties(json))
+            throw new InvalidDataException("A pre-v10 artifact cannot carry unsigned provider-stage evidence.");
         EnsureSafeIntegrityInput(artifact);
         var frozen = Freeze(artifact);
         if (!Verify(frozen)) throw new InvalidDataException("Artifact integrity verification failed.");
@@ -134,7 +137,58 @@ public static class VitrineArtifactSerializer
     }
 
     private static string SerializeIntegrityPayloadCore(VitrineRunArtifact artifact) =>
-        JsonSerializer.Serialize(artifact with { IntegritySha256 = string.Empty }, Options);
+        SerializeArtifactJson(artifact with { IntegritySha256 = string.Empty });
+
+    private static string SerializeArtifactJson(VitrineRunArtifact artifact)
+    {
+        var json = JsonSerializer.Serialize(artifact, Options);
+        if (artifact.SchemaVersion >= 10) return json;
+
+        // Schema 7-9 artifacts were signed before provider-stage recovery evidence existed. A
+        // deserialized legacy workflow receives today's empty/default CLR values, but those values
+        // must not enter its integrity payload or reserialized JSON: doing so would invalidate an
+        // authentic pre-v10 receipt. Schema 10 writes and signs the complete provider-stage shape.
+        var root = JsonNode.Parse(json) as JsonObject
+            ?? throw new InvalidDataException("The artifact could not be projected for legacy integrity verification.");
+        if (root["result"]?["liveEvaluation"]?["trials"] is JsonArray trials)
+        {
+            foreach (var trial in trials.OfType<JsonObject>())
+            {
+                if (trial["workflow"] is not JsonObject workflow) continue;
+                workflow.Remove("providerStages");
+                workflow.Remove("providerFailedAttemptCount");
+                workflow.Remove("recoveredProviderFailedAttemptCount");
+                workflow.Remove("terminalProviderStageCount");
+            }
+        }
+
+        return root.ToJsonString(Options);
+    }
+
+    private static bool ContainsLegacyProviderStageProperties(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        if (!document.RootElement.TryGetProperty("result", out var result)
+            || !result.TryGetProperty("liveEvaluation", out var live)
+            || live.ValueKind == JsonValueKind.Null
+            || !live.TryGetProperty("trials", out var trials)
+            || trials.ValueKind != JsonValueKind.Array)
+            return false;
+
+        foreach (var trial in trials.EnumerateArray())
+        {
+            if (!trial.TryGetProperty("workflow", out var workflow)
+                || workflow.ValueKind == JsonValueKind.Null)
+                continue;
+            if (workflow.TryGetProperty("providerStages", out _)
+                || workflow.TryGetProperty("providerFailedAttemptCount", out _)
+                || workflow.TryGetProperty("recoveredProviderFailedAttemptCount", out _)
+                || workflow.TryGetProperty("terminalProviderStageCount", out _))
+                return true;
+        }
+
+        return false;
+    }
 
     private static void EnsureSafeIntegrityInput(VitrineRunArtifact artifact)
     {
@@ -151,9 +205,13 @@ public static class VitrineArtifactSerializer
     {
         var configuredApiKey = NonBlankEnvironmentValue("AZURE_OPENAI_API_KEY");
         var configuredEndpoint = NonBlankEnvironmentValue("AZURE_OPENAI_ENDPOINT");
+        var configuredManagedIdentityClientId =
+            NonBlankEnvironmentValue("AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID");
         return ContainsString(value, text =>
             configuredApiKey is not null && text.Contains(configuredApiKey, StringComparison.Ordinal)
             || configuredEndpoint is not null && text.Contains(configuredEndpoint, StringComparison.OrdinalIgnoreCase)
+            || configuredManagedIdentityClientId is not null
+                && text.Contains(configuredManagedIdentityClientId, StringComparison.OrdinalIgnoreCase)
             || !string.Equals(PayloadPreviewPolicy.Sanitize(text), text, StringComparison.Ordinal));
     }
 
@@ -161,9 +219,13 @@ public static class VitrineArtifactSerializer
     {
         var configuredApiKey = NonBlankEnvironmentValue("AZURE_OPENAI_API_KEY");
         var configuredEndpoint = NonBlankEnvironmentValue("AZURE_OPENAI_ENDPOINT");
+        var configuredManagedIdentityClientId =
+            NonBlankEnvironmentValue("AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID");
         return ContainsString(value, text =>
             configuredApiKey is not null && text.Contains(configuredApiKey, StringComparison.Ordinal)
-            || configuredEndpoint is not null && text.Contains(configuredEndpoint, StringComparison.OrdinalIgnoreCase));
+            || configuredEndpoint is not null && text.Contains(configuredEndpoint, StringComparison.OrdinalIgnoreCase)
+            || configuredManagedIdentityClientId is not null
+                && text.Contains(configuredManagedIdentityClientId, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool ContainsString(object value, Func<string, bool> predicate)
@@ -465,6 +527,7 @@ public static class VitrineArtifactSerializer
                     Executors = Array.AsReadOnly(trial.Workflow.Executors.ToArray()),
                     Routes = Array.AsReadOnly(trial.Workflow.Routes.ToArray()),
                     DegradationKinds = Array.AsReadOnly(trial.Workflow.DegradationKinds.ToArray()),
+                    ProviderStages = Array.AsReadOnly(trial.Workflow.ProviderStages.ToArray()),
                 },
                 Checks = Array.AsReadOnly(trial.Checks.ToArray()),
                 Criteria = Array.AsReadOnly(trial.Criteria.ToArray()),
@@ -689,7 +752,25 @@ public static class VitrineArtifactSerializer
                     trial.Workflow.DegradationCount,
                     trial.Workflow.DegradationKinds.Select(Safe).ToArray(),
                     trial.Workflow.UnknownExecutorCount,
-                    trial.Workflow.UnknownRouteCount),
+                    trial.Workflow.UnknownRouteCount)
+                {
+                    ProviderStages = trial.Workflow.ProviderStages.Select(stage =>
+                        new VitrineLiveWorkflowProviderStageSnapshot(
+                            Safe(stage.ExecutorId),
+                            stage.AttemptCount,
+                            stage.ResponseCount,
+                            stage.UnusableAttemptCount,
+                            stage.FailedAttemptCount,
+                            stage.CancelledAttemptCount,
+                            Safe(stage.Status.ToString()))
+                        {
+                            LastUnusableAttemptNumber = stage.LastUnusableAttemptNumber,
+                            LastUsableResponseAttemptNumber = stage.LastUsableResponseAttemptNumber,
+                        }).ToArray(),
+                    ProviderFailedAttemptCount = trial.Workflow.ProviderFailedAttemptCount,
+                    RecoveredProviderFailedAttemptCount = trial.Workflow.RecoveredProviderFailedAttemptCount,
+                    TerminalProviderStageCount = trial.Workflow.TerminalProviderStageCount,
+                },
                 trial.Checks.Select(check => new VitrineLiveCheckFactSnapshot(
                     Safe(check.Key), Safe(check.Name), Safe(check.Measurement.ToString()),
                     Finite(check.Score), check.Passed)).ToArray(),
@@ -885,9 +966,28 @@ public static class VitrineArtifactSerializer
             || trial.Workflow is { Routes: null }
             || trial.Workflow is { Routes: { } routes }
                 && routes.Any(static route => route is null)
-            || trial.Workflow is { DegradationKinds: null })) return true;
+            || trial.Workflow is { DegradationKinds: null }
+            || trial.Workflow is { ProviderStages: null }
+            || trial.Workflow is { ProviderStages: { } stages }
+                && stages.Any(static stage => stage is null))) return true;
         if (live.Trials.Any(static trial => trial?.Workflow is { DegradationKinds: { } kinds }
             && kinds.Any(static kind => kind is null))) return true;
+        if (schemaVersion >= 10 && live.Trials.Any(static trial =>
+                trial?.Workflow is { } workflow
+                && (HasInvalidWorkflowProviderEvidence(workflow)
+                    || workflow.TerminalProviderStageCount > 0
+                    && !string.Equals(trial.Measurement, nameof(MeasurementState.NotMeasured),
+                        StringComparison.Ordinal))))
+            return true;
+        if (schemaVersion >= 10 && live.Trials.Any(static trial =>
+                trial is { } nonNull
+                && string.Equals(nonNull.Architecture, nameof(LiveSubjectArchitecture.Workflow),
+                    StringComparison.Ordinal)
+                && string.Equals(nonNull.Measurement, nameof(MeasurementState.Measured),
+                    StringComparison.Ordinal)
+                && (nonNull.Workflow is not { } workflow
+                    || !HasRequiredWorkflowProviderStages(workflow))))
+            return true;
         if (schemaVersion >= 9 && !safetyPlan && live.Trials.Any(HasInvalidLiveTrialVerdict))
             return true;
         if (live.Arms.Any(static arm => arm is null
@@ -1091,6 +1191,90 @@ public static class VitrineArtifactSerializer
         var expectedPass = fullyMeasured ? checks.All(static check => check.Passed == true) : (bool?)null;
         return !string.Equals(trial.Measurement, expectedMeasurement, StringComparison.Ordinal)
             || trial.Passed != expectedPass;
+    }
+
+    private static bool HasInvalidWorkflowProviderEvidence(VitrineLiveWorkflowSnapshot workflow)
+    {
+        if (workflow.ProviderFailedAttemptCount < 0
+            || workflow.RecoveredProviderFailedAttemptCount < 0
+            || workflow.TerminalProviderStageCount < 0)
+            return true;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var failed = 0L;
+        var recovered = 0L;
+        var terminal = 0;
+        var totalAttempts = workflow.ProviderStages.Sum(static stage => (long)Math.Max(0, stage.AttemptCount));
+        var observedLastAttemptNumbers = new HashSet<int>();
+        foreach (var stage in workflow.ProviderStages)
+        {
+            if (!seen.Add(stage.ExecutorId)
+                || !IsModelBackedWorkflowExecutor(stage.ExecutorId)
+                || stage.AttemptCount <= 0 || stage.ResponseCount < 0
+                || stage.UnusableAttemptCount < 0 || stage.FailedAttemptCount < 0 || stage.CancelledAttemptCount < 0
+                || stage.UnusableAttemptCount > stage.AttemptCount
+                || stage.FailedAttemptCount > stage.UnusableAttemptCount
+                || (long)stage.ResponseCount + stage.FailedAttemptCount + stage.CancelledAttemptCount
+                    > stage.AttemptCount
+                || stage.AttemptCount > (long)stage.ResponseCount + stage.CancelledAttemptCount
+                    + stage.UnusableAttemptCount
+                || (long)stage.UnusableAttemptCount + stage.CancelledAttemptCount > stage.AttemptCount
+                || stage.LastUnusableAttemptNumber < 0 || stage.LastUsableResponseAttemptNumber < 0
+                || (stage.UnusableAttemptCount == 0) != (stage.LastUnusableAttemptNumber == 0)
+                || stage.LastUsableResponseAttemptNumber > 0 && stage.ResponseCount == 0
+                || !Enum.TryParse<LiveWorkflowProviderStageStatus>(stage.Status, out var status)
+                || !Enum.IsDefined(status))
+                return true;
+            if (stage.LastUnusableAttemptNumber > 0
+                    && (stage.LastUnusableAttemptNumber > totalAttempts
+                        || !observedLastAttemptNumbers.Add(stage.LastUnusableAttemptNumber))
+                || stage.LastUsableResponseAttemptNumber > 0
+                    && (stage.LastUsableResponseAttemptNumber > totalAttempts
+                        || !observedLastAttemptNumbers.Add(stage.LastUsableResponseAttemptNumber)))
+                return true;
+            var consistent = status switch
+            {
+                LiveWorkflowProviderStageStatus.Completed => stage.ResponseCount == stage.AttemptCount
+                    && stage.UnusableAttemptCount == 0 && stage.FailedAttemptCount == 0
+                    && stage.CancelledAttemptCount == 0
+                    && stage.LastUnusableAttemptNumber == 0
+                    && stage.LastUsableResponseAttemptNumber > 0,
+                LiveWorkflowProviderStageStatus.Recovered => stage.AttemptCount > stage.UnusableAttemptCount
+                    && stage.UnusableAttemptCount > 0 && stage.ResponseCount > 0
+                    && stage.CancelledAttemptCount == 0
+                    && stage.LastUnusableAttemptNumber > 0
+                    && stage.LastUsableResponseAttemptNumber > stage.LastUnusableAttemptNumber,
+                LiveWorkflowProviderStageStatus.FinalFallback => stage.UnusableAttemptCount > 0
+                    && stage.CancelledAttemptCount == 0
+                    && stage.LastUnusableAttemptNumber > 0,
+                LiveWorkflowProviderStageStatus.Unrecovered => true,
+                LiveWorkflowProviderStageStatus.Cancelled => stage.CancelledAttemptCount > 0,
+                _ => false,
+            };
+            if (!consistent) return true;
+            failed += stage.FailedAttemptCount;
+            if (status == LiveWorkflowProviderStageStatus.Recovered)
+                recovered += stage.FailedAttemptCount;
+            if (status is LiveWorkflowProviderStageStatus.FinalFallback
+                or LiveWorkflowProviderStageStatus.Unrecovered
+                or LiveWorkflowProviderStageStatus.Cancelled)
+                terminal++;
+        }
+        return failed != workflow.ProviderFailedAttemptCount
+            || recovered != workflow.RecoveredProviderFailedAttemptCount
+            || terminal != workflow.TerminalProviderStageCount;
+    }
+
+    private static bool IsModelBackedWorkflowExecutor(string executorId) => executorId is
+        DiscoveryExecutorIds.InterestMapper or DiscoveryExecutorIds.CoverageReviewer
+            or DiscoveryExecutorIds.Ranker or DiscoveryExecutorIds.Presenter;
+
+    private static bool HasRequiredWorkflowProviderStages(VitrineLiveWorkflowSnapshot workflow)
+    {
+        var stageIds = workflow.ProviderStages.Select(static stage => stage.ExecutorId)
+            .ToHashSet(StringComparer.Ordinal);
+        return stageIds.Contains(DiscoveryExecutorIds.InterestMapper)
+            && stageIds.Contains(DiscoveryExecutorIds.Ranker)
+            && stageIds.Contains(DiscoveryExecutorIds.Presenter);
     }
 
     private static bool HasInvalidReliability(VitrineLiveReliabilitySnapshot reliability)

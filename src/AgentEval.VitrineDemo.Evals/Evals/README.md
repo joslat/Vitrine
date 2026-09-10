@@ -27,7 +27,10 @@ Every live session, including a readiness failure, writes a sanitized
 Configure the provider and run a one-scenario subject/judge smoke through the canonical
 [Microsoft Foundry live-run setup](https://azuresamurai.blog/Vitrine/Vitrine-Live-Run-Setup.html).
 It distinguishes the Azure OpenAI deployment name from the base-model ID, documents the current
-API-key boundary, and keeps real-vector setup separate from normal live evaluation.
+API-key/local-Entra/managed-identity boundary, explains the <strong>Cognitive Services OpenAI
+User</strong> role and optional separate judge deployment, and keeps real-vector setup separate
+from normal live evaluation. Readiness is local configuration evidence, never a connectivity or
+authorization probe.
 
 The Eval 01–05 result reports its quality pass threshold (`1.00` by default), bounded criterion
 explanations, and per-check census/Wilson facts. Because every registered use case has exactly four

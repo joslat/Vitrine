@@ -189,7 +189,7 @@ public static class Demo02_InterestMapWorkflow
             // endpoint, which names the Azure resource, and never the key in any form.
             var arm = offline
                 ? "offline baseline — no model call"
-                : $"live loop · deployment {Config.Model}";
+                : $"live loop · subject deployment {Config.Deployments.SubjectLabel} · {Config.Readiness.AuthenticationLabel}";
 
             var written = RunReportHtml.Write(
                 reportPath, "Demo 02 — 5 executors, 1 loop-back edge", arm,
@@ -587,7 +587,7 @@ public static class Demo02_InterestMapWorkflow
             Console.WriteLine($"    💸 Chat: {lines[0]}");
             foreach (var extra in lines.Skip(1)) Console.WriteLine($"       {extra}");
 
-            Console.WriteLine($"       model: {Config.Model}");
+            Console.WriteLine($"       model: {Config.Deployments.SubjectLabel}");
             Console.WriteLine("       cost : UNKNOWN IN THIS PROCESS — this project carries no rate table (no AgentEval");
             Console.WriteLine("              dependency, by design) and a meter may not invent a rate. Tokens above are the");
             Console.WriteLine("              measurement; the eval suite's Eval 08 spend panel applies AgentEval's");
@@ -630,17 +630,11 @@ public static class Demo02_InterestMapWorkflow
     private static void PrintMissingCredentials()
     {
         Console.ForegroundColor = ConsoleColor.Yellow;
-        Console.WriteLine(@"
-  ⚠️  Skipping the live loop — Azure OpenAI credentials required.
-
-     Set the following environment variables and try again:
-       AZURE_OPENAI_ENDPOINT
-       AZURE_OPENAI_API_KEY
-       AZURE_OPENAI_DEPLOYMENT          (optional, defaults to gpt-5-mini)
-
-     Or run the whole loop deterministically, with no key at all:
-       dotnet run --project src/AgentEval.VitrineDemo -- 2 --offline
-");
+        Console.WriteLine("\n  ⚠️  Skipping the live loop — Azure OpenAI is not locally ready.");
+        Console.WriteLine($"     {Config.Readiness.BlockingReason}");
+        Console.WriteLine("     Configure API-key, local Entra, or managed-identity authentication as documented in");
+        Console.WriteLine("     docs/Vitrine-Live-Run-Setup.html, or run the deterministic path:");
+        Console.WriteLine("       dotnet run --project src/AgentEval.VitrineDemo -- 2 --offline\n");
         Console.ResetColor();
     }
 
