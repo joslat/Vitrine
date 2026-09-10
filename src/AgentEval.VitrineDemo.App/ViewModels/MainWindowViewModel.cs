@@ -550,7 +550,7 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
         });
     }
 
-    private static string Describe(VitrineRunOutcome outcome)
+    internal static string Describe(VitrineRunOutcome outcome)
     {
         if (outcome.Recommendation is { } recommendation)
         {
@@ -572,12 +572,17 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
             return $"{VitrineEvaluationPlans.Require(live.Plan).Label}: {live.Trials.Count} scenario trial(s), " +
                    $"{live.Runs.Count} AgentEval run director{(live.Runs.Count == 1 ? "y" : "ies")}, " +
                    $"status {live.TerminalStatus}, exit {live.ExitCode}; local outcome {live.Persistence.OutcomePath}.";
+        if (outcome.FailureKind == VitrineRunCoordinator.PaidExecutionConfirmationRequiredFailureKind)
+            return "Paid live execution was not started. Confirm the one-shot Paid Execution acknowledgement, " +
+                   "then run again. No provider request was made.";
         return outcome.Cancelled ? "Run cancelled." : $"Run failed safely: {outcome.FailureKind ?? "unknown failure"}.";
     }
 
-    private static string DescribeStatus(VitrineRunOutcome outcome)
+    internal static string DescribeStatus(VitrineRunOutcome outcome)
     {
         if (outcome.Cancelled) return "Cancelled · partial events retained";
+        if (outcome.FailureKind == VitrineRunCoordinator.PaidExecutionConfirmationRequiredFailureKind)
+            return "Paid live execution not started · confirmation required · no provider request made";
         if (outcome.FailureKind is not null) return $"Failed safely · {outcome.FailureKind}";
         if (outcome.Evaluation is { ExitCode: 0 })
             return $"Evaluation passed · {outcome.Events.Count} authoritative events";

@@ -70,9 +70,26 @@ public sealed class AppUiHardeningTests
             Personas.MarcoUserId,
             Demo01Arm: RecommendationExecutionArm.LiveAzure));
 
-        Assert.Equal(nameof(InvalidOperationException), outcome.FailureKind);
+        Assert.Equal(VitrineRunCoordinator.PaidExecutionConfirmationRequiredFailureKind,
+            outcome.FailureKind);
         Assert.Single(outcome.Events);
-        Assert.Equal("RunFailed", outcome.Events[0].Kind);
+        var rejection = outcome.Events[0];
+        Assert.Equal("PaidExecutionRejected", rejection.Kind);
+        Assert.Equal(VitrineEventDisposition.Blocked, rejection.Disposition);
+        Assert.Equal("Paid live execution not started", rejection.Title);
+        Assert.Contains("Confirm the one-shot Paid Execution acknowledgement", rejection.Detail,
+            StringComparison.Ordinal);
+        Assert.Contains("No provider request was made", rejection.Detail,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(nameof(InvalidOperationException), rejection.Detail,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            "Paid live execution was not started. Confirm the one-shot Paid Execution acknowledgement, " +
+            "then run again. No provider request was made.",
+            MainWindowViewModel.Describe(outcome));
+        Assert.Equal(
+            "Paid live execution not started · confirmation required · no provider request made",
+            MainWindowViewModel.DescribeStatus(outcome));
     }
 
     [Fact]

@@ -2,6 +2,7 @@
 
 using AgentEval.Evals.Meta;
 using AgentEval.VitrineDemo.App;
+using AgentEval.VitrineDemo.App.Models;
 using AgentEval.VitrineDemo.App.Runtime;
 using AgentEval.VitrineDemo.App.ViewModels;
 using AgentEval.VitrineDemo.Evals.Live;
@@ -237,7 +238,13 @@ public sealed class LiveEvaluationAppIntegrationTests
 
         Assert.Equal(0, calls);
         Assert.Null(outcome.LiveEvaluation);
-        Assert.Equal(nameof(InvalidOperationException), outcome.FailureKind);
+        Assert.Equal(VitrineRunCoordinator.PaidExecutionConfirmationRequiredFailureKind,
+            outcome.FailureKind);
+        var rejection = Assert.Single(outcome.Events);
+        Assert.Equal("PaidExecutionRejected", rejection.Kind);
+        Assert.Equal(VitrineEventDisposition.Blocked, rejection.Disposition);
+        Assert.Contains("No provider request was made", rejection.Detail,
+            StringComparison.Ordinal);
     }
 
     private static LiveEvalProgress Progress(

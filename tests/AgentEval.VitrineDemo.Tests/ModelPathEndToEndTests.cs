@@ -235,6 +235,7 @@ public sealed class ModelPathEndToEndTests
     {
         Assert.True(Config.IsConfigured,
             "VITRINE_RUN_LIVE_MODEL_TESTS=1 was set, but the selected Azure OpenAI authentication "
-            + $"path is not locally ready: {Config.Readiness.BlockingReason} Values are intentionally never reported.");
+            + "path is not locally ready. Environment-variable values are intentionally never reported. "
+            + $"Blocking reason: {Config.Readiness.BlockingReason}");
     }
 }

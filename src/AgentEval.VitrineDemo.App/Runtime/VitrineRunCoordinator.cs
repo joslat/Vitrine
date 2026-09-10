@@ -44,6 +44,9 @@ public sealed record VitrineRunOutcome(
 /// <summary>Serializes authoritative runs, owns cancellation, and adapts typed source events.</summary>
 public sealed class VitrineRunCoordinator : IAsyncDisposable
 {
+    internal const string PaidExecutionConfirmationRequiredFailureKind =
+        "PaidExecutionConfirmationRequired";
+
     private readonly Lock _gate = new();
     private readonly Func<VitrineRunRequest, RecommendationToolSet?, VitrineGraphSnapshot> _initialGraphFactory;
     private readonly Func<VitrineEvaluationPlan, bool, LiveEvalOptions, IProgress<LiveEvalProgress>?,
@@ -150,7 +153,16 @@ public sealed class VitrineRunCoordinator : IAsyncDisposable
             var isPaidEvaluation = request.Mode == VitrineRunMode.Evals
                 && request.EvaluationPlan != VitrineEvaluationPlan.OfflineSuite;
             if ((isPaidSubject || isPaidEvaluation) && !request.PaidExecutionConfirmed)
-                throw new InvalidOperationException("Paid live execution requires explicit one-shot confirmation.");
+            {
+                const string detail =
+                    "Paid live execution was not started. Confirm the one-shot Paid Execution acknowledgement, " +
+                    "then run again. No provider request was made.";
+                store.Append(new(VitrineEventCategory.System, "PaidExecutionRejected",
+                    VitrineEventDisposition.Blocked, "paid-boundary", "ui",
+                    "Paid live execution not started", detail));
+                return new(store.RunId, request, graph, store.Snapshot(),
+                    FailureKind: PaidExecutionConfirmationRequiredFailureKind);
+            }
 
             if (request.Mode == VitrineRunMode.Demo01)
             {
