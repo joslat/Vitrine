@@ -5,7 +5,7 @@ using System.Text.Json.Serialization;
 
 namespace Galaxus.RecommendationAgent.Workflows;
 
-/// <summary>How an interest was arrived at (design Demo 2 §C.1).</summary>
+/// <summary>How Demo02 derived an interest.</summary>
 public enum InterestKind
 {
     /// <summary>A single signal states it. "Bought a trail shoe" ⇒ trail running.</summary>
@@ -28,7 +28,7 @@ public enum InterestOrigin
     /// Proposed mid-run by the coverage reviewer from a review snippet. Capped at
     /// <see cref="DiscoveryState.MaxReviewerInferredInterests"/>, confidence clamped in CODE to
     /// <see cref="DiscoveryState.ReviewerInferredConfidenceCeiling"/>, and its query terms
-    /// filtered by <see cref="QueryVocabulary"/> (design §0.5 / D-3).
+    /// filtered by <see cref="QueryVocabulary"/>.
     /// </summary>
     ReviewerInferred
 }
@@ -218,15 +218,12 @@ public sealed class InterestCoverage
     /// (<see cref="AttributionVocabularyEmpty"/>) cannot be covered by anything.
     /// </para>
     /// <para>
-    /// ⚠ <b>The wider finding this channel measures is real and is NOT acted on here.</b>
-    /// MEASURED on the concept space, 2026-09-06: USR-NB-01's interest "Headlamps" was marked
-    /// COVERED on six candidates of which <b>zero</b> is a headlamp (hiking shoes, trekking poles,
-    /// a watch, a chest pack, a rear light, a running vest — she already owns the only headlamp,
-    /// so it is excluded from retrieval), and "Mirrorless full-frame" on six of which zero is a
-    /// camera body. Gating on the attributable count would be the honest reading, and it would
-    /// flip four of Eval 07's five personas and remove the corpus's only APPROVED exit — a change
-    /// to what the shipped demo answers, not just to a gate. It is measured and printed so that
-    /// decision is made on numbers rather than made silently.
+    /// <b>The wider finding this channel measures is real and is NOT acted on here.</b> In the
+    /// concept space, USR-NB-01's "Headlamps" interest is covered on six candidates while zero are
+    /// headlamps, and "Mirrorless full-frame" likewise has six candidates and zero camera bodies.
+    /// Gating on attributable count would flip four of Eval 07's five personas and remove the
+    /// corpus's only APPROVED exit. That is a product-policy change, so the channel exposes the
+    /// evidence without silently changing the shipped answer.
     /// </para>
     /// </remarks>
     public List<string> AttributableProductIds { get; } = [];
@@ -324,7 +321,7 @@ public sealed record PresentedItem(
 
 /// <summary>
 /// A review snippet observed on a candidate this round. This is the channel a mid-run interest
-/// can come out of — and, per §0.5 / D-3, the channel a marketplace seller controls.
+/// can come out of — and, per the structural query-vocabulary control, the channel a marketplace seller controls.
 /// </summary>
 /// <param name="ProductId">The product whose review it is.</param>
 /// <param name="Snippet">The snippet. UNTRUSTED DATA, never an instruction.</param>
@@ -354,7 +351,7 @@ public sealed record CoverageGap(
 /// An interest the reviewer wants to add mid-run, from a review snippet.
 /// </summary>
 /// <remarks>
-/// ⚠ <b>This is the §0.5 / D-3 attack surface.</b> <see cref="QueryTerms"/> drive the next
+/// ⚠ <b>This is the structural query-vocabulary control attack surface.</b> <see cref="QueryTerms"/> drive the next
 /// round's retrieval, and the snippet they were read out of was written by a marketplace seller.
 /// The control is structural and lives in <see cref="QueryVocabulary"/>, not in prompt text.
 /// </remarks>
@@ -379,7 +376,7 @@ public sealed record ProposedInterest(
 /// <b>A drop list means nothing without the proposal it filtered.</b> Counting only accepted
 /// interests hides the denominator: an arm that proposed nothing and an arm whose every proposal
 /// was refused both show zero reviewer-inferred interests, and only one of them exercised the
-/// control. The eval lane's D-3 grader reads this as the applicability test — an untempted
+/// control. The eval lane's structural query-vocabulary control grader reads this as the applicability test — an untempted
 /// prohibition has a chance floor of 1.0 and is never a pass.
 /// </para>
 /// <para>
@@ -482,12 +479,9 @@ public sealed record QueryPlanEntry(
     /// review text on a candidate that had already been retrieved.
     /// </summary>
     /// <remarks>
-    /// ⚠ This origin exists because folding it into <see cref="FromMap"/> made the demo's
-    /// vocabulary-transfer panel state something false. The planner's map branch serves "any
-    /// interest with no query yet", which includes a reviewer-inferred interest — so a query the
-    /// loop could only have written AFTER retrieval was being reported under the heading "written
-    /// before any retrieval ran". The distinction the panel is arguing about is <i>when the query
-    /// was written</i>, and that is precisely what this constant separates.
+    /// This origin preserves query chronology. A reviewer-inferred interest is planned only after
+    /// retrieval, even though the planner serves it through the same "no query yet" branch as map
+    /// interests; the vocabulary-transfer panel must not classify it as pre-retrieval input.
     /// </remarks>
     public const string FromProposal = "new";
 
@@ -526,7 +520,7 @@ public sealed record ExecutedQuery(
 }
 
 /// <summary>
-/// A model-proposed query term that the structural vocabulary constraint REFUSED (§0.5 / D-3).
+/// A model-proposed query term that the structural vocabulary constraint REFUSED.
 /// </summary>
 /// <remarks>
 /// Recorded rather than silently discarded, and printed by the console sink. A control whose
@@ -548,11 +542,9 @@ public sealed record DroppedQueryTerm(string Term, string ProposedFor, IReadOnly
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Recorded for the same reason <see cref="DiscoveryState.Presented"/> is.</b> The screened
-/// answer is a fact about the run, not about whether anyone was watching, and a caller that wants
-/// it after the fact must not have to re-project the map, re-classify the purchases and re-run the
-/// pipeline to get it back. Two derivations of one run are two things to keep in agreement, and the
-/// first time they disagreed nobody would know which was the answer.
+/// The screened answer is a fact about the run, independent of whether anyone was watching. A
+/// caller reads this record instead of re-projecting the map, re-classifying purchases and
+/// re-running the pipeline; one run therefore has one authoritative delivered artifact.
 /// </para>
 /// <para>
 /// Written exactly once per run, by <c>DiscoveryPresentation.Render</c>.

@@ -6,17 +6,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="VITRINE is my independent Digitec Galaxus job-application sample: a realistic synthetic e-commerce system that uses AgentEval to make AI quality, safety, reliability, and evidence inspectable.">
-  <link rel="canonical" href="https://joslat.github.io/Vitrine/">
+  <meta name="author" content="José Luis Latorre Millas">
+  <link rel="canonical" href="https://azuresamurai.blog/Vitrine/">
   <meta property="og:type" content="website">
+  <meta property="og:site_name" content="VITRINE by José Luis Latorre Millas">
   <meta property="og:title" content="VITRINE · What I can build and prove for Digitec Galaxus">
   <meta property="og:description" content="A realistic synthetic e-commerce system that uses AgentEval to make AI quality, safety, reliability, and evidence inspectable.">
-  <meta property="og:url" content="https://joslat.github.io/Vitrine/">
-  <meta property="og:image" content="https://joslat.github.io/Vitrine/images/vitrine-control-room.png">
-  <meta property="og:image:alt" content="VITRINE control room showing an inspectable agent and workflow evaluation graph">
+  <meta property="og:url" content="https://azuresamurai.blog/Vitrine/">
+  <meta property="og:image" content="https://azuresamurai.blog/Vitrine/images/vitrine-customer-recommendation.png">
+  <meta property="og:image:alt" content="VITRINE receipt showing Nadia's request, one grounded recommendation, and visible evaluation limits">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="VITRINE · What I can build and prove for Digitec Galaxus">
   <meta name="twitter:description" content="AgentEval-powered quality, reliability, and safety evidence for a synthetic e-commerce AI system.">
-  <meta name="twitter:image" content="https://joslat.github.io/Vitrine/images/vitrine-control-room.png">
+  <meta name="twitter:image" content="https://azuresamurai.blog/Vitrine/images/vitrine-customer-recommendation.png">
   <title>VITRINE · What I can build and prove for Digitec Galaxus</title>
   <style>
     :root {
@@ -24,6 +26,7 @@
       --line:#d6dde6; --blue:#1261a6; --blue-soft:#dcecff; --teal:#087a72; --teal-soft:#d8efeb;
       --amber:#9a5b12; --amber-soft:#f7ead3; --red:#a13a37; --red-soft:#f7dfdd;
       --violet:#6647a7; --violet-soft:#e9e0f8; --shadow:0 16px 40px -32px rgba(16,28,44,.45);
+      --primary-ink:#fff;
     }
     @media (prefers-color-scheme:dark) {
       :root {
@@ -31,6 +34,7 @@
         --line:#29394d; --blue:#75baff; --blue-soft:#123255; --teal:#64d4c7; --teal-soft:#123a38;
         --amber:#f1bd73; --amber-soft:#3d2b14; --red:#ff918a; --red-soft:#44201f;
         --violet:#c2a5ff; --violet-soft:#30234a; --shadow:0 18px 42px -30px rgba(0,0,0,.85);
+        --primary-ink:#062b28;
       }
     }
     * { box-sizing:border-box }
@@ -51,9 +55,10 @@
     h3 { font-size:1.08rem; margin:0 0 7px }
     p { margin:.55em 0 }
     .lead { max-width:760px; color:var(--muted); font-size:clamp(1.05rem,2vw,1.25rem) }
+    .byline { color:var(--muted); font-size:.96rem }
     .hero-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:24px }
     .button { display:inline-flex; align-items:center; gap:8px; padding:9px 14px; border:1px solid var(--line); border-radius:7px; background:var(--surface); color:var(--ink); text-decoration:none; font-weight:650; box-shadow:var(--shadow) }
-    .button.primary { background:var(--teal); border-color:var(--teal); color:#fff }
+    .button.primary { background:var(--teal); border-color:var(--teal); color:var(--primary-ink) }
     nav { position:sticky; top:0; z-index:20; border-bottom:1px solid var(--line); background:color-mix(in srgb,var(--paper) 90%,transparent); backdrop-filter:blur(12px) }
     nav .wrap { display:flex; gap:18px; align-items:center; min-height:48px; overflow-x:auto; white-space:nowrap }
     nav a { color:var(--muted); text-decoration:none; font-size:.82rem; font-weight:700 }
@@ -67,6 +72,7 @@
     .fact span { color:var(--muted); font-size:.76rem }
     .grid2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px }
     .grid3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px }
+    .grid4 { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px }
     .card { padding:20px; background:var(--surface); border:1px solid var(--line); border-radius:10px; box-shadow:var(--shadow) }
     .card p { color:var(--muted); font-size:.93rem }
     .tag { display:inline-block; border:1px solid currentColor; border-radius:999px; padding:2px 8px; font:700 .67rem/1.45 ui-monospace,Consolas,monospace; letter-spacing:.05em; text-transform:uppercase }
@@ -82,6 +88,8 @@
     .node-violet { fill:var(--violet-soft); stroke:var(--violet); stroke-width:1.7 }
     .edge { stroke:currentColor; stroke-width:1.5; fill:none }
     .edge-loop { stroke:var(--amber); stroke-width:2.2; stroke-dasharray:7 5; fill:none }
+    .agentic-rag-box { fill:none; stroke:var(--teal); stroke-width:1.6; stroke-dasharray:7 5 }
+    .agentic-rag-chip { fill:var(--surface); stroke:var(--teal); stroke-width:1 }
     .svg-title { fill:currentColor; font:650 14px system-ui,sans-serif }
     .svg-sub { fill:var(--muted); font:12px ui-monospace,Consolas,monospace }
     .svg-label { fill:var(--amber); font:700 12px ui-monospace,Consolas,monospace }
@@ -105,9 +113,13 @@
     .route-card { display:flex; flex-direction:column; min-height:205px }
     .route-card a { font-weight:700; margin-top:6px }
     .route-card p + a { margin-top:auto }
+    .customer-showcase { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(280px,.85fr); gap:18px; align-items:start; margin:26px 0 }
+    .scenario-list { display:grid; gap:10px }
+    .scenario-list .card { box-shadow:none; padding:15px }
     footer { padding:34px 0 60px; border-top:1px solid var(--line); color:var(--muted); font-size:.84rem }
     :focus-visible { outline:3px solid var(--blue); outline-offset:3px }
-    @media (max-width:800px) { .grid2,.grid3 { grid-template-columns:1fr } .hero { padding-top:48px } .wrap { width:min(100% - 24px,1160px) } }
+    @media (max-width:1000px) { .grid4 { grid-template-columns:repeat(2,minmax(0,1fr)) } }
+    @media (max-width:800px) { .grid2,.grid3,.grid4,.customer-showcase { grid-template-columns:1fr } .hero { padding-top:48px } .wrap { width:min(100% - 24px,1160px) } }
     @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto } }
     @media print { nav,.hero-actions { display:none } body { background:#fff;color:#111 } .card,.diagram,.facts { box-shadow:none } main section { break-inside:avoid } }
   </style>
@@ -119,6 +131,8 @@
   <div class="wrap">
     <div class="eyebrow">VITRINE · To the Digitec Galaxus team · my answer to “what can you do for us?”</div>
     <h1>I turn AI product discovery into <span>evidence you can act on.</span></h1>
+    <p class="byline"><strong>José Luis Latorre Millas</strong> · Agentic &amp; Software Architect ·
+      creator of AgentEval · Zürich</p>
     <p class="lead">You already know what excellent e-commerce looks like at scale. I am not
       claiming to reproduce your production systems. I built VITRINE to show how I would
       contribute: make an agent and a controlled workflow solve realistic shopping cases,
@@ -126,16 +140,12 @@
       can inspect.</p>
     <p class="lead">This is part portfolio, part working proposal: a conversation between the
       questions you may ask and the evidence I can put on the table.</p>
-    <div class="callout warn"><p><strong>Independent portfolio project.</strong> Created as a job-application value
-      proposal for Digitec Galaxus; not affiliated with, commissioned by, or endorsed by the
-      company. All catalogue, persona, and customer-history data is synthetic; recorded runs
-      measure this sample, not a Digitec Galaxus system. No paid live-plan result on this page is
-      presented as evidence about the company or its production systems.</p></div>
     <div class="hero-actions">
-      <a class="button primary" href="Vitrine-Digitec-Galaxus-Value-Proposal.html">Start with my proposal to you</a>
-      <a class="button" href="#proof-path">Choose your proof path</a>
-      <a class="button" href="Vitrine-Walkthrough.html">Open the operator walkthrough</a>
-      <a class="button" href="https://github.com/AgentEvalHQ/AgentEval">Explore AgentEval ↗</a>
+      <a class="button primary" href="#customer">See what the customer sees</a>
+      <a class="button" href="#platform">For an AI platform team</a>
+      <a class="button" href="Vitrine-Digitec-Galaxus-Value-Proposal.html">Read my proposal</a>
+      <a class="button" href="https://github.com/joslat/Vitrine">View source ↗</a>
+      <a class="button" href="https://www.linkedin.com/in/joslat/">Connect on LinkedIn ↗</a>
     </div>
     <div class="facts" aria-label="VITRINE facts">
       <div class="fact"><b>2</b><span>architectures to compare</span></div>
@@ -151,8 +161,11 @@
 <nav aria-label="Page sections">
   <div class="wrap">
     <a href="#content">VITRINE</a>
+    <a href="#customer">Customer</a>
+    <a href="Vitrine-One-Page-Summary.html">Plain-language summary</a>
     <a href="Vitrine-Digitec-Galaxus-Value-Proposal.html">Value proposal</a>
     <a href="#conversation">Why this matters</a>
+    <a href="#platform">AI platform</a>
     <a href="#proof-path">Proof path</a>
     <a href="#system">System</a>
     <a href="#demos">Demos</a>
@@ -165,9 +178,63 @@
 </nav>
 
 <main id="content">
+  <section id="customer">
+    <div class="wrap">
+      <div class="eyebrow">01 · What the customer sees</div>
+      <h2>A shopping need becomes a screened, evidence-bearing recommendation.</h2>
+      <p class="section-lead">Start with the experience before the evaluation vocabulary. This is
+        a faithful customer-oriented summary of the first card in the checked-in deterministic
+        Demo01 receipt—not a paid-model claim. The complete linked receipt remains the source of
+        truth.</p>
+      <div class="customer-showcase">
+        <figure>
+          <img class="screenshot" src="images/vitrine-customer-recommendation.png"
+               alt="Nadia's synthetic trip request and a screened K&amp;F neutral-density-filter recommendation with current price, stock, delivery, customer evidence, catalogue evidence, and visible measurement limits">
+          <figcaption>Genuine browser capture of the checked-in scripted-agent receipt. Open the
+            <a href="reports/demo01-scripted.html">complete customer-facing recommendation</a> to
+            inspect its grounded result, citations, and explicit measurement limits.</figcaption>
+        </figure>
+        <div class="scenario-list" aria-label="Four realistic evaluation scenarios">
+          <article class="card"><h3>Nadia · Cross-category intent</h3><p>Connect hiking, dawn
+            starts, power, carried weight, and photography without recommending products she
+            already owns.</p></article>
+          <article class="card"><h3>Sofia · Capability gap</h3><p>Separate a missing durable
+            coffee capability from consumables she may simply need to replenish.</p></article>
+          <article class="card"><h3>Marco · Gift-history trap</h3><p>Ignore gaming purchases that
+            were gifts and personalize from his own espresso evidence.</p></article>
+          <article class="card"><h3>Luca · Safe abstention</h3><p>Ask a useful clarifying question
+            instead of inventing preferences from one low-signal cable purchase.</p></article>
+        </div>
+      </div>
+
+      <h3>The 60-second proof path · no installation</h3>
+      <div class="grid4">
+        <article class="card"><span class="tag info">0–15 seconds</span><h3>Customer</h3><p>Inspect
+          the synthetic request and screened result.</p><a href="reports/demo01-scripted.html">See
+          the result →</a></article>
+        <article class="card"><span class="tag info">15–30 seconds</span><h3>System</h3><p>Compare
+          one tool-using agent with a five-stage workflow.</p><a href="#demos">Compare the
+          architectures →</a></article>
+        <article class="card"><span class="tag ok">30–45 seconds</span><h3>Evidence</h3><p>Open the
+          credential-free evaluation receipt.</p><a href="reports/evals-offline.html">Inspect the
+          report →</a></article>
+        <article class="card"><span class="tag warn">45–60 seconds</span><h3>Trust</h3><p>See why
+          the evaluator must detect a planted defect and recovery.</p><a href="Vitrine-Walkthrough.html">Follow
+          the walkthrough →</a></article>
+      </div>
+
+      <div class="callout warn"><p><strong>Independent portfolio project.</strong> Created by José
+        Luis Latorre Millas as a job-application value proposal for Digitec Galaxus; not affiliated
+        with, commissioned by, or endorsed by the company. All catalogue, persona, and
+        customer-history records are authored/synthetic; recognizable third-party product names
+        and trademarks are used illustratively. Recorded runs measure this sample, not a Digitec
+        Galaxus system.</p></div>
+    </div>
+  </section>
+
   <section id="conversation">
     <div class="wrap">
-      <div class="eyebrow">01 · The conversation</div>
+      <div class="eyebrow">02 · The conversation</div>
       <h2>If you ask what I can do for you, this is my answer.</h2>
       <p class="section-lead">These are the questions I designed the sample to answer—not quotes
         attributed to Digitec Galaxus. The point is to make our first technical conversation
@@ -193,13 +260,60 @@
     </div>
   </section>
 
+  <section id="platform">
+    <div class="wrap">
+      <div class="eyebrow">03 · For an AI platform team</div>
+      <h2>The recommender is the example subject. The reusable product is the engineering loop.</h2>
+      <p class="section-lead">The
+        <a href="https://www.galaxus.ch/en/joboffer/4376">AI Platform &amp; Knowledge Systems role</a>
+        is larger than one
+        shopping assistant: product teams need shared model access, authoritative tools,
+        evaluation, observability, and feedback without rebuilding those foundations for every
+        use case. VITRINE demonstrates how I approach that platform layer in working .NET code.</p>
+      <div class="grid3">
+        <article class="card"><span class="tag info">Observe</span><h3>Model and tool operations</h3><p><code>ObservedChatClient</code>,
+          operation IDs, bounded inputs/results, explicit response absence, and typed workflow
+          events make execution reconstructable without exposing credentials.</p></article>
+        <article class="card"><span class="tag info">Account</span><h3>Usage and cost states</h3><p>Known zero, measured usage,
+          missing telemetry, and known lower bounds stay different through execution, export, and
+          replay instead of collapsing into a flattering total.</p></article>
+        <article class="card"><span class="tag ok">Contain</span><h3>Fail-closed paid boundary</h3><p>Credentials alone never
+          select a paid path. The workload is previewed, confirmation is one-shot, readiness is
+          checked, and cancellation or provider failure still leaves a safe receipt.</p></article>
+        <article class="card"><span class="tag ok">Align</span><h3>One tool surface, several consumers</h3><p>The registered
+          read-only functions, runtime graph, allow-list, and evaluation observations share one
+          tool-surface invariant rather than drifting copies.</p></article>
+        <article class="card"><span class="tag warn">Challenge</span><h3>The evaluator is tested too</h3><p>A registered mutation
+          suite requires healthy behavior, detection of a deliberately planted defect, and
+          recovery. Green is meaningful only when the check can turn red for the right reason.</p></article>
+        <article class="card"><span class="tag info">Compare</span><h3>Versioned evidence, not anecdotes</h3><p>AgentEval stores
+          benchmark arms, missingness, paired comparisons, reliability intervals, safety
+          campaigns, and local outcomes that can be inspected after the model call is gone.</p></article>
+      </div>
+      <div class="callout"><p><strong>Related platform work:</strong>
+        <a href="https://github.com/AgentEvalHQ/AgentEval">AgentEval</a> is the .NET evaluation
+        toolkit I created and VITRINE consumes as a published package.
+        <a href="https://github.com/joslat/agent-memory-dotnet">agent-memory-dotnet</a> is my
+        separate Neo4j-backed, graph-native memory provider for Microsoft Agent Framework with
+        GraphRAG and MCP integration. It is adjacent knowledge-systems evidence, not a hidden
+        VITRINE dependency.</p></div>
+      <div class="callout warn"><p><strong>Honest role boundary:</strong> VITRINE does not claim to
+        implement Digitec Galaxus's knowledge graph, semantic data platform, MCP fabric, Agentic BI,
+        or production feedback systems. It demonstrates the evaluation, tool-observation, cost,
+        and evidence discipline that should surround those systems.</p></div>
+    </div>
+  </section>
+
   <section id="proof-path">
     <div class="wrap">
-      <div class="eyebrow">02 · The documentation hub</div>
+      <div class="eyebrow">04 · The documentation hub</div>
       <h2>Start at the altitude you need.</h2>
       <p class="section-lead">This page is the front door. Every deeper document follows the same
         evidence model and links back to the working sample.</p>
       <div class="grid2">
+        <article class="card route-card"><span class="tag info">Two minutes</span><h3>Plain
+          language, one page</h3><p>The customer problem, what VITRINE does, what the evidence adds,
+          and where its claims stop—without statistical or framework vocabulary.</p><a href="Vitrine-One-Page-Summary.html">Read the plain-language summary →</a></article>
         <article class="card route-card"><span class="tag ok">Business</span><h3>Why this could
           create value</h3><p>A first-person proposal connecting the implementation to discovery
           quality, safety, iteration speed, and accountable delivery.</p><a href="Vitrine-Digitec-Galaxus-Value-Proposal.html">Read my Digitec Galaxus value proposal →</a></article>
@@ -218,7 +332,7 @@
 
   <section id="system">
     <div class="wrap">
-      <div class="eyebrow">03 · System boundary</div>
+      <div class="eyebrow">05 · System boundary</div>
       <h2>The subject never grades itself</h2>
       <p class="section-lead">I keep the subject from grading itself. The recommendation project owns facts and observations. The eval
         project reads those artifacts and supplies independent expectations, applicability,
@@ -257,7 +371,7 @@
 
   <section id="demos">
     <div class="wrap">
-      <div class="eyebrow">04 · Two architectures</div>
+      <div class="eyebrow">06 · Two architectures</div>
       <h2>The same retail problem, two control structures</h2>
       <p class="section-lead">I implemented the same retail problem twice. Demo01 lets one agent decide which tools to call. Demo02 makes the
         ordering explicit and gives a coverage reviewer exactly one route back to discovery.</p>
@@ -266,18 +380,24 @@
         <div class="diagram">
           <svg viewBox="0 0 1040 475" role="img" aria-labelledby="demos-title demos-desc">
             <title id="demos-title">Single-agent and workflow architectures</title>
-            <desc id="demos-desc">Demo 1 has one ChatClientAgent registered with thirteen read-only tools before guardrails screen recommendations; two approval-gated commit tools exist only in the evaluation configuration. Demo 2 has five executors with one conditional edge from CoverageReviewer back to Discovery.</desc>
+            <desc id="demos-desc">Demo 1 has one ChatClientAgent registered with thirteen read-only tools before guardrails screen recommendations; two approval-gated commit tools exist only in a separate test and evaluation fixture. Demo 2 has five executors, with Discovery and CoverageReviewer forming a bounded agentic RAG retrieve-and-critique loop.</desc>
             <defs><marker id="arrow-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
             <text class="svg-label" x="24" y="30">DEMO 01 · FREE TOOL ORDER</text>
             <rect class="node-blue" x="24" y="56" width="156" height="65" rx="8"/><text class="svg-title" x="102" y="84" text-anchor="middle">Customer request</text><text class="svg-sub" x="102" y="104" text-anchor="middle">+ derived interests</text>
             <rect class="node-violet" x="260" y="46" width="190" height="84" rx="8"/><text class="svg-title" x="355" y="77" text-anchor="middle">ChatClientAgent</text><text class="svg-sub" x="355" y="101" text-anchor="middle">Robin · scripted or live</text>
-            <rect class="node" x="540" y="46" width="190" height="84" rx="8"/><text class="svg-title" x="635" y="75" text-anchor="middle">13 read-only tools</text><text class="svg-sub" x="635" y="98" text-anchor="middle">+ 2 gated · eval only</text>
+            <rect class="node" x="540" y="46" width="190" height="84" rx="8"/><text class="svg-title" x="635" y="75" text-anchor="middle">13 read-only tools</text><text class="svg-sub" x="635" y="98" text-anchor="middle">+ 2 gated · test fixture</text>
             <rect class="node-teal" x="820" y="56" width="188" height="65" rx="8"/><text class="svg-title" x="914" y="84" text-anchor="middle">Screened cards</text><text class="svg-sub" x="914" y="104" text-anchor="middle">typed evidence only</text>
             <path class="edge" d="M180 88L256 88" marker-end="url(#arrow-d)"/><path class="edge" d="M450 72C486 48 505 48 536 68" marker-end="url(#arrow-d)"/><path class="edge" d="M540 108C504 132 484 132 454 112" marker-end="url(#arrow-d)"/><path class="edge" d="M730 88L816 88" marker-end="url(#arrow-d)"/>
             <text class="svg-sub" x="494" y="37" text-anchor="middle">call</text><text class="svg-sub" x="495" y="149" text-anchor="middle">result</text>
             <text class="svg-sub" x="355" y="169" text-anchor="middle">--offline bypasses this agent and runs the deterministic baseline</text>
             <line x1="24" y1="205" x2="1008" y2="205" stroke="var(--line)"/>
             <text class="svg-label" x="24" y="244">DEMO 02 · FIXED MAF GRAPH</text>
+            <g role="group" aria-label="Bounded agentic RAG loop: Discovery retrieves; CoverageReviewer critiques">
+              <title>Bounded Agentic RAG: Discovery retrieves and CoverageReviewer critiques</title>
+              <rect class="agentic-rag-box" x="210" y="258" width="422" height="190" rx="12"/>
+              <rect class="agentic-rag-chip" x="250" y="249" width="342" height="22" rx="6"/>
+              <text class="svg-label" x="421" y="264" text-anchor="middle">BOUNDED AGENTIC RAG · RETRIEVE ↔ CRITIQUE</text>
+            </g>
             <g>
               <rect class="node" x="24" y="280" width="164" height="68" rx="8"/><text class="svg-title" x="106" y="307" text-anchor="middle">InterestMapper</text><text class="svg-sub" x="106" y="329" text-anchor="middle">history → map</text>
               <rect class="node" x="230" y="280" width="150" height="68" rx="8"/><text class="svg-title" x="305" y="307" text-anchor="middle">Discovery</text><text class="svg-sub" x="305" y="329" text-anchor="middle">retrieval only</text>
@@ -290,49 +410,53 @@
             <text class="svg-label" x="411" y="420" text-anchor="middle">ONE conditional loop-back · gaps remain + progress possible</text>
           </svg>
         </div>
-        <figcaption>Five nodes and five edges are read from MAF's reflected graph during evaluation;
-          the topology gate is not grading this drawing.</figcaption>
+        <figcaption>The dashed enclosure names the bounded agentic RAG pattern: Discovery is the
+          retrieval maker and CoverageReviewer is the critic. It is a render-only explanation—not
+          a sixth executor or a claim that two chat agents converse. Five nodes and five edges are
+          read from MAF's reflected graph during evaluation; the topology gate is not grading this drawing.</figcaption>
       </figure>
     </div>
   </section>
 
   <section id="evals">
     <div class="wrap">
-      <div class="eyebrow">05 · Evaluation chain</div>
+      <div class="eyebrow">07 · Evaluation chain</div>
       <h2>Native 0.35 outcomes, bounded by evidence</h2>
       <p class="section-lead">I start with deterministic evidence, then spend model calls only
         where they answer a different question. Eleven domain-specific <code>AtomicCodeEval</code>
         checks enter through AgentEval's floor-admission door: five recommendation predicates in
-        the benchmark and six production gates. Local sign-test, forced-choice, null-model,
+        the benchmark plus six offline production checks—five mandatory evaluation gates and one
+        matched-quality diagnostic. Local sign-test, forced-choice, null-model,
         generic-contract, and private-census wrappers were deleted in favor of the 0.35
         abstractions.</p>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Gate</th><th>AgentEval surface</th><th>Input</th><th>Honest scope</th></tr></thead>
+          <thead><tr><th>Check or evidence stage</th><th>AgentEval surface</th><th>Input</th><th>Honest scope</th></tr></thead>
           <tbody>
-            <tr><td>Catalogue</td><td><code>AtomicCodeEval</code></td><td>Real subject collections</td><td>99 products · 14 personas · 15 tools</td></tr>
-            <tr><td>Topology</td><td><code>MAFWorkflowAdapter</code> + atomic</td><td>Real workflow graph</td><td>5 executors · 1 review loop-back</td></tr>
-            <tr><td>Quality</td><td><code>IEvaluator → EvalInput → AtomicCodeEval</code></td><td>Matched Demo01/Demo02 criterion observations in separate benchmark arms</td><td>The judge receives input, output, and criteria directly; the admitted leaf owns the verdict and native reference comparison owns ties/losses</td></tr>
+            <tr><td>Catalogue</td><td><code>AtomicCodeEval</code></td><td>Real subject collections</td><td>99 products · 14 personas · 13 shipped read-only tools plus 2 approval-gated test/evaluation fixtures</td></tr>
+            <tr><td>Topology</td><td><code>MAFWorkflowAdapter</code> + atomic</td><td>Real workflow graph</td><td>5 executors · 5 edges · 1 review loop-back</td></tr>
+            <tr><td>Matched quality · diagnostic</td><td><code>IEvaluator → EvalInput → AtomicCodeEval</code></td><td>Matched Demo01/Demo02 criterion observations in separate benchmark arms</td><td>Reported as evaluator/benchmark evidence but excluded from process-exit authority; the judge receives input, output, and criteria directly, while native reference comparison owns ties/losses</td></tr>
             <tr><td>Injection</td><td><code>RedTeamRunner → AtomicCodeEval</code></td><td>Real AgentEval attacks against deterministic guarded/vulnerable calibration arms, including <code>ToolOutput</code></td><td>Safe resists; poison-dependent vulnerable calls are behavioral; this is offline calibration, not a Robin result</td></tr>
             <tr><td>Recall</td><td><code>MemoryTestRunner → AtomicCodeEval</code></td><td>Actual recommendation <code>ChatClientAgent</code> adapter with deterministic/ablated providers</td><td>Raw recall measurements feed the admitted leaf; this is not durable or live-model memory proof</td></tr>
             <tr><td>Honesty</td><td><code>ExactTests → AtomicCodeEval</code></td><td>Four informative pairs plus committed evidence</td><td>Minimum attainable two-sided p = 0.125; recomputation owns the verdict</td></tr>
             <tr><td>Benchmark</td><td><code>BenchmarkDefinition → Arm → Runner → Score</code></td><td>Nadia + Sofia stimuli; Demo01, Demo02, and degraded system arms; five admitted checks; two separate reps</td><td>Six standard runs below <code>.agenteval/Vitrine</code>; native census/floor facts plus Demo01-reference comparisons; score facts are not gate verdicts</td></tr>
-            <tr><td>Controls</td><td>Diagnostic shipped decision seams; no chance floors</td><td>20 production-observation + 23 boundary/calibration fixtures</td><td>Typed scope travels from manifest through results, CLI/reports, schema-v8 artifacts, inspector, app HTML, and UI. Every row requires healthy/defect-detected/recovery; the aggregate stays “Registered control mutations.”</td></tr>
+            <tr><td>Controls</td><td>Diagnostic shipped decision seams; no chance floors</td><td>20 production-observation + 23 boundary/calibration fixtures</td><td>Typed scope travels from manifest through results, CLI/reports, schema-v10 artifacts, inspector, app HTML, and UI. Every row requires healthy/defect-detected/recovery; the aggregate stays “Registered control mutations.”</td></tr>
           </tbody>
         </table>
       </div>
-      <div class="callout"><p><strong>ADR boundary:</strong> VITRINE uses the published
-        <code>AgentEval 0.35.0-beta</code> neutral meta and benchmark abstractions. ADR-031's pack
-        proposal was rejected as scoped, so there is no competing <code>pack.json</code> or pack
-        store.</p></div>
-      <div class="callout"><p><strong>Evaluation graph:</strong> 14 evidence-bearing nodes show six
-        admitted production-check gates, five recommendation predicates, native persistence/score,
+      <div class="callout"><p><strong>Package boundary:</strong> VITRINE uses the published
+        <code>AgentEval 0.35.0-beta</code> neutral meta and benchmark abstractions. It deliberately
+        adds no competing <code>pack.json</code>, pack CLI, or parallel result store.</p></div>
+      <div class="callout"><p><strong>Evaluation graph:</strong> 14 evidence-bearing nodes show five
+        mandatory evaluation gates plus the matched-quality diagnostic, five recommendation predicates, native persistence/score,
         a separate 43-control diagnostic node, and the suite terminal. Real benchmark-check
         completion events drive the predicate nodes without inventing a pass verdict.</p></div>
       <div class="callout"><p><strong>Offline remains intact and default:</strong>
         <code>Evals/Offline</code> owns this deterministic suite and its diagnostics.
         <code>Evals/Live</code> adds six explicitly paid use-case and safety plans; choosing one never replaces
-        or silently falls back to the offline suite. <code>OfflineDeterministic</code> is the sole
+        or silently falls back to the offline suite. The App keeps its first-view choice to Offline,
+        Eval 01 Agent, and Eval 02 Workflow; an explicit <strong>Advanced</strong> switch reveals
+        Eval 03–06. <code>OfflineDeterministic</code> is the sole
         execution-profile value; the old live profile was removed, and its former CLI spelling is
         only a confirmed Eval 03 alias.</p></div>
       <div class="table-wrap">
@@ -341,9 +465,9 @@
           <tbody>
             <tr><td>Eval 01 · Agent</td><td>Fresh Robin agent</td><td>One run per selected case</td></tr>
             <tr><td>Eval 02 · Workflow</td><td>Fresh five-executor workflow</td><td>One run per selected case</td></tr>
-            <tr><td>Eval 03 · Agent vs workflow</td><td>Agent reference + workflow challenger</td><td>Configurable repetitions; paired-case <code>RepCollapse.All</code>; repetition counts, minimum attainable p, and native comparison facts</td></tr>
-            <tr><td>Eval 04 · Stochastic agent</td><td>Repeated Robin agent</td><td>Per-check census and Wilson reliability interval</td></tr>
-            <tr><td>Eval 05 · Stochastic workflow</td><td>Repeated discovery workflow</td><td>Per-check census and Wilson reliability interval</td></tr>
+            <tr><td>Eval 03 · Agent vs workflow</td><td>Advanced paired diagnostic; no winner or terminal authority</td><td>Configurable repetitions; paired-case <code>RepCollapse.All</code>; repetition counts, minimum attainable p, and native comparison facts. Absolute trial quality still owns terminal success.</td></tr>
+            <tr><td>Eval 04 · Stochastic agent</td><td>Repeated Robin agent</td><td>Minimum four repetitions; terminal acceptance requires every selected scenario's whole-trial 95% Wilson lower bound to be at least 0.50; per-check intervals remain diagnostic evidence</td></tr>
+            <tr><td>Eval 05 · Stochastic workflow</td><td>Repeated discovery workflow</td><td>Minimum four repetitions; the same per-arm/per-scenario whole-trial Wilson rule, with each acceptance decision persisted</td></tr>
             <tr><td>Eval 06 · Safety probes</td><td>Fresh real Robin targets</td><td>Four AgentEval jailbreak/extraction probes by default; redacted census; 104-model-call mechanical ceiling; no scenario or repetition selector</td></tr>
           </tbody>
         </table>
@@ -354,10 +478,14 @@
         <strong>Confirm paid execution</strong>. The CLI requires <code>--confirm-paid</code>.
         Readiness failure starts no model call and never selects an offline result.</p></div>
       <div class="callout"><p><strong>Use-case quality and failure semantics:</strong> for Eval 01–05, the reported pass bar
-        defaults to <code>0.75</code> and is not a chance floor. Bounded criterion explanations are
-        retained. Provider terminal failure/cancellation becomes <code>NotMeasured</code>; the
-        workflow's separate two-attempt mapper/reviewer/ranker/presenter fallbacks are counted and
-        disclosed as degradation evidence, not hidden.</p></div>
+        defaults to <code>1.00</code>, so all four authored criteria must pass; a three-of-four score is
+        a measured quality failure. The bar is not a chance floor. Bounded criterion explanations are
+        retained. A provider terminal failure makes the affected subject/trial <code>NotMeasured</code>;
+        cancellation keeps the session <code>Cancelled</code> (exit 130) while preserving that missing trial evidence. The
+        workflow's model stages retain typed attempt, response, unusable, failure, cancellation,
+        and recovery evidence. A failed/unusable attempt followed by a usable response is visibly
+        <code>Recovered</code> and may remain measured; unrecovered, cancelled, or final-fallback
+        stages fail the live quality observation closed as <code>NotMeasured</code>.</p></div>
       <div class="callout"><p><strong>Four shared use cases:</strong>
         <code>nadia-cross-category</code> tests connected multi-interest evidence;
         <code>sofia-capability-gap</code> separates durable discovery from replenishment;
@@ -373,23 +501,25 @@
         error-free but undecidable campaign is not measured; missing, skipped, truncated,
         malformed, or errored coverage is an infrastructure error and fails closed. <em>Errored</em> is a subset of
         <em>inconclusive</em>, not an extra probe count. Each errored probe retains an allow-listed
-        stage/code/detail explanation while raw provider detail stays suppressed. The <code>0.75</code> use-case bar
+        stage/code/detail explanation while raw provider detail stays suppressed. The <code>1.00</code> use-case bar
         is not its decision rule.</p></div>
       <div class="callout"><p><strong>Local evidence:</strong> Eval 01–05 write one standard AgentEval directory
         per arm/repetition below <code>.agenteval/live</code>; Eval 06 writes no benchmark run.
         Every paid plan writes a sanitized session receipt
         at <code>.agenteval/live/live-sessions/&lt;session-id&gt;/outcome.json</code>, with a rolling
-        <code>live-sessions/index.json</code>. Eval 01–05 retain the threshold, bounded criteria and
-        degradation evidence, Wilson facts, and native comparison context; Eval 06 retains only
+        <code>live-sessions/index.json</code>. Eval 01–03 retain their every-trial acceptance policy
+        and no scenario-decision rows; Eval 04/05 additionally retain per-scenario whole-trial
+        Wilson decisions. All five retain the threshold, bounded criteria and degradation evidence,
+        per-check Wilson facts, and native comparison context; Eval 06 retains only
         redacted safety configuration, census/probe metadata, workload ceiling, and usage.</p></div>
     </div>
   </section>
 
   <section id="controls">
     <div class="wrap">
-      <div class="eyebrow">06 · Negative controls</div>
+      <div class="eyebrow">08 · Negative controls</div>
       <h2>A green check must detect a planted defect</h2>
-      <p class="section-lead">VITRINE retains the 43 original gating control names and intents as
+      <p class="section-lead">VITRINE retains the 43 registered mutation-control names and intents as
         a typed registered panel. A production-observation row captures shipped state and reuses
         the shipped decision seam. A boundary/calibration/containment fixture exercises an
         independently authored public contract. Both require healthy green, perturbed red, and
@@ -418,7 +548,7 @@
 
   <section id="honesty">
     <div class="wrap">
-      <div class="eyebrow">07 · Claim boundary</div>
+      <div class="eyebrow">09 · Claim boundary</div>
       <h2>What the evidence permits us to say</h2>
       <p class="section-lead">I want every claim to stop where the evidence stops. A missing or
         incomplete measurement is a result to investigate, not a zero to average away.</p>
@@ -432,7 +562,7 @@
 
   <section id="ui">
     <div class="wrap">
-      <div class="eyebrow">08 · Control room</div>
+      <div class="eyebrow">10 · Control room</div>
       <h2>Watch the evidence form while the real system runs</h2>
       <p class="section-lead">I make execution, failure, absence, and saved proof visible in one
         control room. <code>AgentEval.VitrineDemo.App</code> adapts Gatekeeper's Avalonia
@@ -446,7 +576,7 @@
       <div class="grid2">
         <article class="card"><span class="tag ok">Runtime-aligned</span><h3>Directed, counted evidence</h3><p>Demo01's graph and agent consume the same prepared observed tools. Demo02's topology comes from <code>MAFWorkflowAdapter</code>. Arrowed edges show traversal counts; nodes show execution counts; the flat <code>BACK</code> route and an executor-action shelf explain the loop without inventing tools.</p></article>
         <article class="card"><span class="tag ok">Correlated</span><h3>Requests, responses, and outcomes</h3><p>Model/tool cards correlate by operation ID and expand to safe arguments/results or explicit absence copy. The exact screened customer response stays separate. Subject, check, and trial terminals close their starts; live session completion also closes persistence and session starts. Nothing stays <code>ACTIVE</code> after completion, even while optional presentation pacing drains.</p></article>
-        <article class="card"><span class="tag ok">Same verdicts</span><h3>Evals, export, and replay</h3><p>For the offline suite, the board separates six admitted production-check gates, the persisted three-arm/two-repetition benchmark, and 43 diagnostics. Eval 01–05 show scenario trials, bounded response/trace evidence, per-check Wilson facts, comparisons, usage when reported, and local persistence; Eval 06 shows its redacted Robin safety census, safe session-level cause, per-probe allow-listed diagnostics, and 104-call ceiling. Schema-v8 JSON/HTML and replay preserve the same facts and execute nothing; schema-v7 artifacts remain readable.</p></article>
+        <article class="card"><span class="tag ok">Same verdicts</span><h3>Evals, export, and replay</h3><p>For the offline suite, the board separates five mandatory evaluation gates, one matched-quality diagnostic, the persisted three-arm/two-repetition benchmark, and 43 mutation diagnostics. Eval 01–03 show every-trial acceptance with no scenario-decision rows; Eval 04/05 add per-scenario whole-trial Wilson decisions. All five show scenario trials, bounded response/trace evidence, per-check Wilson facts, comparisons, usage when reported, and local persistence. Eval 06 shows its redacted Robin safety census, safe session-level cause, per-probe allow-listed diagnostics, and 104-call ceiling. Schema-v10 JSON/HTML and replay preserve the same facts and execute nothing; integrity-valid schema-v7/v8/v9 artifacts remain readable.</p></article>
         <article class="card"><span class="tag info">Discoverable</span><h3>Options and actions</h3><p>Delayed hover help explains modes, personalization, JSON, HTML, replay, and disabled prerequisites. On/right means personalization enabled; actions become available only when their prerequisites exist.</p></article>
       </div>
       <div class="callout"><p><strong>Trust boundary:</strong> execution publishes immediately;
@@ -470,7 +600,7 @@
 
   <section id="run">
     <div class="wrap">
-      <div class="eyebrow">09 · Ten-minute path</div>
+      <div class="eyebrow">11 · Ten-minute path</div>
       <h2>Run the evidence, then make it fail</h2>
       <pre><span aria-hidden="true"># </span>Avalonia control room · offline default
 .\start.ps1 -Mode App
@@ -483,6 +613,9 @@
 
 <span aria-hidden="true"># </span>Standalone selector 1 · selectors 1–6 remain offline by default
 dotnet run --project src/AgentEval.VitrineDemo -- 1
+
+<span aria-hidden="true"># </span>Reproduce the checked-in Demo01 agent receipt · local deterministic ChatClient
+dotnet run --project src/AgentEval.VitrineDemo -- 1 --scripted --report docs/reports/demo01-scripted.html
 
 <span aria-hidden="true"># </span>Provider-backed subject · both flags are required
 dotnet run --project src/AgentEval.VitrineDemo -- 1 --live --confirm-paid
@@ -502,16 +635,23 @@ dotnet run --project src/AgentEval.VitrineDemo.Evals -- --eval-plan eval05-stoch
 <span aria-hidden="true"># </span>Fixed paid Robin safety campaign; no scenario or repetition option
 dotnet run --project src/AgentEval.VitrineDemo.Evals -- --eval-plan eval06-safety-probes --confirm-paid
 
-<span aria-hidden="true"># </span>All 43 registered control mutations, with honest row scope
-.\start.ps1 -Mode Controls -NoRestore
-
 <span aria-hidden="true"># </span>Catalogue integrity self-test; expected defect detection exits 1
 .\start.ps1 -Mode Ablation -NoRestore</pre>
+      <p><strong>Advanced diagnostic shortcut:</strong>
+        <code>.\start.ps1 -Mode Controls -NoRestore</code> reruns only the 43 registered control
+        mutations already included in the full offline AgentEval chain above. The
+        <a href="Vitrine-Walkthrough.html">operator walkthrough</a> documents this focused lane.</p>
       <div class="callout warn"><p><strong>Standalone cost guard:</strong> credentials alone never
-        select a live subject. Selectors 1–6 stay offline unless <code>--live</code> and
-        <code>--confirm-paid</code> are both present. <code>--real-vectors</code> and
+        select a live subject. Demo01's <code>--scripted</code> arm drives the real agent and tools
+        with a local deterministic chat client; <code>--offline</code>, <code>--scripted</code>, and
+        <code>--live</code> are mutually exclusive. Provider-backed subjects require
+        <code>--live --confirm-paid</code>. <code>--real-vectors</code> and
         <code>--rebuild-embeddings</code> can call an embedding provider and therefore also require
         <code>--confirm-paid</code>.</p></div>
+      <p>Before the first provider call, follow the
+        <a href="Vitrine-Live-Run-Setup.html">Microsoft Foundry live-run setup</a> for the current
+        explicit API-key/local-Entra/managed-identity contract, separate subject/judge deployment names, safe PowerShell variables, a one-case CLI/UI
+        smoke, and sanitized evidence handling.</p>
       <div class="grid3">
         <article class="card"><h3>Digitec Galaxus value proposal</h3><p><a href="Vitrine-Digitec-Galaxus-Value-Proposal.html">The recruiter-facing “what I can do for you” case</a></p></article>
         <article class="card"><h3>Operator walkthrough</h3><p><a href="Vitrine-Walkthrough.html">Agent, workflow, evals, self-test, statuses, evidence, and replay</a></p></article>
@@ -525,15 +665,24 @@ dotnet run --project src/AgentEval.VitrineDemo.Evals -- --eval-plan eval06-safet
         <a href="reports/evals-offline.json">evaluation JSON</a>. Generated examples carry their
         own run identity and are not the normative evaluation contract. Standard AgentEval output is also persisted below the
         gitignored <code>.agenteval/Vitrine</code>, with six directories per benchmark execution.</p></div>
+      <div class="callout"><p><strong>One current paid integration observation:</strong>
+        <a href="evidence/vitrine-live-eval02-sofia-2026-09-10.html">sanitized Sofia Eval02 HTML</a> ·
+        <a href="evidence/vitrine-live-eval02-sofia-2026-09-10.json">JSON</a>. The single measured
+        trial is bound to implementation commit <code>028ac51</code>; it proves one successful
+        end-to-end workflow and judge observation, not reliability or production quality.</p></div>
     </div>
   </section>
 </main>
 
 <footer>
-  <div class="wrap">This index is the canonical HTML documentation hub for VITRINE · offline
-    bundle · no remote scripts, fonts, images, or network requests ·
+  <div class="wrap">Built by <strong>José Luis Latorre Millas</strong> as an independent Digitec
+    Galaxus application project · <a href="https://github.com/joslat/Vitrine">source</a> ·
+    <a href="https://www.linkedin.com/in/joslat/">LinkedIn</a> ·
+    <a href="https://sessionize.com/joslat/">profile and talks</a> ·
+    <a href="Vitrine-One-Page-Summary.html">plain-language summary</a> ·
     <a href="Vitrine-Digitec-Galaxus-Value-Proposal.html">value proposal</a> ·
     <a href="Vitrine-Walkthrough.html">walkthrough</a> ·
+    <a href="Vitrine-Live-Run-Setup.html">live-run setup</a> ·
     <a href="Vitrine-Retrieval-Deep-Dive.html">retrieval deep dive</a> ·
     <a href="Vitrine-Architecture.html">architecture</a> ·
     <a href="Vitrine-Evaluation-Protocol.html">evaluation protocol</a> ·

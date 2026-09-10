@@ -31,71 +31,39 @@ public enum EmbeddingSpaceChoice
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Why this type exists.</b> Before it, four construction sites — Demo 01's retriever, Demo 01's
-/// confidence and attribution arithmetic, <c>DiscoveryWorkflow</c> and the eval suite's composition
-/// root — each named <see cref="ConceptEmbeddingSource"/> literally. Committing real vectors (B-6)
-/// therefore changed nothing that runs: there was no seam to move. This is that seam, and it is a
-/// SELECTOR rather than a rewrite — every one of those sites now asks the same question and gets
-/// the same answer, so a run cannot be half in one embedding space and half in another.
+/// Demo 01 retrieval, confidence and attribution, <c>DiscoveryWorkflow</c>, and the evaluation
+/// composition root all resolve through this selector. One run therefore cannot compute related
+/// values in different embedding spaces.
 /// </para>
 /// <para>
-/// <b>Two vectors from two spaces must never meet.</b> The concept space is 24 authored dimensions;
-/// <c>text-embedding-3-small</c> is 1536. A cosine between them is not a weak signal, it is a
-/// category error, and <see cref="EmbeddingVectors.DotOfUnitVectors"/> returns 0 for mismatched
-/// lengths precisely so it cannot be computed by accident. Resolution is therefore per PROCESS,
-/// memoised, and <see cref="Requested"/> refuses to change once anything has resolved.
+/// <b>Embedding spaces never mix.</b> The concept space has 24 authored dimensions and the
+/// committed <c>text-embedding-3-small</c> index has 1536. A cosine across spaces is a category
+/// error, not a weak signal. Resolution is process-wide and memoised, and <see cref="Requested"/>
+/// becomes immutable after resolution.
 /// </para>
 /// <para>
-/// <b>The real-vector path embeds its QUERIES LIVE, and that is the B-21 fix.</b> Until 2026-09-05
-/// this selector attached no live source and the committed assets carried a second file of 71
-/// pre-guessed query texts. A query composed at run time is not one of 71 guesses, so it came back
-/// <c>Unavailable</c>, the dense leg ranked nothing, and <c>--real-vectors</c> produced
-/// <c>0 in → 0 out</c> for every persona. Production retrieval systems do not work that way and
-/// never did: the INDEX is precomputed, the QUERY is embedded when it is asked. So the query table
-/// is deleted and <see cref="AzureEmbeddingSource"/> is attached here, memoised per run, once per
-/// distinct text.
+/// <b>The real-vector path is a precomputed product index with live queries.</b> Product documents
+/// are committed once; open-ended query text is embedded at search time through
+/// <see cref="AzureEmbeddingSource"/> and memoised per exact text for the run. This path needs
+/// credentials and incurs provider usage.
 /// </para>
 /// <para>
-/// <b>The live deployment's NAME comes from the asset's own model stamp, not from configuration.</b>
-/// This is the rule that makes the path work rather than a convenience. <c>Config.EmbeddingDeployment</c>
-/// resolves from <c>AZURE_OPENAI_EMBEDDING_DEPLOYMENT</c>, which on the machine this was written on
-/// names <c>text-embedding-ada-002</c> — a DIFFERENT space from the committed
-/// <c>text-embedding-3-small</c> vectors, and, fatally, the same 1536 dimensions, so no shape check
-/// can catch it. The committed index names the only embedder that can answer questions about it, and
-/// so the index picks the deployment. When the configured deployment differs, that is PRINTED rather
-/// than silently overridden.
+/// <b>The asset stamp selects the query deployment.</b> Model name matters even when dimensions
+/// agree: <c>text-embedding-ada-002</c> and <c>text-embedding-3-small</c> are both 1536-dimensional
+/// but are different spaces. A configuration mismatch is reported, and the committed index's
+/// model stamp remains authoritative.
 /// </para>
 /// <para>
-/// <b>And the space is PROVEN, not assumed.</b> <see cref="Resolve"/> embeds one product's exact
-/// embedding document through the live source and takes the cosine against the committed vector for
-/// that same text. In the right space the expected value is 1.0 by construction — the asset holds
-/// the vector for exactly that string — so <see cref="SpaceIdentityProbeFloor"/> is a tolerance for
-/// float32 round-trip and provider nondeterminism, NOT a tuned threshold; in the wrong space it is
-/// near zero. The measured cosine is carried on the resolution and printed in the banner, so the
-/// number is never an unexamined constant. It costs one embedding call of roughly 120 tokens.
+/// <b>The live and committed spaces are verified.</b> <see cref="Resolve"/> re-embeds one product's
+/// exact document and compares it with the committed vector for that text. The expected cosine is
+/// 1.0; <see cref="SpaceIdentityProbeFloor"/> allows float32 round-trip and provider variation.
+/// The measured cosine is reported. The probe costs one additional embedding call.
 /// </para>
 /// <para>
-/// <b>No credentials ⇒ the concept space, loudly.</b> Real embeddings need a key. Without one the
-/// real-vector path CANNOT embed a query at all, and the honest answer is not a zero vector and not
-/// an index that returns nothing — it is the concept space, with the reason printed. Every banner
-/// says which space produced the numbers on screen.
-/// </para>
-/// <para>
-/// <b>A fallback is never silent.</b> When the real-vector path is asked for and cannot be stood up
-/// — absent assets, a stale stamp, no key, a failed probe — <see cref="Resolve"/> returns the
-/// concept source WITH the reason, and every banner prints it. A silent fallback is the failure this
-/// whole file is guarding: it would let a stale or absent asset masquerade as real-vector retrieval,
-/// and every number downstream would be attributed to the wrong space.
-/// </para>
-/// <para>
-/// ⚠ <b>The real-vector path is no longer offline, and nothing pretends otherwise.</b>
-/// <see cref="EmbedAsync"/> is async precisely because it may reach the network: the confidence and
-/// attribution arithmetic in <c>Demo01</c> goes through this selector, so it is in the SAME space
-/// that did the retrieving — which is the only arrangement under which the banner's claim about
-/// "the numbers on screen" is true of all of them. The alternative, keeping those two call sites on
-/// the concept space, was rejected: it would put one run's retrieval and one run's confidence in two
-/// incomparable spaces, which is exactly the half-and-half state the memoisation and the
-/// <see cref="Requested"/> guard below exist to prevent.
+/// <b>Fallback is explicit.</b> Missing assets, invalid stamps, absent credentials, or a failed
+/// identity probe select the deterministic concept source with a printed reason. Every reported
+/// number is therefore attributable to the named space; a real-vector request never degrades
+/// silently or pretends to remain offline.
 /// </para>
 /// </remarks>
 public static class EmbeddingSpace
@@ -105,41 +73,15 @@ public static class EmbeddingSpace
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>CONCEPT — and at B-21 the REASON changed completely while the answer did not.</b> That
-    /// distinction is the whole of this comment, because a default kept for a reason that has been
-    /// refuted is not a default, it is inertia.
+    /// <b>Auto selects the concept space for reproducibility.</b> It is deterministic, key-free,
+    /// and cost-free, so the same scored suite does not change spaces merely because one machine
+    /// has credentials in its environment.
     /// </para>
     /// <para>
-    /// <b>The old reason is DEAD.</b> Until 2026-09-05 this constant said: real vectors would stop
-    /// the dense leg running at all, because 38 of the 50 issued queries missed a 71-entry
-    /// pre-guessed query table, Demo 01 fell from 6 recommendations to 0, and Eval 04 exited 1.
-    /// Every one of those numbers was real and every one of them was a property of the query table,
-    /// not of the vectors. The table is deleted, queries are embedded live, and the same path now
-    /// retrieves. Re-measured 2026-09-05 after the fix, <c>--real-vectors</c> with credentials:
-    /// ARM D of <c>AuthoredQueryPhraseRetrievability</c> reads <b>0 of 50</b> unanswerable, against
-    /// 38 of 50 before and 8 of 50 in the concept space. ⚠ The concept-space half of that comparison
-    /// is <b>superseded</b>: D-v's lexicon closure (plan item 8.11, <c>fc352481</c>, 2026-09-06) took
-    /// it to <b>6 of 50</b>. The 0-of-50 and 38-of-50 figures are properties of the real-vector path
-    /// and did not move.
-    /// </para>
-    /// <para>
-    /// <b>The new reason is REPRODUCIBILITY, and it is a different argument.</b> An <c>Auto</c> that
-    /// preferred real vectors would resolve differently depending on whether a key happens to be
-    /// present in the environment — so two runs of the same eval, on the same commit, would score in
-    /// two incomparable spaces and neither would say which one you were reading unless you looked at
-    /// the banner. That is the silent-downgrade failure this file exists to prevent, running in
-    /// reverse: a silent UPGRADE is just as unattributable. The concept space is deterministic,
-    /// needs no key, spends nothing, and is the same on every machine; it is the right thing for a
-    /// default that a scored suite runs under.
-    /// </para>
-    /// <para>
-    /// <b>Which of the two RETRIEVES better is a separate question, and the answer is real
-    /// vectors.</b> Nothing here claims otherwise, and the flag is one keystroke. What a default may
-    /// not do is decide that question differently on two machines.
-    /// </para>
-    /// <para>
-    /// <b>This is one line to flip</b> if the project ever decides reproducibility is worth less
-    /// than fidelity. It is a declared, measured change, not a quiet one.
+    /// Retrieval fidelity is a separate choice. On the current 50-phrase diagnostic, the live
+    /// real-vector path has <b>0 of 50</b> unanswerable phrases and the concept path has
+    /// <b>6 of 50</b>. Callers that accept credentials, network access, and spend can request
+    /// <c>--real-vectors</c> explicitly.
     /// </para>
     /// </remarks>
     public const EmbeddingSpaceChoice AutoPrefers = EmbeddingSpaceChoice.ConceptVectors;
@@ -231,12 +173,9 @@ public static class EmbeddingSpace
             {
                 if (ReferenceEquals(_resolvedFor, products)) return _resolution;
 
-                // A DIFFERENT catalogue after something has already resolved. Before B-21 re-running
-                // ResolveCore here was merely wasteful; now it would issue a second live probe and,
-                // worse, swap the process's embedding source out from under everything that had
-                // already retrieved with the first one — one report, two spaces, exactly what the
-                // Requested setter throws to prevent. Every call site passes Catalogue.Default.All,
-                // whose backing reference is stable, so reaching this is a wiring mistake.
+                // Re-resolving over a different catalogue could issue another live probe and swap
+                // the process-wide source after earlier retrievals. One report must use one space;
+                // reaching this guard is a wiring error.
                 throw new InvalidOperationException(
                     $"The embedding space is already resolved to '{_resolution.Chosen}' over a catalogue of "
                   + $"{_resolvedFor?.Count ?? 0} products, and a different catalogue of {products.Count} was passed. "
@@ -256,11 +195,8 @@ public static class EmbeddingSpace
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Async because the resolved space may be LIVE.</b> This replaced a synchronous
-    /// <c>EmbedOffline</c> at B-21. That method was safe only while this selector refused to attach
-    /// a live path, and it was the reason the confidence arithmetic could not join the real-vector
-    /// path — so the choice was between two spaces in one run and an async call chain, and the
-    /// async call chain is the one that keeps the banner honest.
+    /// Async because the resolved real-vector space embeds queries live. Retrieval, confidence,
+    /// and attribution all use this same path.
     /// </para>
     /// <para>
     /// Returns the UNAVAILABLE sentinel (an empty memory) when the resolved source cannot answer;
@@ -371,7 +307,7 @@ public static class EmbeddingSpace
             return FallBack(
                 requested,
                 $"the {index.CachedVectorCount} committed '{index.ModelId}' product vectors validated, but a QUERY "
-              + "must be embedded at search time and AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY are not set. An "
+              + "must be embedded at search time and Azure OpenAI live configuration is not ready. An "
               + "index with no way to embed a query returns nothing at all, which is worse than a different space",
                 index.LoadWarnings);
         }

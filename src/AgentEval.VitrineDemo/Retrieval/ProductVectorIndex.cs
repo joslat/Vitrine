@@ -6,7 +6,7 @@ using Galaxus.RecommendationAgent.Domain;
 namespace Galaxus.RecommendationAgent.Retrieval;
 
 /// <summary>
-/// The dense leg's store (design §D.2): the smallest thing that works — a brute-force cosine scan
+/// The dense leg's store: the smallest thing that works — a brute-force cosine scan
 /// over one vector per product, with the pre-filter applied BEFORE the top-k cut.
 /// </summary>
 /// <remarks>

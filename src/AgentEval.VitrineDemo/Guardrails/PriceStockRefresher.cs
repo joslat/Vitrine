@@ -9,7 +9,7 @@ namespace Galaxus.RecommendationAgent.Guardrails;
 
 /// <summary>
 /// Price and availability, read from the catalogue at render time and stamped with the moment
-/// they were read. The RENDERER prints these figures; the model never states one (§F.4).
+/// they were read. The RENDERER prints these figures; the model never states one.
 /// </summary>
 /// <param name="ProductId">The SKU these figures belong to.</param>
 /// <param name="PriceChf">Current price in Swiss francs, from the catalogue.</param>
@@ -39,7 +39,7 @@ public sealed record PriceStockSnapshot(
 }
 
 /// <summary>
-/// Stage 4 of the guardrails, run LAST so it only pays to verify survivors (§F.4). Three jobs,
+/// The final guardrail stage, run LAST so it only pays to verify survivors. Three jobs,
 /// all of them about the same boundary: <b>the model is structurally unable to state a price.</b>
 /// </summary>
 /// <remarks>

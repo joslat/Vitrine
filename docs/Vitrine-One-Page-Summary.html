@@ -1,0 +1,137 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="VITRINE in plain language: what the synthetic e-commerce sample does, what its evidence proves, and where its claims stop.">
+  <link rel="canonical" href="https://azuresamurai.blog/Vitrine/Vitrine-One-Page-Summary.html">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="VITRINE in one page · A plain-language summary">
+  <meta property="og:description" content="A customer-first explanation of the VITRINE e-commerce AI sample and the evidence it preserves.">
+  <meta property="og:url" content="https://azuresamurai.blog/Vitrine/Vitrine-One-Page-Summary.html">
+  <meta property="og:image" content="https://azuresamurai.blog/Vitrine/images/vitrine-customer-recommendation.png">
+  <title>VITRINE in one page · Plain-language summary</title>
+  <link rel="stylesheet" href="assets/vitrine-doc-page.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<header class="hero"><div class="wrap">
+  <div class="eyebrow">VITRINE · A two-minute, non-technical introduction</div>
+  <h1>What this sample does—and what it proves</h1>
+  <p><strong>José Luis Latorre Millas</strong> · Agentic &amp; Software Architect · Microsoft AI MVP ·
+    creator of AgentEval · candidate for the Digitec Galaxus AI Platform &amp; Knowledge Systems team ·
+    <a href="https://www.linkedin.com/in/joslat/">connect on LinkedIn ↗</a></p>
+  <p class="lead">I built a realistic, synthetic shopping assistant twice: once as a flexible AI
+    agent and once as a controlled workflow. VITRINE shows how I would help a team improve either
+    system with repeatable quality and safety evidence instead of relying on an impressive demo.</p>
+</div></header>
+<nav class="topnav" aria-label="VITRINE documentation">
+  <div class="wrap">
+    <a href="index.html">VITRINE docs</a>
+    <a href="Vitrine-One-Page-Summary.html">One-page summary</a>
+    <a href="Vitrine-Digitec-Galaxus-Value-Proposal.html">Value proposal</a>
+    <a href="Vitrine-Walkthrough.html">Walkthrough</a>
+    <a href="Vitrine-Retrieval-Deep-Dive.html">Retrieval</a>
+    <a href="Vitrine-Architecture.html">Architecture</a>
+    <a href="Vitrine-Evaluation-Protocol.html">Evaluation protocol</a>
+    <a href="Vitrine-Verification.html">Verification</a>
+  </div>
+</nav>
+<main id="content" class="doc-shell">
+<aside class="toc" aria-label="On this page"><strong>On this page</strong><ul>
+  <li><a href="#customer">The customer experience</a></li>
+  <li><a href="#question">The business question</a></li>
+  <li><a href="#evidence">What the evidence adds</a></li>
+  <li><a href="#limits">What it does not prove</a></li>
+  <li><a href="#tour">A 60-second tour</a></li>
+</ul></aside>
+<article class="prose">
+  <h2 id="customer">Start with the customer</h2>
+  <p>A shopper describes a need instead of choosing a category. The assistant reads a synthetic
+    purchase history, searches a synthetic catalogue, checks stock and current price, and returns
+    recommendations with the customer signals and catalogue facts that support them.</p>
+  <p><img src="images/vitrine-customer-recommendation.png"
+    alt="Nadia's synthetic trip request and a screened K&amp;F neutral-density-filter recommendation with current price, stock, delivery, customer evidence, catalogue evidence, and visible measurement limits"></p>
+  <blockquote><p><strong>Example:</strong> Nadia is planning multi-day hut-to-hut trips, carries
+    everything herself, starts before sunrise, and already owns photography and hiking equipment.
+    The checked-in receipt connects those facts to one packable neutral-density filter for
+    long-exposure landscape photography, without recommending a product she already owns.</p></blockquote>
+  <p><a href="reports/demo01-scripted.html">Open the complete checked-in customer recommendation →</a></p>
+
+  <h3>Four questions a real shopping assistant should handle differently</h3>
+  <ul>
+    <li><strong>Nadia · connect several interests:</strong> combine hiking, dawn starts, carried
+      weight, off-grid power, and photography into a coherent trip—not five unrelated keywords.</li>
+    <li><strong>Sofia · find the actual gap:</strong> distinguish a consumable she may replenish
+      from durable equipment she already owns.</li>
+    <li><strong>Marco · ignore misleading history:</strong> do not treat gift purchases sent to
+      somebody else as evidence of his personal interests.</li>
+    <li><strong>Luca · know when not to recommend:</strong> ask a useful clarifying question when
+      one weak purchase signal cannot support confident personalization.</li>
+  </ul>
+
+  <h2 id="question">The business question</h2>
+  <p>The interesting question is not “can a language model produce a plausible answer?” It is:</p>
+  <blockquote><p>Can a team tell when the assistant is useful, when it is unsafe or unsupported,
+    whether a controlled workflow behaves better than a flexible agent, and whether a later model
+    or prompt change genuinely improved the customer experience?</p></blockquote>
+  <p>VITRINE turns that question into a development loop. The recommender is only the example
+    subject; the reusable contribution is the layer underneath it: observed model and tool calls,
+    correlated execution records, explicit cost and missing-data states, versioned scenarios,
+    repeatable comparisons, planted-defect tests, and durable evidence when a local report or
+    evaluation receipt is requested.</p>
+
+  <h2 id="evidence">What the evidence adds</h2>
+  <ul>
+    <li><strong>Fast checks first.</strong> Catalogue, tool, workflow, and recommendation invariants
+      run locally without credentials or provider cost.</li>
+    <li><strong>Model calls only for questions that need them.</strong> Opt-in evaluations judge
+      the four use cases, compare agent and workflow behavior, repeat runs to expose variability,
+      and run a small safety-probe campaign.</li>
+    <li><strong>Failure stays visible.</strong> A missing observation is not silently turned into a
+      passing score. Provider errors, incomplete safety scans, and inconclusive comparisons remain
+      distinct outcomes.</li>
+    <li><strong>Proof survives execution.</strong> Results, costs when reported, comparisons, and
+      safe failure explanations are written locally and can be exported or replayed without
+      running the model again.</li>
+    <li><strong>The evaluator is tested too.</strong> VITRINE deliberately plants defects and
+      requires the corresponding diagnostic to detect them and recover afterwards.</li>
+  </ul>
+
+  <h2 id="limits">What this does not prove</h2>
+  <p>The customers, purchases, catalogue records, prices, stock, reviews, and relationships are
+    authored/synthetic; recognizable third-party product and brand names are used illustratively.
+    VITRINE does not
+    measure a Digitec Galaxus system, production customers, conversion, revenue, satisfaction, or
+    regulatory compliance. A small safety campaign is not penetration testing. A few repeated
+    cases are not a production reliability claim. The sample demonstrates an engineering method
+    and makes its evidence inspectable; real deployment would require governed company data,
+    human calibration, operational telemetry, access control, and product-owned success metrics.</p>
+
+  <h2 id="tour">A 60-second tour</h2>
+  <ol>
+    <li><strong>See the output:</strong> open the <a href="reports/demo01-scripted.html">customer
+      recommendation</a>.</li>
+    <li><strong>See how it was produced:</strong> compare the agent and workflow in the
+      <a href="index.html#demos">architecture preview</a>.</li>
+    <li><strong>See what is checked:</strong> read the plain-language evidence ladder in the
+      <a href="Vitrine-Digitec-Galaxus-Value-Proposal.html">value proposal</a>.</li>
+    <li><strong>See the proof:</strong> inspect the <a href="reports/evals-offline.html">checked-in
+      offline report</a> or the <a href="Vitrine-Verification.html">verification receipt</a>.</li>
+  </ol>
+  <div class="note"><strong>Independent portfolio project.</strong> VITRINE was created by José
+    Luis Latorre Millas as a job-application value proposal for Digitec Galaxus. It is not
+    affiliated with, commissioned by, or endorsed by the company. Continue with the
+    <a href="index.html">documentation hub</a>, view the
+    <a href="https://github.com/joslat/Vitrine">source</a>, or connect on
+    <a href="https://ch.linkedin.com/in/joslat">LinkedIn</a>.</div>
+</article>
+</main>
+<footer><div class="wrap">VITRINE · independent synthetic e-commerce sample ·
+  <a href="index.html">documentation hub</a> ·
+  <a href="Vitrine-Digitec-Galaxus-Value-Proposal.html">value proposal</a> ·
+  <a href="https://github.com/AgentEvalHQ/AgentEval">AgentEval</a></div></footer>
+</body>
+</html>

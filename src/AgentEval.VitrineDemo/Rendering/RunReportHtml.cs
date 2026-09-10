@@ -7,6 +7,7 @@ using System.Text;
 using Galaxus.RecommendationAgent.Catalog;
 using Galaxus.RecommendationAgent.Domain;
 using Galaxus.RecommendationAgent.Guardrails;
+using Galaxus.RecommendationAgent.Observability;
 using Galaxus.RecommendationAgent.Workflows;
 
 namespace Galaxus.RecommendationAgent.Rendering;
@@ -63,7 +64,8 @@ public static class RunReportHtml
     private static readonly string[] ForbiddenEnvironmentValues =
     [
         "AZURE_OPENAI_API_KEY",
-        "AZURE_OPENAI_ENDPOINT"
+        "AZURE_OPENAI_ENDPOINT",
+        "AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID"
     ];
 
     /// <summary>
@@ -90,6 +92,7 @@ public static class RunReportHtml
     /// <param name="toolCallsUsed">Tool calls spent, or <see cref="RecommendationPrinter.OmitToolCalls"/>.</param>
     /// <param name="toolCallCap">The per-turn cap, or <see cref="RecommendationPrinter.OmitToolCalls"/>.</param>
     /// <param name="loop">The discovery loop's result, when Demo 02 produced this turn. Null for Demo 01.</param>
+    /// <param name="liveProviderUsage">Typed provider usage for a live report; null for provider-free reports.</param>
     /// <returns>The full path of the file written.</returns>
     /// <exception cref="InvalidOperationException">The rendered page contained a credential. Nothing is written.</exception>
     public static string Write(
@@ -106,7 +109,8 @@ public static class RunReportHtml
         Catalogue catalogue,
         int toolCallsUsed = RecommendationPrinter.OmitToolCalls,
         int toolCallCap = RecommendationPrinter.OmitToolCalls,
-        DiscoveryRunResult? loop = null)
+        DiscoveryRunResult? loop = null,
+        ProviderUsageMeasurement? liveProviderUsage = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(user);
@@ -116,9 +120,11 @@ public static class RunReportHtml
         ArgumentNullException.ThrowIfNull(verified);
         ArgumentNullException.ThrowIfNull(ledger);
         ArgumentNullException.ThrowIfNull(catalogue);
+        if (liveProviderUsage is not null && !liveProviderUsage.IsConsistent())
+            throw new InvalidOperationException("The live provider-usage measurement is inconsistent.");
 
         var html = Render(demoTitle, arm, utterance, user, map, classified, set, verified,
-                          ledger, catalogue, toolCallsUsed, toolCallCap, loop);
+                          ledger, catalogue, toolCallsUsed, toolCallCap, loop, liveProviderUsage);
 
         RefuseIfSecretsLeaked(html);
 
@@ -184,7 +190,8 @@ public static class RunReportHtml
         Catalogue catalogue,
         int toolCallsUsed,
         int toolCallCap,
-        DiscoveryRunResult? loop)
+        DiscoveryRunResult? loop,
+        ProviderUsageMeasurement? liveProviderUsage)
     {
         var sb = new StringBuilder(64 * 1024);
 
@@ -200,18 +207,19 @@ public static class RunReportHtml
         AppendTray(sb, set, verified, catalogue, ledger);
         if (loop is not null) AppendLoop(sb, loop);
         sb.Append("</div>\n<div class=\"col-side\">\n");
-        AppendMeasurement(sb, ledger, set, toolCallsUsed, toolCallCap, loop);
+        AppendMeasurement(sb, ledger, set, toolCallsUsed, toolCallCap, loop, liveProviderUsage);
         sb.Append("</div>\n</div>\n");
 
-        AppendFooter(sb);
+        AppendFooter(sb, liveProviderUsage is not null);
         sb.Append("</body>\n</html>\n");
         return sb.ToString();
     }
 
     private static void AppendHeader(StringBuilder sb, string demoTitle, string arm, InterestMap map)
     {
-        sb.Append("<header class=\"top\">\n")
-          .Append("  <div class=\"brand\">Galaxus · <b>Robin</b>, the recommendation agent</div>\n")
+        sb.Append("<nav class=\"tour\"><a href=\"https://azuresamurai.blog/Vitrine/\">← Back to the VITRINE tour</a></nav>\n")
+          .Append("<header class=\"top\">\n")
+          .Append("  <div class=\"brand\">VITRINE · <b>Robin</b>, the recommendation agent</div>\n")
           .Append("  <div class=\"top-meta\"><span class=\"pill\">").Append(E(demoTitle)).Append("</span>")
           .Append("<span class=\"pill\">").Append(E(arm)).Append("</span>");
 
@@ -359,7 +367,7 @@ public static class RunReportHtml
                   ? " · " + E(string.Join(" › ", product.CategoryPath))
                   : string.Empty)
               .Append(" · <span class=\"mono\">").Append(E(item.ProductId)).Append("</span></div>\n        </div>\n")
-              .Append("        <div class=\"conf\" title=\"self-reported by the selector; uncalibrated, it routes between trays\">")
+              .Append("        <div class=\"conf\" title=\"code-derived routing heuristic; uncalibrated, it routes between trays\">")
               .Append("conf ").Append(item.Confidence.ToString("0.00", CultureInfo.InvariantCulture)).Append("</div>\n")
               .Append("      </div>\n");
 
@@ -559,7 +567,8 @@ public static class RunReportHtml
 
     private static void AppendMeasurement(
         StringBuilder sb, GuardrailLedger ledger, RecommendationSet set,
-        int toolCallsUsed, int toolCallCap, DiscoveryRunResult? loop)
+        int toolCallsUsed, int toolCallCap, DiscoveryRunResult? loop,
+        ProviderUsageMeasurement? liveProviderUsage)
     {
         var rows = Checks
             .Select(c => (c.Name, c.Checks, Entries: ledger.EntriesFor(c.Stage)))
@@ -619,14 +628,15 @@ public static class RunReportHtml
         }
 
         sb.Append("  </ul>\n");
-        AppendCounters(sb, ledger, set, toolCallsUsed, toolCallCap, loop);
+        AppendCounters(sb, ledger, set, toolCallsUsed, toolCallCap, loop, liveProviderUsage);
         AppendNotMeasuredHere(sb);
         sb.Append("</section>\n");
     }
 
     private static void AppendCounters(
         StringBuilder sb, GuardrailLedger ledger, RecommendationSet set,
-        int toolCallsUsed, int toolCallCap, DiscoveryRunResult? loop)
+        int toolCallsUsed, int toolCallCap, DiscoveryRunResult? loop,
+        ProviderUsageMeasurement? liveProviderUsage)
     {
         sb.Append("  <p class=\"lbl\">This turn, counted</p>\n  <table class=\"nums\">\n");
 
@@ -657,9 +667,19 @@ public static class RunReportHtml
                 : "n/a — this arm makes no refusable tool calls",
             toolCallsUsed < 0);
 
+        if (liveProviderUsage is not null)
+        {
+            Num(sb, "Model calls",
+                liveProviderUsage.ModelCalls?.ToString(CultureInfo.InvariantCulture) ?? "NOT MEASURED",
+                liveProviderUsage.ModelCalls is null);
+            Num(sb, "Provider usage", liveProviderUsage.ToDisplayString(),
+                liveProviderUsage.Status == ProviderUsageStatus.Missing);
+        }
+
         if (loop is not null)
         {
-            Num(sb, "Model calls", loop.State.ModelCalls.ToString(CultureInfo.InvariantCulture), false);
+            if (liveProviderUsage is null)
+                Num(sb, "Model calls", loop.State.ModelCalls.ToString(CultureInfo.InvariantCulture), false);
             Num(sb, "Searches run", loop.State.SearchesRun.ToString(CultureInfo.InvariantCulture), false);
 
             if (loop.Failed)
@@ -683,20 +703,40 @@ public static class RunReportHtml
           .Append("  <p class=\"note\">Everything above is <b>one turn</b>. The claims that need more than one turn — "
                 + "does the loop cover more of a customer's interests than the single agent, does a hostile product "
                 + "review change what gets recommended, is the answer stable when the same turn is repeated — cannot be "
-                + "read off this page in either direction. They are measured separately, over the whole persona set, "
-                + "with negative controls and a chance floor per arm:</p>\n")
-          .Append("  <pre class=\"cmd\">dotnet run --project src/AgentEval.VitrineDemo.Evals -- --all</pre>\n");
+                + "read off this page in either direction. The credential-free <span class=\"mono\">--all</span> command "
+                + "runs deterministic offline gates, a benchmark scoped to exactly <b>2 synthetic cases/personas × "
+                + "3 deterministic arms × 2 repetitions</b>, and registered mutation controls. That benchmark's admitted checks "
+                + "record chance floor <span class=\"mono\">NotDerivable</span> because no defensible random-answer "
+                + "chance floor is derivable; it does not run the paid multi-scenario or repeated-model plans:</p>\n")
+          .Append("  <pre class=\"cmd\">dotnet run --project src/AgentEval.VitrineDemo.Evals -- --all</pre>\n")
+          .Append("  <p class=\"note\">For those claims, select the corresponding live eval plan and pass "
+                + "<span class=\"mono\">--confirm-paid</span>. Live plans declare their actual scenario and repetition "
+                + "scope and do not manufacture a per-arm chance floor where none is derivable.</p>\n");
 
-    private static void AppendFooter(StringBuilder sb) =>
+    private static void AppendFooter(StringBuilder sb, bool liveProviderReport)
+    {
         sb.Append("<footer class=\"foot\">\n")
           .Append("  <p><b>These are suggestions.</b> Prices and availability were re-read from the catalogue at render "
                 + "time and never taken from model context; the decision is the customer's. Nothing was added to a "
-                + "basket or ordered — this agent has no tool that can.</p>\n")
-          .Append("  <p class=\"dim small\">Generated by the run itself, not from a fixture. Self-contained: no external "
-                + "stylesheet, script, font or image, so it opens with no network. It carries no endpoint, no key and no "
-                + "file path. It also carries no timestamp and no run id — deliberately, so two offline runs of the same "
-                + "customer produce byte-identical files and this page can be regenerated in front of you.</p>\n")
-          .Append("</footer>\n");
+                + "basket or ordered — this agent has no tool that can.</p>\n");
+
+        if (liveProviderReport)
+        {
+            sb.Append("  <p class=\"dim small\">Generated by the run itself, not from a fixture. Self-contained: no external "
+                    + "stylesheet, script, font or image, so it opens with no network. It carries no endpoint, no key and no "
+                    + "file path. It also carries no timestamp and no run id. This live page records the selected deployment "
+                    + "and the provider-usage state above; it remains one observation, not reliability evidence.</p>\n");
+        }
+        else
+        {
+            sb.Append("  <p class=\"dim small\">Generated by the run itself, not from a fixture. Self-contained: no external "
+                    + "stylesheet, script, font or image, so it opens with no network. It carries no endpoint, no key and no "
+                    + "file path. It also carries no timestamp and no run id — deliberately, so two offline runs of the same "
+                    + "customer produce byte-identical files and this page can be regenerated in front of you.</p>\n");
+        }
+
+        sb.Append("</footer>\n");
+    }
 
     // ── Plumbing ──────────────────────────────────────────────────────────────
 
@@ -760,6 +800,7 @@ public static class RunReportHtml
     @media (max-width:1000px){.split{grid-template-columns:1fr}
       .col-side .card{margin-left:24px}.col-main .card{margin-right:24px}}
 
+    .tour{margin:14px 24px 0;font-size:13px}.tour a{color:#1d4ed8;text-underline-offset:3px}
     .oneline{margin:0 0 12px;font-size:15px}
     .said{margin:0 0 16px;padding:12px 16px;background:#f7f8fa;border-left:3px solid #16181d;
           border-radius:0 6px 6px 0;font-size:15px;color:#2c3038}

@@ -15,7 +15,18 @@ public sealed record VitrineGateSnapshot(
     VitrineChanceFloorSnapshot? ChanceFloor,
     string Evidence,
     GateMeasurementOutcome Outcome = GateMeasurementOutcome.Measured,
-    VitrineAgentEvalProvenanceSnapshot? AgentEval = null);
+    VitrineAgentEvalProvenanceSnapshot? AgentEval = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    GateAuthority Authority = GateAuthority.Mandatory)
+{
+    // Schema 7/8 did not serialize gate authority. A post-integrity compatibility
+    // projection can supply the corrected meaning without changing the signed payload.
+    [JsonIgnore]
+    public GateAuthority? CompatibilityAuthority { get; init; }
+
+    [JsonIgnore]
+    public GateAuthority EffectiveAuthority => CompatibilityAuthority ?? Authority;
+}
 
 public sealed record VitrineAgentEvalObservationSnapshot(
     string Id,
@@ -207,6 +218,19 @@ public sealed record VitrineLiveToolSnapshot(
 
 public sealed record VitrineLiveExecutorSnapshot(string ExecutorId, int ExecutionCount);
 
+public sealed record VitrineLiveWorkflowProviderStageSnapshot(
+    string ExecutorId,
+    int AttemptCount,
+    int ResponseCount,
+    int UnusableAttemptCount,
+    int FailedAttemptCount,
+    int CancelledAttemptCount,
+    string Status)
+{
+    public int LastUnusableAttemptNumber { get; init; }
+    public int LastUsableResponseAttemptNumber { get; init; }
+}
+
 public sealed record VitrineLiveWorkflowSnapshot(
     IReadOnlyList<VitrineLiveExecutorSnapshot> Executors,
     IReadOnlyList<string> Routes,
@@ -219,7 +243,13 @@ public sealed record VitrineLiveWorkflowSnapshot(
     int DegradationCount,
     IReadOnlyList<string> DegradationKinds,
     int UnknownExecutorCount,
-    int UnknownRouteCount);
+    int UnknownRouteCount)
+{
+    public IReadOnlyList<VitrineLiveWorkflowProviderStageSnapshot> ProviderStages { get; init; } = [];
+    public int ProviderFailedAttemptCount { get; init; }
+    public int RecoveredProviderFailedAttemptCount { get; init; }
+    public int TerminalProviderStageCount { get; init; }
+}
 
 public sealed record VitrineLiveUsageSnapshot(
     string Status,
@@ -282,6 +312,17 @@ public sealed record VitrineLiveCheckSummarySnapshot(
     VitrineLiveCensusSnapshot Census,
     VitrineLiveReliabilitySnapshot Reliability);
 
+public sealed record VitrineLiveScenarioAcceptanceSnapshot(
+    string ScenarioId,
+    string PersonaId,
+    string ArmId,
+    string Architecture,
+    VitrineLiveCensusSnapshot Census,
+    VitrineLiveReliabilitySnapshot Reliability,
+    double ConfidenceLevel,
+    double MinimumLowerBound,
+    bool? Passed);
+
 public sealed record VitrineLiveArmSnapshot(
     string ArmId,
     string Architecture,
@@ -343,7 +384,14 @@ public sealed record VitrineLiveConfigurationSnapshot(
     IReadOnlyList<VitrineLiveSubjectProvenanceSnapshot> Subjects)
 {
     public VitrineLiveSafetyConfigurationSnapshot? Safety { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public VitrineLiveTerminalAcceptanceSnapshot? Acceptance { get; init; }
 }
+
+public sealed record VitrineLiveTerminalAcceptanceSnapshot(
+    string Policy,
+    double? ConfidenceLevel,
+    double? MinimumLowerBound);
 
 public sealed record VitrineLiveFailureSnapshot(
     string Code,
@@ -417,6 +465,8 @@ public sealed record VitrineLiveEvaluationSnapshot(
     public VitrineLiveConfigurationSnapshot? Configuration { get; init; }
     public IReadOnlyList<VitrineLiveFailureSnapshot> Failures { get; init; } = [];
     public VitrineLiveSafetySnapshot? Safety { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<VitrineLiveScenarioAcceptanceSnapshot>? ScenarioAcceptances { get; init; }
 }
 
 public sealed record VitrineRecommendationSnapshot(
@@ -511,12 +561,12 @@ public sealed record VitrineRunArtifact(
     VitrineRunMode Mode,
     string PersonaId,
     string ExecutionArm,
-    bool PersonalizationDisabled,
+    bool? PersonalizationDisabled,
     VitrineGraphSnapshot Graph,
     IReadOnlyList<VitrineEvent> Events,
     VitrineResultSnapshot Result,
     string IntegritySha256)
 {
     public const int MinimumSupportedSchemaVersion = 7;
-    public const int CurrentSchemaVersion = 8;
+    public const int CurrentSchemaVersion = 10;
 }

@@ -12,17 +12,10 @@ namespace Galaxus.RecommendationAgent.Workflows;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Why this exists, and what was actually broken.</b> <c>DiscoveryModelCall.RunAsync</c> called
-/// <c>AIAgent.RunAsync</c> and returned <c>response.Text</c>, discarding
-/// <c>Microsoft.Agents.AI.AgentResponse.Usage</c> — the property the provider fills in on exactly
-/// that call. The usage was never missing from the response and was never un-asked-for; it reached
-/// this process and our code dropped it. The proof is a same-provider comparison inside this
-/// repository: <c>MAFAgentAdapter</c> makes the identical <c>RunAsync</c> call and reads
-/// <c>response.Usage</c> (<c>src/AgentEval.MAF/MAF/MAFAgentAdapter.cs</c>), and the evals that run
-/// through it report <c>measured usage N · token-estimated 0 · unaccounted 0</c> against the same
-/// deployment. So <c>agent -- 2</c> made three live model calls and printed no token count, and
-/// Eval 08's workflow arm fell back to the harness's text-length estimate over text that is
-/// REPLAYED from workflow state — an estimate of the wrong string, of the wrong tokenizer.
+/// <c>DiscoveryModelCall.RunAsync</c> records
+/// <c>Microsoft.Agents.AI.AgentResponse.Usage</c> from the same provider response that carries the
+/// text. This meter never estimates from replayed workflow text, whose content and tokenizer do
+/// not represent the provider's bill.
 /// </para>
 /// <para>
 /// <b>The one rule this type is built around: an ABSENCE is not a ZERO.</b> A call whose response
@@ -33,13 +26,10 @@ namespace Galaxus.RecommendationAgent.Workflows;
 /// second is an unknown.
 /// </para>
 /// <para>
-/// ⚠ <b>And the same rule one level down, which the first version of this type broke.</b> The check
-/// above was applied to the whole block and then each half was read as <c>?? 0</c>, so a response
-/// carrying a prompt count and NO completion count was recorded as <c>1,234 prompt + 0 completion</c>
-/// and reported <see cref="Complete"/>. A half-populated block is now a
-/// <see cref="CallsWithPartialUsage"/>: the reported half is summed because the provider did report
-/// it, the missing half adds nothing, the total is labelled a LOWER BOUND, and the meter no longer
-/// calls itself complete — so <c>Eval08LiveWorkflowArm</c> cannot publish it as measured.
+/// The rule applies to each half of the usage block. A response with 1,234 prompt tokens and no
+/// completion count is <see cref="CallsWithPartialUsage"/>: the reported half is summed, the absent
+/// half remains unknown, the total is a LOWER BOUND, and <see cref="Complete"/> stays false so it
+/// cannot be published as a complete measured total.
 /// </para>
 /// <para>
 /// <b>It never estimates, and it never sees our own text.</b> There is no path in this type from a
@@ -72,14 +62,9 @@ public sealed class ChatSpend
     /// no completion count, or the reverse.
     /// </summary>
     /// <remarks>
-    /// ⚠ <b>Found by the review pass of 2026-09-06, and it is this type's own rule broken one level
-    /// down.</b> <see cref="Record"/> applied "an absence is not a zero" to the WHOLE block and then
-    /// wrote <c>usage.OutputTokenCount ?? 0</c>, so a response reporting 1,234 prompt tokens and no
-    /// completion count at all was recorded as <c>1,234 prompt + 0 completion</c> — a figure nobody
-    /// measured, rendered in the words reserved for one that was, and with
-    /// <see cref="Complete"/> still true, so <c>Eval08LiveWorkflowArm</c> would have handed it to the
-    /// harness as <c>TokensAreEstimated = false</c>. The half that WAS reported is still summed,
-    /// because the provider did report it; what may not happen is calling the result complete.
+    /// The reported half is still summed because the provider measured it. The missing half adds
+    /// nothing, but prevents <see cref="Complete"/> from becoming true; absence is never recast as
+    /// a measured zero.
     /// </remarks>
     public int CallsWithPartialUsage { get; private set; }
 
@@ -167,12 +152,9 @@ public sealed class ChatSpend
     /// zero lands in the third form and reads as a measurement, which is what it is.
     /// </para>
     /// <para>
-    /// ⚠ <b>Invariant culture, and it was a real defect on this machine.</b> The first live run of
-    /// this meter printed <c>7’202 prompt</c> — a Swiss apostrophe, because <c>N0</c> formats in the
-    /// MACHINE's culture. That is the same shape as the <c>C4</c> defect Eval 08 already carries a
-    /// note about (a USD figure rendered as CHF on a Swiss box): a number whose text depends on who
-    /// ran it cannot be summed out of a log by the next reader, and §34.5's corrected total is what
-    /// happens when a figure is re-typed instead of summed.
+    /// Numeric output uses invariant culture so logs are machine-comparable across locales. A
+    /// locale-specific thousands separator changes the serialized observation and makes downstream
+    /// extraction depend on the machine that rendered it.
     /// </para>
     /// </remarks>
     public IReadOnlyList<string> Describe()

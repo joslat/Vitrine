@@ -7,7 +7,7 @@ using Galaxus.RecommendationAgent.Retrieval;
 
 namespace Galaxus.RecommendationAgent.Guardrails;
 
-/// <summary>Which tray a self-reported confidence routes a recommendation into (§F.7).</summary>
+/// <summary>Which tray a self-reported confidence routes a recommendation into.</summary>
 public enum ConfidenceBand
 {
     /// <summary>Below <see cref="ConfidenceBands.SecondaryThreshold"/>, or not a usable number. Removed.</summary>
@@ -21,7 +21,7 @@ public enum ConfidenceBand
 }
 
 /// <summary>
-/// Stage 7 of the guardrails (§F.7): routes recommendations between the primary tray, the
+/// The confidence-routing stage of the guardrails routes recommendations between the primary tray, the
 /// secondary tray, and the floor, by the confidence the model reported for each.
 /// </summary>
 /// <remarks>
@@ -46,44 +46,18 @@ public enum ConfidenceBand
 /// <c>recommendations</c> with 0.50 is demoted. The model proposes; the band decides.
 /// </para>
 /// <para>
-/// ⚠ <b>These two numbers are UNMEASURED and, worse, they are SPACE-DEPENDENT — measured
-/// 2026-09-05 (B-9).</b> Half of <c>Demo01.Confidence</c> is a cosine, and a cosine's typical
-/// magnitude is a property of the embedding space, not of the product. The 24-dimension authored
-/// concept space produces large cosines between related texts; <c>text-embedding-3-small</c>
-/// produces small ones for the same pairs. So the SAME catalogue, the SAME interest map and the
-/// SAME six products land in different trays depending only on the flag:
-/// </para>
-/// <list type="bullet">
-///   <item><c>-- 1 --offline</c> (concept): confidences 0.46–0.80, six items, three demoted, none dropped.</item>
-///   <item><c>-- 1 --offline --real-vectors</c>: confidences 0.40–0.59, so NOTHING clears
-///         <see cref="PrimaryThreshold"/> — five demoted to "also consider" and one dropped under
-///         <see cref="SecondaryThreshold"/>. The primary tray is empty, and not because the
-///         products are worse.</item>
-/// </list>
-/// <para>
-/// <see cref="IEmbeddingSource.SuggestedDenseScoreFloor"/> already says a retrieval floor belongs to
-/// a SPACE and may not be carried between them. These thresholds have exactly the same property and
-/// nobody had said so. They are NOT re-tuned here: picking a second pair of numbers to make the
-/// real-vector tray look like the concept tray would be fitting the threshold to the output, which
-/// is the failure this project keeps a rule about. The honest statement is that a band assignment
-/// is only comparable within one space, and the space is printed above every tray.
+/// <b>Derived per embedding space.</b> A cosine's magnitude is a property of its embedding space,
+/// so one threshold pair may not be transported between the authored concept space and
+/// <c>text-embedding-3-small</c>. The space is printed above every tray and band assignments are
+/// comparable only within that space.
 /// </para>
 /// <para>
-/// ✅ <b>DERIVED PER SPACE 2026-09-05 — the paragraph above is SUPERSEDED in its conclusion and
-/// upheld in its diagnosis.</b> The two numbers are no longer unmeasured and no longer shared:
 /// <see cref="CalibratedThresholds"/> carries one row per space, each derived on a fit slice that
-/// EXCLUDES all four demo personas, by a rule written down before the numbers. What it found:
+/// EXCLUDES all four demo personas. The derived values are:
 /// </para>
 /// <list type="bullet">
-///   <item><b>concept</b> 0.703 / 0.455 against 0.70 / 0.45 — the moves are 0.003 and 0.005, no fit
-///         row lies between old and new, and re-running all four demo personas in this space
-///         produced BYTE-IDENTICAL output. A calibration that changes nothing is a real result.</item>
-///   <item><b>real-vectors</b> 0.520 / 0.437. The old 0.70 admitted <b>0.000</b> of the forty-two
-///         fit-slice confidences — that population's 95th percentile is 0.587 — so the empty
-///         primary tray this remark reports for three personas is a property of the SPACE, measured
-///         as a distribution rather than as three anecdotes. At 0.520 the tray fills: Marco's and
-///         Sofia's demo-01 trays go from 5 demoted / 0 primary to 0 demoted / 5 primary, Nadia's
-///         from 5 demoted to 3.</item>
+///   <item><b>concept</b>: primary 0.703, secondary 0.455.</item>
+///   <item><b>real-vectors</b>: primary 0.520, secondary 0.437.</item>
 /// </list>
 /// <para>
 /// ⚠ <b>And the held-out slice REFUSED to corroborate the real row.</b> 0.520 admits 0.286 of the

@@ -18,12 +18,10 @@ namespace Galaxus.RecommendationAgent.Workflows;
 /// prevent, and a structurally empty interest is not something a judge gets discretion over.
 /// </para>
 /// <para>
-/// <b>And the model cannot overrule it.</b> <see cref="Project"/> re-runs the starvation test
-/// after projecting a verdict and forces <see cref="DiscoveryState.CoverageApproved"/> to false
-/// if a DIRECT interest is still structurally empty — so "the reviewer approved round 1 every
-/// time" cannot happen by prompt drift. Verify the wiring in BOTH directions: a reviewer that
-/// never rejects and one that never approves are both faults, and both look fine on a single
-/// happy-path run.
+/// <b>And the model cannot overrule it.</b> <see cref="Project"/> requires an exhaustive reviewer
+/// partition, candidate-backed coverage for every mapped interest, the calibrated DIRECT-interest
+/// starvation rule, and evidence that every interest was searched. A reviewer that never rejects
+/// and one that never approves are both faults, and both look fine on a single happy-path run.
 /// </para>
 /// </remarks>
 public static class CoverageVerdictProjection
@@ -109,7 +107,7 @@ public static class CoverageVerdictProjection
                 ? CoverageStatus.Uncovered
                 : CoverageStatus.Partial;
 
-            // §0.5 / D-3 — the query is filtered STRUCTURALLY, whoever wrote it.
+            // the structural query-vocabulary control — the query is filtered STRUCTURALLY, whoever wrote it.
             var query = vocabulary.FilterQuery(gap.NextQuery, $"gap {gap.InterestId}", state.DroppedQueryTerms);
             if (query is null)
             {
@@ -148,16 +146,45 @@ public static class CoverageVerdictProjection
                 : CoverageStatus.Covered;
         }
 
-        // ── the mid-run proposal, and the §0.5 / D-3 control on it ──────────────────
+        // ── the mid-run proposal, and the structural query-vocabulary control on it ──────────────────
         if (verdict.NewInterest is { } proposal)
             TryAcceptProposal(state, proposal, vocabulary, progress);
 
         // ── approval ────────────────────────────────────────────────────────────────
         bool approved = verdict.IsSufficient && state.OpenGaps.Count == 0;
 
-        // ── Two structural vetoes. The reviewer does not get to approve over either. ─
+        // ── Four structural vetoes. The reviewer does not get to approve over any of them. ─
         //
-        // (1) A DIRECT interest that has been searched and came back with nothing.
+        // (1) A sufficient verdict must explicitly classify every interest as covered. The
+        //     structured-output prompt asks for this partition, but a model can still omit a row.
+        //     Silence is not evidence and must never become an implicit approval.
+        var omitted = state.Interests
+            .Where(i => !covered.Contains(i.Id))
+            .ToList();
+
+        if (approved && omitted.Count > 0)
+        {
+            approved = false;
+            state.ReviewNotes += $" · APPROVAL VETOED IN CODE: {string.Join(", ", omitted.Select(i => i.Id))} " +
+                                 "was omitted from the reviewer's covered-interest partition";
+        }
+
+        //
+        // (2) A reviewer-labelled covered row must still be structurally served. This applies to
+        //     direct and latent interests alike so "CoverageSufficient" can never coexist with a
+        //     zero-candidate row in the customer-facing shortfall.
+        var unserved = state.Interests
+            .Where(i => state.CoverageFor(i.Id).Status != CoverageStatus.Covered)
+            .ToList();
+
+        if (approved && unserved.Count > 0)
+        {
+            approved = false;
+            state.ReviewNotes += $" · APPROVAL VETOED IN CODE: {string.Join(", ", unserved.Select(i => i.Id))} " +
+                                 "is not structurally covered by any candidate";
+        }
+
+        // (3) A DIRECT interest that has been searched and came back with nothing.
         var starved = Starved(state, calibration);
         if (approved && starved.Count > 0)
         {
@@ -166,7 +193,7 @@ public static class CoverageVerdictProjection
                                  "has no candidate at all, and a cheap accept is the failure this gate exists to prevent";
         }
 
-        // (2) An interest NOBODY HAS SEARCHED. This is not hypothetical: the reviewer creates
+        // (4) An interest NOBODY HAS SEARCHED. This is not hypothetical: the reviewer creates
         //     exactly this state whenever it adds an interest after the round's query plan was
         //     built. Absence of evidence is not coverage, and approving here would end the run
         //     one round before the interest that justified the loop was ever explored.
@@ -196,18 +223,18 @@ public static class CoverageVerdictProjection
     /// be a candidate this run actually retrieved; and the confidence is clamped to
     /// <see cref="DiscoveryState.ReviewerInferredConfidenceCeiling"/> whatever the model wrote.
     /// If no term survives, the proposal is REFUSED — an interest with no runnable query is a
-    /// label, not a plan, and one whose only queries were injected is exactly the thing D-3 is
+    /// label, not a plan, and one whose only queries were injected is exactly the thing the structural query-vocabulary control is
     /// about.
     /// </para>
     /// <para>
     /// ⚠ <b>The vocabulary filter runs FIRST, before every other refusal, and that ordering is
-    /// deliberate.</b> §0.5 / D-3 requires the drop to be <i>recorded</i>, not merely to happen.
+    /// deliberate.</b> The structural query-vocabulary control requires the drop to be <i>recorded</i>, not merely to happen.
     /// When the filter ran last, a proposal refused earlier for an unrelated reason — the
     /// per-run cap spent, an uncited evidence product, a special-category label — swallowed its
     /// injected terms with no ledger line at all, and the console panel printed an empty ledger
     /// beside the words "an empty ledger is a RESULT, not a pass". An empty ledger produced by an
-    /// earlier refusal is precisely the reading that panel warns against, so the refusal that
-    /// D-3 is about is now always the one that gets written down. Ordering cannot make a
+    /// earlier refusal is precisely the outcome that panel warns against, so injected terms are
+    /// now always recorded even when another rule also rejects the proposal. Ordering cannot make a
     /// proposal ACCEPTED that would otherwise have been refused: every check below still runs and
     /// still returns null.
     /// </para>
@@ -228,7 +255,7 @@ public static class CoverageVerdictProjection
         ArgumentNullException.ThrowIfNull(vocabulary);
         progress ??= NullDiscoveryProgressSink.Instance;
 
-        // ── §0.5 / D-3, FIRST: whatever else refuses this proposal, the injected terms are
+        // ── the structural query-vocabulary control, FIRST: whatever else refuses this proposal, the injected terms are
         //    recorded and printed. See the remarks for why the ordering is load-bearing.
         int before = state.DroppedQueryTerms.Count;
         var terms = vocabulary.Filter(proposal.QueryTerms, $"proposed interest \"{proposal.Label}\"", state.DroppedQueryTerms);
@@ -237,7 +264,7 @@ public static class CoverageVerdictProjection
             progress.Publish(DiscoveryEvent.QueryTermDropped(state.DiscoveryRound, state.DroppedQueryTerms[i]));
 
         // Every exit below records a ProposalOutcome, accepted or refused. A proposal that leaves
-        // no trace is a denominator nobody can see, and the D-3 ledger is meaningless without one.
+        // no trace is a denominator nobody can see, and the structural query-vocabulary control ledger is meaningless without one.
         if (state.ReviewerInferredCount >= DiscoveryState.MaxReviewerInferredInterests)
         {
             return Refuse(state, proposal, terms, progress,
@@ -257,7 +284,7 @@ public static class CoverageVerdictProjection
                 "A proposal must name the product whose review revealed it");
         }
 
-        // D-6, outbound: an inferred LABEL that names a special category is refused whatever it
+        // sensitive-inference guard, outbound: an inferred LABEL that names a special category is refused whatever it
         // is about. The category flag blocks the channel a naive system uses; this blocks the one
         // the regulator cares about.
         var blockedTerms = SensitiveInferenceBlocklist.AllBlockedLabelTerms(proposal.Label);
@@ -271,7 +298,7 @@ public static class CoverageVerdictProjection
         {
             return Refuse(state, proposal, terms, progress,
                 "every proposed query term is outside the vocabulary the interest map and the catalogue already " +
-                "contain. Review text is an INPUT, never an instruction (§0.5 / D-3)");
+                "contain. Review text is an INPUT, never an instruction");
         }
 
         var interest = new Interest
@@ -325,7 +352,7 @@ public static class CoverageVerdictProjection
     /// <remarks>
     /// One exit point for every refusal, so a new constraint cannot be added that refuses a
     /// proposal without leaving a row in <see cref="DiscoveryState.Proposals"/>. The row is the
-    /// denominator the D-3 ledger is read against: without it, "nothing was dropped" and "nothing
+    /// denominator the structural query-vocabulary control ledger is read against: without it, "nothing was dropped" and "nothing
     /// was ever proposed" are the same picture, and only one of them is a control that ran.
     /// </remarks>
     /// <param name="state">The run state.</param>
@@ -538,7 +565,7 @@ public static class CoverageGapWriter
 /// interest revealed it.
 /// </para>
 /// <para>
-/// ⚠ It is also the §0.5 / D-3 attack surface, and this class deliberately does NOT sanitise its
+/// ⚠ It is also the structural query-vocabulary control attack surface, and this class deliberately does NOT sanitise its
 /// own output: it proposes terms straight out of the snippet, and
 /// <see cref="CoverageVerdictProjection.TryAcceptProposal"/> filters them against
 /// <see cref="QueryVocabulary"/>. Sanitising here as well would make the control unable to fire

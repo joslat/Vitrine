@@ -109,13 +109,20 @@
                           ItemsSource="{Binding Setup.EvaluationPlans}"
                           SelectedItem="{Binding Setup.SelectedEvaluationPlan}"
                           AutomationProperties.Name="Evaluation plan"
-                          ToolTip.Tip="Offline remains the safe default. Eval 01 runs the agent; Eval 02 the workflow; Eval 03 compares matched arms; Eval 04/05 report stochastic reliability; Eval 06 runs bounded AgentEval safety probes against Robin only.">
+                          ToolTip.Tip="The core view keeps the choice to offline evidence, Agent quality, or Workflow quality. Enable Advanced to reveal the paired diagnostic, stochastic reliability, and bounded safety plans.">
                   <ComboBox.ItemTemplate>
                     <DataTemplate x:DataType="evalLive:VitrineEvaluationPlanDescriptor">
                       <TextBlock Text="{Binding Label}" />
                     </DataTemplate>
                   </ComboBox.ItemTemplate>
                 </ComboBox>
+                <ToggleSwitch IsChecked="{Binding Setup.ShowAdvancedEvaluationPlans}"
+                              OnContent="advanced plans shown"
+                              OffContent="show advanced plans"
+                              Margin="0,5,0,0"
+                              AutomationProperties.Name="Show advanced evaluation plans"
+                              ToolTip.Tip="Reveals the non-authoritative Agent-vs-Workflow diagnostic, stochastic reliability plans, and bounded safety probes. It does not change or delete their CLI and artifact contracts." />
+                <TextBlock Width="330" Text="{Binding Setup.AdvancedEvaluationPlanSummary}" Classes="muted" FontSize="9" TextWrapping="Wrap" />
                 <TextBlock Width="330" Text="{Binding Setup.EvaluationPlanDescription}" Classes="muted" FontSize="9" TextWrapping="Wrap" />
               </StackPanel>
               <StackPanel Margin="0,0,14,0" IsVisible="{Binding IsLiveScenarioEvaluationMode}">
@@ -126,15 +133,15 @@
               </StackPanel>
               <StackPanel Margin="0,0,14,0" IsVisible="{Binding IsStochasticEvaluationMode}">
                 <TextBlock Text="REPETITIONS" Classes="eyebrow" />
-                <NumericUpDown Width="115" Minimum="1" Maximum="30" Value="{Binding Setup.EvaluationRepetitions}"
+                <NumericUpDown Width="115" Minimum="{Binding Setup.MinimumEvaluationRepetitions}" Maximum="30" Value="{Binding Setup.EvaluationRepetitions}"
                                AutomationProperties.Name="Live evaluation repetitions"
-                               ToolTip.Tip="One AgentEval BenchmarkRunner run is persisted per arm and repetition. More repetitions narrow uncertainty but increase model cost." />
+                               ToolTip.Tip="One AgentEval BenchmarkRunner run is persisted per arm and repetition. Stochastic plans require at least four repetitions so an all-success 95% Wilson interval can clear the registered 0.50 floor." />
               </StackPanel>
-              <StackPanel Margin="0,0,14,0" IsVisible="{Binding IsLiveEvaluationMode}" MaxWidth="270">
+              <StackPanel Margin="0,0,14,0" IsVisible="{Binding IsPaidExecutionMode}" MaxWidth="270">
                 <TextBlock Text="PAID EXECUTION" Classes="eyebrow" />
-                <ToggleSwitch IsChecked="{Binding Setup.PaidEvaluationAcknowledged}" OnContent="confirmed" OffContent="not confirmed"
-                              AutomationProperties.Name="Confirm paid live evaluation"
-                              ToolTip.Tip="This must be switched right before Run is enabled. Live evals never fall back to offline subjects." />
+                <ToggleSwitch IsChecked="{Binding Setup.PaidExecutionAcknowledged}" OnContent="confirmed" OffContent="not confirmed"
+                              AutomationProperties.Name="Confirm paid live execution"
+                              ToolTip.Tip="This one-shot confirmation is required immediately before any live subject or evaluation run. Live evaluations never fall back to offline subjects." />
               </StackPanel>
               <StackPanel Margin="0,0,14,0" IsVisible="{Binding IsDemoMode}">
                 <TextBlock Text="PERSONALIZATION" Classes="eyebrow" />
@@ -462,7 +469,7 @@
       </TabItem>
 
       <TabItem Header="EVALUATION BOARD"
-               ToolTip.Tip="Inspect typed eval-layer verdicts, causal-control attempts, native null-baseline facts, and the exact local AgentEval run directory. This screen never rescales or re-scores them.">
+               ToolTip.Tip="Inspect typed eval-layer verdicts, mutation-control attempts, native null-baseline facts, and the exact local AgentEval run directory. This screen never rescales or re-scores them.">
         <ScrollViewer Margin="0,10,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel Spacing="10">
             <Border Classes="card" Padding="14"
@@ -478,7 +485,7 @@
                   <TextBlock Text="{Binding Evaluation.ControlSummary}" Foreground="#F2F6FD" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" />
                 </StackPanel>
                 <StackPanel Grid.Column="2" MinWidth="190" MaxWidth="300">
-                  <TextBlock Text="LIVE PROGRESS" Classes="eyebrow" />
+                  <TextBlock Text="EVALUATION PROGRESS" Classes="eyebrow" />
                   <TextBlock Text="{Binding Evaluation.RunProgress}" Foreground="#72B6FF" FontSize="11" FontWeight="SemiBold"
                              TextWrapping="Wrap" />
                 </StackPanel>
@@ -507,7 +514,7 @@
             </Border>
 
             <Border Classes="card" Padding="14"
-                    ToolTip.Tip="ADR-032 persistence uses AgentEval's FileSystemOutputStore. The path shown after completion is the exact run directory, not a friendly alias.">
+                    ToolTip.Tip="Offline benchmark persistence uses AgentEval's FileSystemOutputStore. The path shown after completion is the exact run directory, not a friendly alias.">
               <Grid RowDefinitions="Auto,Auto,Auto,Auto" ColumnDefinitions="170,*" RowSpacing="5">
                 <TextBlock Text="LOCAL AGENTEVAL RUN" Classes="eyebrow" />
                 <SelectableTextBlock Grid.Column="1" Text="{Binding Evaluation.PersistenceSummary}" Foreground="#9FC5FF" FontFamily="Cascadia Mono, Consolas" FontSize="9" TextWrapping="Wrap" />
@@ -536,7 +543,7 @@
                   <TextBlock Grid.Row="2" Text="WORKLOAD" Classes="eyebrow" />
                   <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Evaluation.LiveWorkloadSummary}" Foreground="#F6C55C" TextWrapping="Wrap" />
                   <TextBlock Grid.Row="3" Text="QUALITY PASS BAR" Classes="eyebrow"
-                             ToolTip.Tip="The configured LLM quality score threshold. It is separate from each admitted check's chance floor, which is not derivable for these authored criteria." />
+                             ToolTip.Tip="The configured LLM quality-score threshold. The shipped 1.000 bar requires all four authored criteria. It is separate from each admitted check's chance floor." />
                   <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Evaluation.LiveQualityPassBar}" Foreground="#9FC5FF" TextWrapping="Wrap" />
                   <TextBlock Grid.Row="4" Text="SESSION / OUTCOME" Classes="eyebrow" />
                   <StackPanel Grid.Row="4" Grid.Column="1">
@@ -594,6 +601,29 @@
                                 <TextBlock Grid.Column="2" Text="{Binding FailureDetail, StringFormat='detail: {0}'}" Foreground="#C9D6E8" TextWrapping="Wrap" />
                               </Grid>
                             </StackPanel>
+                          </Grid>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
+
+              <Border Classes="card" Padding="10" IsVisible="{Binding Evaluation.HasLiveScenarioAcceptances}">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="TERMINAL ACCEPTANCE · PER-SCENARIO WILSON DECISIONS" Classes="eyebrow"
+                             ToolTip.Tip="For stochastic plans, every arm and scenario must independently clear the configured Wilson lower-bound SLO. These rows—not pooled per-check rates—control the terminal verdict." />
+                  <TextBlock Text="Every planned trial must be fully measured. With the shipped 1.000 quality bar, a whole-trial success requires all four authored criteria, response observation, and the arm-specific agent tool journal or workflow trace. Each arm/scenario group must independently clear the 95% Wilson lower-bound floor of 0.500. Pooled per-check reliability remains diagnostic." Classes="muted" TextWrapping="Wrap" />
+                  <ItemsControl ItemsSource="{Binding Evaluation.LiveScenarioAcceptances}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:LiveScenarioAcceptanceViewModel">
+                        <Border Classes="listRow" Margin="0,0,0,5">
+                          <Grid ColumnDefinitions="1.35*,0.9*,1*,1.15*,0.75*" ColumnSpacing="10">
+                            <StackPanel><TextBlock Text="SCENARIO · ARM" Classes="eyebrow" /><TextBlock Text="{Binding Identity}" Foreground="#F3F7FD" TextWrapping="Wrap" /></StackPanel>
+                            <StackPanel Grid.Column="1"><TextBlock Text="CENSUS" Classes="eyebrow" /><TextBlock Text="{Binding Census}" Classes="muted" TextWrapping="Wrap" /></StackPanel>
+                            <StackPanel Grid.Column="2"><TextBlock Text="WHOLE-TRIAL SUCCESS / WILSON" Classes="eyebrow" TextWrapping="Wrap" /><TextBlock Text="{Binding Reliability}" Foreground="#D8E5F6" TextWrapping="Wrap" /><TextBlock Text="{Binding WilsonInterval}" Foreground="#F6C55C" TextWrapping="Wrap" /></StackPanel>
+                            <StackPanel Grid.Column="3"><TextBlock Text="REGISTERED POLICY" Classes="eyebrow" /><TextBlock Text="{Binding Policy}" Classes="muted" TextWrapping="Wrap" /></StackPanel>
+                            <StackPanel Grid.Column="4"><TextBlock Text="DECISION" Classes="eyebrow" /><TextBlock Text="{Binding Outcome}" Foreground="{Binding OutcomeColor}" FontWeight="Bold" /></StackPanel>
                           </Grid>
                         </Border>
                       </DataTemplate>
@@ -749,10 +779,10 @@
             <StackPanel Spacing="6" IsVisible="{Binding !Evaluation.HasLiveEvaluation}">
               <Grid ColumnDefinitions="*,Auto">
                 <StackPanel>
-                  <TextBlock Text="GATE RESULTS" Classes="eyebrow" />
-                  <TextBlock Text="Observed values and verdicts are supplied by the eval layer; expand a gate to inspect its subject, producer, evaluator, null baseline, and evidence." Classes="muted" FontSize="9" TextWrapping="Wrap" />
+                  <TextBlock Text="MANDATORY GATES + DIAGNOSTIC EVALUATIONS" Classes="eyebrow" />
+                  <TextBlock Text="Authority is explicit on every row. Mandatory gates control the suite exit; diagnostic evaluations remain visible evidence but cannot fail it. Expand a row to inspect its subject, producer, evaluator, null baseline, and evidence." Classes="muted" FontSize="9" TextWrapping="Wrap" />
                 </StackPanel>
-                <TextBlock Grid.Column="1" Text="Waiting for typed gate results…" IsVisible="{Binding !Evaluation.HasGates}" Foreground="#7184A1" FontSize="9" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Text="Waiting for typed evaluation results…" IsVisible="{Binding !Evaluation.HasGates}" Foreground="#7184A1" FontSize="9" VerticalAlignment="Center" />
               </Grid>
               <ItemsControl ItemsSource="{Binding Evaluation.Gates}">
                 <ItemsControl.ItemsPanel>
@@ -766,7 +796,11 @@
                         <Expander.Header>
                           <Grid ColumnDefinitions="*,Auto" Width="374" Margin="16,0,0,0">
                             <StackPanel>
-                              <TextBlock Text="{Binding Status}" Foreground="{Binding StatusColor}" FontSize="10" FontWeight="Bold" />
+                              <StackPanel Orientation="Horizontal" Spacing="5">
+                                <TextBlock Text="{Binding Authority}" Foreground="{Binding AuthorityColor}" FontSize="9" FontWeight="Bold" />
+                                <TextBlock Text="·" Foreground="#7184A1" FontSize="9" />
+                                <TextBlock Text="{Binding Status}" Foreground="{Binding StatusColor}" FontSize="10" FontWeight="Bold" />
+                              </StackPanel>
                               <TextBlock Text="{Binding Name}" Foreground="#F3F7FD" FontWeight="SemiBold" TextWrapping="Wrap" />
                             </StackPanel>
                             <StackPanel Grid.Column="1" HorizontalAlignment="Right">
@@ -807,7 +841,7 @@
               <StackPanel Spacing="7">
                 <Grid ColumnDefinitions="*,Auto">
                   <StackPanel>
-                    <TextBlock Text="CAUSAL CONTROL RESULTS" Classes="eyebrow" />
+                    <TextBlock Text="MUTATION CONTROL RESULTS" Classes="eyebrow" />
                     <TextBlock Text="Every row runs the same evaluator three times: first healthy, then with one defect injected, then after recovery. A detected defect is the expected successful control outcome." Foreground="#AFC0D8" FontSize="9" TextWrapping="Wrap" />
                   </StackPanel>
                   <TextBlock Grid.Column="1" Text="No completed control rows yet." IsVisible="{Binding !Evaluation.HasControls}" Foreground="#7184A1" FontSize="9" VerticalAlignment="Center" />
@@ -822,7 +856,7 @@
                   <TextBlock Grid.Column="4" Text="RECOVERY" Classes="eyebrow"
                              ToolTip.Tip="The unmodified subject is evaluated again. RECOVERED confirms the same evaluator returned to its healthy result." />
                 </Grid>
-                <ItemsControl ItemsSource="{Binding Evaluation.Controls}" AutomationProperties.Name="Causal control results">
+                <ItemsControl ItemsSource="{Binding Evaluation.Controls}" AutomationProperties.Name="Mutation control results">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:ControlResultViewModel">
                       <Border Classes="listRow" Margin="0,0,0,5">

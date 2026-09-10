@@ -17,11 +17,16 @@ public static class LiveEvaluationPlanRunner
 {
     public static Task<LiveEvalResult> RunAsync(
         VitrineEvaluationPlan plan,
+        bool paidExecutionConfirmed,
         LiveEvalOptions? options = null,
         LiveEvalServices? services = null,
         IProgress<LiveEvalProgress>? progress = null,
-        CancellationToken cancellationToken = default) =>
-        LiveEvaluationExecutor.RunAsync(plan, options, services, progress, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        if (!paidExecutionConfirmed)
+            throw new InvalidOperationException("Paid live evaluation requires explicit confirmation before execution.");
+        return LiveEvaluationExecutor.RunAsync(plan, options, services, progress, cancellationToken);
+    }
 }
 
 internal static class LiveEvaluationExecutor
@@ -59,7 +64,7 @@ internal static class LiveEvaluationExecutor
         var started = DateTimeOffset.UtcNow;
         var reporter = new LiveProgressReporter(plan, progress);
         var scenarioDefinitions = Array.AsReadOnly(scenarios.Select(static item => item.ToDefinition()).ToArray());
-        var configuration = BuildConfiguration(options, services, subjects, scenarios);
+        var configuration = BuildConfiguration(plan, options, services, subjects, scenarios);
         var runReferences = new List<LiveEvalRunReference>(subjects.Count * repetitions);
         var trials = new List<LiveTrialEvidence>(subjects.Count * repetitions * scenarios.Count);
         reporter.Report(LiveEvalProgressPhase.SessionStarting,
@@ -118,7 +123,12 @@ internal static class LiveEvaluationExecutor
                         try
                         {
                             observed = await subject.RunAsync(
-                                new LiveSubjectRequest(scenario, repetition, options.SubjectMaxOutputTokens), ct)
+                                new LiveSubjectRequest(
+                                    scenario.Id,
+                                    scenario.PersonaId,
+                                    scenario.Query,
+                                    repetition,
+                                    options.SubjectMaxOutputTokens), ct)
                                 .ConfigureAwait(false)
                                 ?? LiveSubjectObservation.NotMeasured(LiveSubjectStatus.Failed, subject.Architecture);
                         }
@@ -177,14 +187,18 @@ internal static class LiveEvaluationExecutor
                 ? BuildComparisons(runsByArm[subjects[0].ArmId], runsByArm[subjects[1].ArmId],
                     definition, options.PassThreshold)
                 : [];
-            var terminal = Classify(trials);
+            var scenarioAcceptances = BuildScenarioAcceptances(plan, trials);
+            var terminal = Classify(plan, trials, scenarioAcceptances);
             result = new LiveEvalResult(
                 plan, terminal, sessionId, started, DateTimeOffset.UtcNow, workload,
                 options.PassThreshold, scenarioDefinitions, configuration,
                 Array.AsReadOnly(runReferences.ToArray()), Array.AsReadOnly(trials.ToArray()),
                 armSummaries, comparisons,
                 Array.AsReadOnly(trials.Where(static item => item.Failure is not null)
-                    .Select(static item => item.Failure!).ToArray()), paths);
+                    .Select(static item => item.Failure!).ToArray()), paths)
+            {
+                ScenarioAcceptances = scenarioAcceptances,
+            };
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -233,6 +247,11 @@ internal static class LiveEvaluationExecutor
             throw new ArgumentOutOfRangeException(nameof(options.Repetitions), "Repetitions must be between 1 and 100.");
         if (!descriptor.SupportsRepetitions && options.Repetitions is not null and not 1)
             throw new ArgumentException("This plan always runs exactly one repetition.", nameof(options));
+        var effectiveRepetitions = options.Repetitions ?? descriptor.DefaultRepetitions;
+        if (VitrineEvaluationPlans.IsStochastic(descriptor.Plan) &&
+            effectiveRepetitions < VitrineEvaluationPlans.MinimumStochasticRepetitions)
+            throw new ArgumentOutOfRangeException(nameof(options),
+                $"Stochastic plans require at least {VitrineEvaluationPlans.MinimumStochasticRepetitions} repetitions so an all-success 95% Wilson interval can clear the 0.50 reliability floor.");
         if (!descriptor.SupportsScenarioSelection && options.ScenarioIds is { Count: > 0 })
             throw new ArgumentException("This plan does not select persona scenarios.", nameof(options));
         if (options.SubjectMaxOutputTokens is < 1 or > 128_000)
@@ -278,6 +297,7 @@ internal static class LiveEvaluationExecutor
     }
 
     private static LiveEvalConfiguration BuildConfiguration(
+        VitrineEvaluationPlan plan,
         LiveEvalOptions options,
         LiveEvalServices services,
         IReadOnlyList<ILiveEvalSubject> subjects,
@@ -299,7 +319,14 @@ internal static class LiveEvaluationExecutor
                 var model = LiveEvalServices.SafeModelId(subject.ModelId);
                 return new LiveSubjectProvenance(subject.ArmId, subject.Architecture, model,
                     JudgeFingerprint.RelationTo(judge, model));
-            }).ToArray()));
+            }).ToArray()))
+        {
+            Acceptance = VitrineEvaluationPlans.IsStochastic(plan)
+                ? new(LiveTerminalAcceptancePolicy.WilsonLowerBoundPerScenario,
+                    VitrineEvaluationPlans.StochasticConfidenceLevel,
+                    VitrineEvaluationPlans.StochasticMinimumWilsonLowerBound)
+                : new(LiveTerminalAcceptancePolicy.EveryTrialMustPass, null, null),
+        };
     }
 
     private static SubjectIdentity SubjectFor(LiveSubjectArchitecture architecture) => architecture switch
@@ -354,25 +381,61 @@ internal static class LiveEvaluationExecutor
                     + duplicateOperations)
             : LiveToolEvidence.NotApplicable;
         var workflow = architecture == LiveSubjectArchitecture.Workflow
-            ? NormalizeWorkflow(source.Workflow)
+            ? NormalizeWorkflow(source.Workflow,
+                measurement == MeasurementState.Measured)
             : null;
+        if (workflow is { TerminalProviderStageCount: > 0 })
+        {
+            measurement = MeasurementState.NotMeasured;
+            status = workflow.ProviderStages.Any(static item =>
+                item.Status == LiveWorkflowProviderStageStatus.Cancelled)
+                    ? LiveSubjectStatus.Cancelled
+                    : LiveSubjectStatus.Failed;
+        }
         LiveEvalFailureCode? failureCode = source.FailureCode is { } code && Enum.IsDefined(code) ? code : null;
+        if (workflow is { TerminalProviderStageCount: > 0 })
+            failureCode = workflow.ProviderStages.Any(static item =>
+                    item.Status == LiveWorkflowProviderStageStatus.Cancelled)
+                ? LiveEvalFailureCode.Cancelled
+                : workflow.ProviderStages.Any(static item =>
+                    item.Status == LiveWorkflowProviderStageStatus.FinalFallback)
+                    ? LiveEvalFailureCode.SubjectModelStageUnusable
+                    : LiveEvalFailureCode.SubjectProviderFailure;
         if (failureCode is null && measurement == MeasurementState.NotMeasured &&
             status is LiveSubjectStatus.Failed or LiveSubjectStatus.Cancelled)
             failureCode = status == LiveSubjectStatus.Cancelled
                 ? LiveEvalFailureCode.Cancelled : LiveEvalFailureCode.SubjectExecutionFailed;
+        var workflowFailureDetail = workflow is not { TerminalProviderStageCount: > 0 }
+            ? null
+            : failureCode switch
+            {
+                LiveEvalFailureCode.Cancelled => "A required workflow model stage was cancelled by the caller.",
+                LiveEvalFailureCode.SubjectModelStageUnusable =>
+                    "A required workflow model stage selected its bounded fallback after unusable model output.",
+                _ => "A required workflow provider attempt did not recover.",
+            };
         var failureDetail = failureCode is null ? null : LiveEvidenceText.Bound(
-            source.FailureDetail ?? (failureCode == LiveEvalFailureCode.Cancelled
+            workflowFailureDetail ?? source.FailureDetail ?? (failureCode == LiveEvalFailureCode.Cancelled
                 ? "The subject observation was cancelled."
                 : "The subject observation did not complete."), 320);
         return new(measurement, status, source.Response, tools, workflow, NormalizeUsage(source.Usage),
             failureCode, failureDetail);
     }
 
-    private static LiveWorkflowEvidence NormalizeWorkflow(LiveWorkflowEvidence? source)
+    private static LiveWorkflowEvidence NormalizeWorkflow(
+        LiveWorkflowEvidence? source,
+        bool requireCompleteProviderCensus)
     {
-        if (source is null) return new([], [], 0, 0, 0, "not-measured", false, 0, 0, []);
+        if (source is null)
+        {
+            if (requireCompleteProviderCensus)
+                throw new InvalidDataException("A measured workflow requires typed provider-stage evidence.");
+            return new([], [], 0, 0, 0, "not-measured", false, 0, 0, []);
+        }
         var allowedExecutors = DiscoveryExecutorIds.All.ToHashSet(StringComparer.Ordinal);
+        var modelBackedExecutors = new HashSet<string>(
+            [DiscoveryExecutorIds.InterestMapper, DiscoveryExecutorIds.CoverageReviewer,
+             DiscoveryExecutorIds.Ranker, DiscoveryExecutorIds.Presenter], StringComparer.Ordinal);
         var allowedRoutes = new HashSet<string>(
             [DiscoveryRouteIds.MapToDiscovery, DiscoveryRouteIds.DiscoveryToReview,
              DiscoveryRouteIds.ReviewToMoreDiscovery, DiscoveryRouteIds.ReviewToRanker,
@@ -389,12 +452,67 @@ internal static class LiveEvaluationExecutor
             ? parsed.ToString()
             : source.StopReason == "not-measured" ? "not-measured" : "Unknown";
         var allowedDegradationKinds = DiscoveryExecutorIds.All
-            .SelectMany(static id => new[] { $"{id}:fallback", $"{id}:model-failure" })
-            .Append("unknown:fallback").Append("unknown:model-failure")
+            .SelectMany(static id => new[]
+            {
+                $"{id}:fallback", $"{id}:degradation", $"{id}:attempt-unusable",
+                $"{id}:model-failure", $"{id}:provider-recovered",
+                $"{id}:final-fallback", $"{id}:provider-unrecovered", $"{id}:provider-cancelled",
+            })
+            .Concat(new[]
+            {
+                "unknown:fallback", "unknown:degradation", "unknown:attempt-unusable",
+                "unknown:model-failure", "unknown:provider-recovered",
+                "unknown:final-fallback", "unknown:provider-unrecovered", "unknown:provider-cancelled",
+            })
             .ToHashSet(StringComparer.Ordinal);
         var degradationKinds = (source.DegradationKinds ?? [])
             .Where(allowedDegradationKinds.Contains).Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal).ToArray();
+        var sourceProviderStages = source.ProviderStages ?? [];
+        if (sourceProviderStages.Any(static item => item is null)
+            || sourceProviderStages.Any(item => !modelBackedExecutors.Contains(item.ExecutorId))
+            || sourceProviderStages.GroupBy(static item => item.ExecutorId, StringComparer.Ordinal)
+                .Any(static group => group.Count() != 1))
+            throw new InvalidDataException("Workflow provider-stage evidence has an invalid executor census.");
+
+        var totalProviderAttempts = sourceProviderStages.Sum(static item => (long)item.AttemptCount);
+        var observedLastAttemptNumbers = new HashSet<int>();
+        var providerStages = sourceProviderStages
+            .Select(item =>
+            {
+                if (HasImpossibleProviderCensus(item))
+                    throw new InvalidDataException("Workflow provider-stage evidence has an impossible attempt census.");
+                if (item.LastUnusableAttemptNumber > 0
+                        && (item.LastUnusableAttemptNumber > totalProviderAttempts
+                            || !observedLastAttemptNumbers.Add(item.LastUnusableAttemptNumber))
+                    || item.LastUsableResponseAttemptNumber > 0
+                        && (item.LastUsableResponseAttemptNumber > totalProviderAttempts
+                            || !observedLastAttemptNumbers.Add(item.LastUsableResponseAttemptNumber)))
+                    throw new InvalidDataException("Workflow provider-stage attempt identity is inconsistent.");
+                var status = Enum.IsDefined(item.Status)
+                    ? item.Status
+                    : LiveWorkflowProviderStageStatus.Unrecovered;
+                if (!IsConsistentProviderStage(status, item.AttemptCount, item.ResponseCount,
+                        item.UnusableAttemptCount, item.FailedAttemptCount, item.CancelledAttemptCount,
+                        item.LastUnusableAttemptNumber, item.LastUsableResponseAttemptNumber))
+                    throw new InvalidDataException("Workflow provider-stage evidence contradicts its status.");
+                return item with { Status = status };
+            })
+            .OrderBy(static item => item.ExecutorId, StringComparer.Ordinal)
+            .ToArray();
+        if (requireCompleteProviderCensus
+            && (!providerStages.Any(static item => item.ExecutorId == DiscoveryExecutorIds.InterestMapper)
+                || !providerStages.Any(static item => item.ExecutorId == DiscoveryExecutorIds.Ranker)
+                || !providerStages.Any(static item => item.ExecutorId == DiscoveryExecutorIds.Presenter)))
+            throw new InvalidDataException("A measured workflow is missing required provider-stage evidence.");
+        var providerFailures = providerStages.Sum(static item => item.FailedAttemptCount);
+        var recoveredProviderFailures = providerStages
+            .Where(static item => item.Status == LiveWorkflowProviderStageStatus.Recovered)
+            .Sum(static item => item.FailedAttemptCount);
+        var terminalProviderStages = providerStages.Count(static item => item.Status is
+            LiveWorkflowProviderStageStatus.FinalFallback
+            or LiveWorkflowProviderStageStatus.Unrecovered
+            or LiveWorkflowProviderStageStatus.Cancelled);
         return new(
             Array.AsReadOnly(executors), Array.AsReadOnly(safeRoutes),
             Math.Max(0, source.DiscoveryRounds), Math.Max(0, source.MaximumRounds),
@@ -402,8 +520,54 @@ internal static class LiveEvaluationExecutor
             Math.Max(0, source.FailureCount),
             Math.Max(0, source.DegradationCount), Array.AsReadOnly(degradationKinds),
             Math.Max(0, source.UnknownExecutorCount) + unknownExecutors,
-            Math.Max(0, source.UnknownRouteCount) + sourceRoutes.Count(route => !allowedRoutes.Contains(route)));
+            Math.Max(0, source.UnknownRouteCount) + sourceRoutes.Count(route => !allowedRoutes.Contains(route)))
+        {
+            ProviderStages = Array.AsReadOnly(providerStages),
+            ProviderFailedAttemptCount = providerFailures,
+            RecoveredProviderFailedAttemptCount = recoveredProviderFailures,
+            TerminalProviderStageCount = terminalProviderStages,
+        };
     }
+
+    private static bool IsConsistentProviderStage(
+        LiveWorkflowProviderStageStatus status,
+        int attempts,
+        int responses,
+        int unusable,
+        int failures,
+        int cancellations,
+        int lastUnusableAttemptNumber,
+        int lastUsableResponseAttemptNumber)
+    {
+        return status switch
+        {
+            LiveWorkflowProviderStageStatus.Completed => responses == attempts && unusable == 0
+                && failures == 0 && cancellations == 0 && lastUnusableAttemptNumber == 0
+                && lastUsableResponseAttemptNumber > 0,
+            LiveWorkflowProviderStageStatus.Recovered => attempts > unusable && unusable > 0
+                && responses > 0 && cancellations == 0 && lastUnusableAttemptNumber > 0
+                && lastUsableResponseAttemptNumber > lastUnusableAttemptNumber,
+            LiveWorkflowProviderStageStatus.FinalFallback => unusable > 0
+                && cancellations == 0 && lastUnusableAttemptNumber > 0,
+            LiveWorkflowProviderStageStatus.Unrecovered => true,
+            LiveWorkflowProviderStageStatus.Cancelled => cancellations > 0,
+            _ => false,
+        };
+    }
+
+    private static bool HasImpossibleProviderCensus(LiveWorkflowProviderStageEvidence stage) =>
+        stage.AttemptCount <= 0 || stage.ResponseCount < 0 || stage.UnusableAttemptCount < 0
+        || stage.FailedAttemptCount < 0 || stage.CancelledAttemptCount < 0
+        || stage.UnusableAttemptCount > stage.AttemptCount
+        || stage.FailedAttemptCount > stage.UnusableAttemptCount
+        || (long)stage.ResponseCount + stage.FailedAttemptCount + stage.CancelledAttemptCount
+            > stage.AttemptCount
+        || stage.AttemptCount > (long)stage.ResponseCount + stage.CancelledAttemptCount
+            + stage.UnusableAttemptCount
+        || (long)stage.UnusableAttemptCount + stage.CancelledAttemptCount > stage.AttemptCount
+        || stage.LastUnusableAttemptNumber < 0 || stage.LastUsableResponseAttemptNumber < 0
+        || (stage.UnusableAttemptCount == 0) != (stage.LastUnusableAttemptNumber == 0)
+        || stage.LastUsableResponseAttemptNumber > 0 && stage.ResponseCount == 0;
 
     internal static LiveUsageEvidence NormalizeUsage(LiveUsageEvidence source)
     {
@@ -562,7 +726,44 @@ internal static class LiveEvaluationExecutor
             interval.Estimate, interval.Lower, interval.Upper);
     }
 
-    private static LiveEvalTerminalStatus Classify(IReadOnlyList<LiveTrialEvidence> trials)
+    private static IReadOnlyList<LiveScenarioAcceptanceDecision> BuildScenarioAcceptances(
+        VitrineEvaluationPlan plan,
+        IReadOnlyList<LiveTrialEvidence> trials)
+    {
+        if (!VitrineEvaluationPlans.IsStochastic(plan)) return [];
+        return Array.AsReadOnly(trials
+            .GroupBy(static trial =>
+                (trial.ArmId, trial.Architecture, trial.ScenarioId, trial.PersonaId))
+            .Select(group =>
+            {
+                var measured = group.Where(static trial =>
+                    trial.Measurement == MeasurementState.Measured).ToArray();
+                var census = new LiveObservationCensus(
+                    measured.Length,
+                    group.Count(static trial => trial.Measurement == MeasurementState.NotApplicable),
+                    group.Count(static trial => trial.Measurement == MeasurementState.NotMeasured));
+                var reliability = Reliability(
+                    measured.Count(static trial => trial.Passed == true), measured.Length);
+                bool? passed = census.Measured == group.Count() && reliability.Lower is { } lower
+                    ? lower >= VitrineEvaluationPlans.StochasticMinimumWilsonLowerBound
+                    : null;
+                return new LiveScenarioAcceptanceDecision(
+                    group.Key.ScenarioId,
+                    group.Key.PersonaId,
+                    group.Key.ArmId,
+                    group.Key.Architecture,
+                    census,
+                    reliability,
+                    VitrineEvaluationPlans.StochasticConfidenceLevel,
+                    VitrineEvaluationPlans.StochasticMinimumWilsonLowerBound,
+                    passed);
+            }).ToArray());
+    }
+
+    private static LiveEvalTerminalStatus Classify(
+        VitrineEvaluationPlan plan,
+        IReadOnlyList<LiveTrialEvidence> trials,
+        IReadOnlyList<LiveScenarioAcceptanceDecision> scenarioAcceptances)
     {
         if (trials.Count == 0) return LiveEvalTerminalStatus.InfrastructureError;
         if (trials.Any(static trial => trial.SubjectStatus == LiveSubjectStatus.Cancelled))
@@ -570,6 +771,14 @@ internal static class LiveEvaluationExecutor
         var measured = trials.Count(static trial => trial.Measurement == MeasurementState.Measured);
         if (measured == 0) return LiveEvalTerminalStatus.NotMeasured;
         if (measured != trials.Count) return LiveEvalTerminalStatus.InfrastructureError;
+        if (VitrineEvaluationPlans.IsStochastic(plan))
+        {
+            if (scenarioAcceptances.Count == 0 || scenarioAcceptances.Any(static item => item.Passed is null))
+                return LiveEvalTerminalStatus.InfrastructureError;
+            return scenarioAcceptances.All(static item => item.Passed == true)
+                ? LiveEvalTerminalStatus.Passed
+                : LiveEvalTerminalStatus.QualityFailed;
+        }
         return trials.All(static trial => trial.Passed == true)
             ? LiveEvalTerminalStatus.Passed
             : LiveEvalTerminalStatus.QualityFailed;

@@ -6,6 +6,14 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="An independent job-application sample prepared for Digitec Galaxus, showing how AgentEval makes AI-assisted product-discovery quality, safety risks, and evidence inspectable.">
+  <meta name="author" content="José Luis Latorre Millas">
+  <link rel="canonical" href="https://azuresamurai.blog/Vitrine/Vitrine-Digitec-Galaxus-Value-Proposal.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="VITRINE by José Luis Latorre Millas">
+  <meta property="og:title" content="VITRINE · Independent value proposal for Digitec Galaxus">
+  <meta property="og:description" content="How an evaluation and observability platform can make e-commerce AI quality, safety, reliability, and cost inspectable.">
+  <meta property="og:url" content="https://azuresamurai.blog/Vitrine/Vitrine-Digitec-Galaxus-Value-Proposal.html">
+  <meta property="og:image" content="https://azuresamurai.blog/Vitrine/images/vitrine-customer-recommendation.png">
   <title>VITRINE · Independent value proposal for Digitec Galaxus</title>
   <style>
     :root {
@@ -13,6 +21,7 @@
       --line:#d1dbe6; --blue:#176bb2; --blue-soft:#e1effd; --teal:#087c72; --teal-soft:#daf2ed;
       --amber:#92590e; --amber-soft:#faecd3; --red:#a23d38; --red-soft:#f8e1df;
       --violet:#6650a4; --violet-soft:#ece5f8; --shadow:0 18px 42px -34px rgba(20,36,55,.55);
+      --primary-ink:#fff;
     }
     @media (prefers-color-scheme:dark) {
       :root {
@@ -20,6 +29,7 @@
         --line:#2b3b4e; --blue:#76baff; --blue-soft:#123255; --teal:#65d5c7; --teal-soft:#123a38;
         --amber:#f1bd73; --amber-soft:#3d2b14; --red:#ff918a; --red-soft:#44201f;
         --violet:#c4a9ff; --violet-soft:#30234a; --shadow:0 18px 42px -30px rgba(0,0,0,.85);
+        --primary-ink:#062b28;
       }
     }
     * { box-sizing:border-box }
@@ -42,7 +52,7 @@
     .lead { max-width:840px; color:var(--muted); font-size:clamp(1.05rem,2vw,1.25rem) }
     .actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:24px }
     .button { display:inline-flex; align-items:center; padding:9px 14px; border:1px solid var(--line); border-radius:7px; background:var(--surface); color:var(--ink); text-decoration:none; font-weight:680; box-shadow:var(--shadow) }
-    .button.primary { border-color:var(--teal); background:var(--teal); color:#fff }
+    .button.primary { border-color:var(--teal); background:var(--teal); color:var(--primary-ink) }
     nav { position:sticky; top:0; z-index:20; border-bottom:1px solid var(--line); background:color-mix(in srgb,var(--paper) 91%,transparent); backdrop-filter:blur(12px) }
     nav .wrap { display:flex; gap:18px; align-items:center; min-height:48px; overflow-x:auto; white-space:nowrap }
     nav a { color:var(--muted); text-decoration:none; font-size:.8rem; font-weight:720 }
@@ -115,6 +125,7 @@
 <nav aria-label="Value proposal sections">
   <div class="wrap">
     <a href="index.html">VITRINE docs</a>
+    <a href="Vitrine-One-Page-Summary.html">Plain-language summary</a>
     <a href="#content">Value proposal</a>
     <a href="#proposal">Contribution</a>
     <a href="#value">Business value</a>
@@ -143,7 +154,7 @@
           criteria, tool expectations, missing-measurement rules, repetitions, and adversarial probes
           live outside the system being evaluated. The subject never grades itself.</p></article>
         <article class="card"><span class="tag ok">Decision support</span><h3>Leave a durable answer</h3><p>Each execution lane retains the
-          evidence appropriate to it: app runs emit typed events and support integrity-checked
+          evidence appropriate to it: app runs emit typed events and support checksummed
           export and replay; the offline benchmark and Eval01–Eval05 create standard AgentEval run
           directories; every paid plan writes a sanitized local session receipt.</p></article>
       </div>
@@ -155,11 +166,19 @@
         RedTeam probes, filesystem evidence, and fail-closed execution are used here against a
         realistic e-commerce subject—not presented only as framework APIs.
       </div>
+      <div class="callout">
+        <strong>The adjacent knowledge-systems connection.</strong>
+        <a href="https://github.com/joslat/agent-memory-dotnet">agent-memory-dotnet</a> is my
+        separate Neo4j-backed, graph-native memory provider for Microsoft Agent Framework, with
+        GraphRAG and MCP integration. It demonstrates related knowledge-graph and semantic-memory
+        platform work; it is not a hidden dependency of VITRINE and VITRINE does not claim to
+        implement Digitec Galaxus's knowledge graph, semantic layer, or Agentic BI systems.
+      </div>
       <div class="facts" aria-label="Current VITRINE proof surface">
-        <div class="fact"><b>99</b><span>synthetic products</span></div>
+        <div class="fact"><b>99</b><span>authored catalogue records</span></div>
         <div class="fact"><b>14</b><span>authored personas</span></div>
         <div class="fact"><b>2</b><span>subject architectures</span></div>
-        <div class="fact"><b>6</b><span>admitted product gates</span></div>
+        <div class="fact"><b>5 + 1</b><span>mandatory gates + matched-quality diagnostic</span></div>
         <div class="fact"><b>43</b><span>registered control mutations</span></div>
         <div class="fact"><b>6</b><span>explicit paid Eval01–Eval06 plans</span></div>
       </div>
@@ -184,7 +203,9 @@
               through both architectures and retains native paired comparison facts.</td><td>Choose
               from observed quality, control, reliability, and cost trade-offs—not fashion.</td></tr>
             <tr><td>Will the behavior remain stable?</td><td>When explicitly invoked, Eval04 and Eval05
-              repeat provider-backed executions and report per-check Wilson intervals alongside the case census.</td><td>Expose
+              repeat provider-backed executions. Every selected arm/scenario persists a whole-trial
+              95% Wilson interval and must clear a 0.50 lower-bound floor; per-check intervals remain
+              diagnostic evidence.</td><td>Expose
               variability and decide whether the evidence is mature enough for a rollout.</td></tr>
             <tr><td>Can the system resist misuse?</td><td>The offline suite calibrates injection
               detection on guarded and deliberately vulnerable fixtures. When explicitly invoked,
@@ -194,7 +215,8 @@
               shown before execution, and provider usage is retained when reported.</td><td>Compare
               quality per unit of spend and distinguish measured zero from missing telemetry.</td></tr>
             <tr><td>Can we defend the decision later?</td><td>Sanitized receipts, run IDs, persisted
-              benchmark output, integrity-checked artifacts, HTML/JSON export, and pure replay.</td><td>Reproduce
+              benchmark output, checksummed artifacts, HTML/JSON export, and pure replay. The checksum detects
+              accidental changes; it is not a signature or proof against malicious replacement.</td><td>Reproduce
               evidence for engineering review, incident learning, and model-change governance.</td></tr>
           </tbody>
         </table>
@@ -303,7 +325,7 @@
         Digitec Galaxus business metrics.</p>
       <div class="grid3">
         <article class="card"><span class="tag ok">Verified offline</span><h3>Release confidence</h3><p>At the
-          2026-09-09 verification snapshot: Release build with zero warnings/errors; 336/336 credential-free tests; six of six admitted production-check gates;
+          2026-09-10 verification snapshot: Release build with zero warnings/errors; 450/450 credential-free tests; all five mandatory evaluation gates passed and the matched-quality diagnostic was reported;
           43/43 registered mutations detected; catalogue defect detected and recovery verified.</p></article>
         <article class="card"><span class="tag info">Durable</span><h3>Run evidence</h3><p>The checked-in
           <a href="reports/evals-offline.html">offline report</a> records cases, arms, checks, census,

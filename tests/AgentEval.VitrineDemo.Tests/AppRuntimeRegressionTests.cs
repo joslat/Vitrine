@@ -234,6 +234,155 @@ public sealed class AppRuntimeRegressionTests
     }
 
     [Fact]
+    public void DiagnosticFailureIsRenderedAsANonVerdictBearingFinding()
+    {
+        var diagnostic = new GateResult(
+            "Matched agent/workflow judged quality",
+            false,
+            0.25,
+            null,
+            "The matched comparison did not satisfy its diagnostic criteria.")
+        {
+            Authority = GateAuthority.Diagnostic,
+        };
+        var draft = VitrineEventAdapters.FromEvaluation(new(
+            EvaluationProgressKind.GateCompleted,
+            "judged",
+            diagnostic.Name,
+            diagnostic.Evidence,
+            Passed: false,
+            Gate: diagnostic,
+            Authority: GateAuthority.Diagnostic));
+
+        Assert.Equal(VitrineEventDisposition.Warning, draft.Disposition);
+        Assert.Contains("DIAGNOSTIC FINDING · no exit authority", draft.Title,
+            StringComparison.Ordinal);
+        Assert.Contains("Authority: Diagnostic", draft.Payload, StringComparison.Ordinal);
+        Assert.Contains("Exit effect: none", draft.Payload, StringComparison.Ordinal);
+        Assert.Contains("OBSERVED FAIL · diagnostic only", draft.Payload,
+            StringComparison.Ordinal);
+
+        var board = new EvaluationBoardViewModel();
+        board.Apply(new(EvaluationProgressKind.GateCompleted, "judged", diagnostic.Name,
+            diagnostic.Evidence, Passed: false, Gate: diagnostic,
+            Authority: GateAuthority.Diagnostic));
+        var row = Assert.Single(board.Gates);
+        Assert.Equal("DIAGNOSTIC", row.Authority);
+        Assert.Equal("#F6C55C", row.StatusColor);
+        Assert.Contains("DIAGNOSTIC FINDING · no exit authority", board.ActiveStage,
+            StringComparison.Ordinal);
+
+        var graph = new GraphViewModel();
+        var store = new VitrineEventStore();
+        graph.Load(VitrineGraphFactory.ForRunningEvaluationSuite());
+        graph.Apply(store.Append(draft));
+        Assert.Equal(GraphNodeState.Warning, graph.StateOf("judged"));
+
+        var suiteCompleted = VitrineEventAdapters.FromEvaluation(new(
+            EvaluationProgressKind.SuiteCompleted,
+            "suite",
+            "Evaluation suite",
+            "All mandatory evaluation gates passed; the diagnostic remains non-authoritative.",
+            Passed: true,
+            Completed: 6,
+            Total: 6));
+        graph.Apply(store.Append(suiteCompleted));
+        Assert.Equal(GraphNodeState.Warning, graph.StateOf("judged"));
+    }
+
+    [Fact]
+    public void DiagnosticPassIsGreenButRetainsNoExitAuthority()
+    {
+        var diagnostic = new GateResult(
+            "Matched agent/workflow judged quality",
+            true,
+            1,
+            null,
+            "The matched comparison satisfied its diagnostic criteria.")
+        {
+            Authority = GateAuthority.Diagnostic,
+        };
+        var progress = new EvaluationProgressEvent(
+            EvaluationProgressKind.GateCompleted,
+            "judged",
+            diagnostic.Name,
+            diagnostic.Evidence,
+            Passed: true,
+            Gate: diagnostic,
+            Authority: GateAuthority.Diagnostic);
+        var draft = VitrineEventAdapters.FromEvaluation(progress);
+
+        Assert.Equal(VitrineEventDisposition.Succeeded, draft.Disposition);
+        Assert.Contains("DIAGNOSTIC OBSERVATION · no exit authority", draft.Title,
+            StringComparison.Ordinal);
+
+        var board = new EvaluationBoardViewModel();
+        board.Apply(progress);
+        var row = Assert.Single(board.Gates);
+        Assert.Equal("DIAGNOSTIC", row.Authority);
+        Assert.Equal("PASS", row.Status);
+        Assert.Equal("#63D391", row.StatusColor);
+
+        var graph = new GraphViewModel();
+        var store = new VitrineEventStore();
+        graph.Load(VitrineGraphFactory.ForRunningEvaluationSuite());
+        graph.Apply(store.Append(draft));
+        Assert.Equal(GraphNodeState.Succeeded, graph.StateOf("judged"));
+
+        graph.Apply(store.Append(VitrineEventAdapters.FromEvaluation(new(
+            EvaluationProgressKind.SuiteCompleted,
+            "suite",
+            "Evaluation suite",
+            "All mandatory evaluation gates passed; the diagnostic remains non-authoritative.",
+            Passed: true,
+            Completed: 6,
+            Total: 6))));
+        Assert.Equal(GraphNodeState.Succeeded, graph.StateOf("judged"));
+    }
+
+    [Fact]
+    public void DiagnosticInstrumentErrorIsRenderedAsFailedInfrastructureEvidence()
+    {
+        var diagnostic = GateResult.InstrumentError(
+            "Matched agent/workflow judged quality",
+            null,
+            typeof(InvalidDataException)) with
+        {
+            Authority = GateAuthority.Diagnostic,
+        };
+        var progress = new EvaluationProgressEvent(
+            EvaluationProgressKind.GateCompleted,
+            "judged",
+            diagnostic.Name,
+            diagnostic.Evidence,
+            Passed: null,
+            Gate: diagnostic,
+            Authority: GateAuthority.Diagnostic);
+        var draft = VitrineEventAdapters.FromEvaluation(progress);
+
+        Assert.Equal(VitrineEventDisposition.Failed, draft.Disposition);
+        Assert.Contains("DIAGNOSTIC INSTRUMENT ERROR · no exit authority", draft.Title,
+            StringComparison.Ordinal);
+        Assert.Contains("Measurement: InstrumentError", draft.Payload,
+            StringComparison.Ordinal);
+        Assert.Contains("Verdict: INSTRUMENT ERROR", draft.Payload,
+            StringComparison.Ordinal);
+
+        var board = new EvaluationBoardViewModel();
+        board.Apply(progress);
+        var row = Assert.Single(board.Gates);
+        Assert.Equal("DIAGNOSTIC", row.Authority);
+        Assert.Equal("INSTRUMENT ERROR", row.Status);
+        Assert.Equal("#F07076", row.StatusColor);
+
+        var graph = new GraphViewModel();
+        var store = new VitrineEventStore();
+        graph.Load(VitrineGraphFactory.ForRunningEvaluationSuite());
+        graph.Apply(store.Append(draft));
+        Assert.Equal(GraphNodeState.Failed, graph.StateOf("judged"));
+    }
+
+    [Fact]
     public void WorkflowFailureMapsToAFailedTerminalEvent()
     {
         var draft = VitrineEventAdapters.FromDiscovery(new DiscoveryEvent(
@@ -336,6 +485,8 @@ public sealed class AppRuntimeRegressionTests
 
         viewModel.Setup.SelectedArm = viewModel.Setup.Arms.Single(arm => arm.Arm == RecommendationExecutionArm.LiveAzure);
         Assert.Contains("LIVE", viewModel.RunButtonText, StringComparison.Ordinal);
+        Assert.False(viewModel.RunCommand.CanExecute(null));
+        viewModel.Setup.PaidExecutionAcknowledged = true;
         Assert.Equal(Config.IsConfigured, viewModel.RunCommand.CanExecute(null));
 
         viewModel.SelectedMode = VitrineRunMode.Demo01;

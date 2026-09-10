@@ -41,17 +41,16 @@ public sealed class DiscoveryModelCall
     private readonly IChatClient _chatClient;
     private readonly IDiscoveryProgressSink _progress;
     private readonly TimeSpan _timeout;
+    private int _logicalAttemptSequence;
 
     /// <summary>
     /// The wall-clock ceiling on ONE model call.
     /// </summary>
     /// <remarks>
-    /// ⚠ MEASURED, and the reason this exists at all. Without it a stalled deployment does not
-    /// fail — it QUEUES: the Azure SDK's default policy is four tries at a hundred seconds each,
-    /// this caller then retries once itself, and there are four model-backed stages. That is
-    /// roughly forty minutes of a demo standing still while every layer behaves exactly as
-    /// documented. Observed on this repository's own deployment, on the first live run.
-    /// A loop that "never hangs" has to bound the thing that can hang, not just the graph.
+    /// A stalled deployment can queue through four SDK attempts of up to one hundred seconds,
+    /// followed by this caller's retry across four model-backed stages: roughly forty minutes in
+    /// the worst composition. Bounding the graph is therefore insufficient; each model call must
+    /// also have a deadline.
     /// </remarks>
     public static TimeSpan DefaultModelCallTimeout { get; } = TimeSpan.FromSeconds(60);
 
@@ -91,6 +90,7 @@ public sealed class DiscoveryModelCall
     /// <param name="userMessage">The turn's single user message.</param>
     /// <param name="state">The run state; its model-call counter is incremented per attempt.</param>
     /// <param name="cancellationToken">Cancellation.</param>
+    /// <param name="isUsable">Optional stage-level semantic usability predicate.</param>
     /// <returns>The parsed envelope, or null when two attempts failed.</returns>
     public async ValueTask<T?> InvokeAsync<T>(
         string nodeId,
@@ -98,7 +98,8 @@ public sealed class DiscoveryModelCall
         string instructions,
         string userMessage,
         DiscoveryState state,
-        CancellationToken cancellationToken) where T : class
+        CancellationToken cancellationToken,
+        Func<T, bool>? isUsable = null) where T : class
     {
         ArgumentNullException.ThrowIfNull(state);
 
@@ -109,19 +110,27 @@ public sealed class DiscoveryModelCall
                 : "\n\nYour previous reply could not be parsed. Reply with the JSON object ONLY: "
                   + "no reasoning, no code fence, no text before or after it.";
 
-            var text = await RunAsync(nodeId, agentName, instructions + suffix, userMessage, state, cancellationToken)
+            var attemptNumber = StartLogicalAttempt();
+            var text = await RunProviderAttemptAsync(
+                    nodeId, agentName, instructions + suffix, userMessage, state, attemptNumber, cancellationToken)
                 .ConfigureAwait(false);
 
             if (text is null)
             {
-                _progress.Publish(DiscoveryEvent.Degraded(nodeId,
+                _progress.Publish(DiscoveryEvent.ModelAttemptUnusable(nodeId, attemptNumber,
                     $"attempt {attempt} of 2: the model call failed outright"));
                 continue;
             }
 
-            if (TryParse<T>(text, out var parsed) && parsed is not null) return parsed;
+            if (TryParse<T>(text, out var parsed) && parsed is not null)
+            {
+                if (isUsable?.Invoke(parsed) ?? true) return parsed;
+                _progress.Publish(DiscoveryEvent.ModelAttemptUnusable(nodeId, attemptNumber,
+                    $"attempt {attempt} of 2: parsed output did not meet the stage usability contract"));
+                continue;
+            }
 
-            _progress.Publish(DiscoveryEvent.Degraded(nodeId,
+            _progress.Publish(DiscoveryEvent.ModelAttemptUnusable(nodeId, attemptNumber,
                 $"attempt {attempt} of 2: no JSON object could be parsed out of {text.Length} character(s) of response"));
         }
 
@@ -149,6 +158,28 @@ public sealed class DiscoveryModelCall
         string instructions,
         string userMessage,
         DiscoveryState state,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        var attemptNumber = StartLogicalAttempt();
+        var text = await RunProviderAttemptAsync(
+            nodeId, agentName, instructions, userMessage, state, attemptNumber, cancellationToken)
+            .ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(text))
+            _progress.Publish(DiscoveryEvent.ModelAttemptUnusable(nodeId, attemptNumber,
+                "the direct model-stage attempt failed before a usable response"));
+        return text;
+    }
+
+    private int StartLogicalAttempt() => Interlocked.Increment(ref _logicalAttemptSequence);
+
+    private async ValueTask<string?> RunProviderAttemptAsync(
+        string nodeId,
+        string agentName,
+        string instructions,
+        string userMessage,
+        DiscoveryState state,
+        int attemptNumber,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(state);
@@ -180,27 +211,20 @@ public sealed class DiscoveryModelCall
 
             state.ModelCalls++;
             _progress.Publish(DiscoveryEvent.ModelRequestStarted(
-                nodeId, agentName, instructions, userMessage, MaxOutputTokensPerCall, operationId));
+                nodeId, agentName, instructions, userMessage, MaxOutputTokensPerCall, operationId,
+                attemptNumber));
 
             var response = await agent
                 .RunAsync([new ChatMessage(ChatRole.User, userMessage)], session, cancellationToken: deadline.Token)
                 .ConfigureAwait(false);
 
-            // ⚠ THE LINE THIS WHOLE LANE WAS MISSING. `response.Usage` is where the provider puts
-            //   what it billed for, and this method used to return `response.Text` and drop it. The
-            //   usage was never absent and was never un-asked-for; it arrived and we threw it away,
-            //   so `agent -- 2` made real model calls and printed no token count, and Eval 08's
-            //   workflow arm fell back to the harness's text-length ESTIMATE over text replayed from
-            //   workflow state. `MAFAgentAdapter` makes the identical RunAsync call against the same
-            //   deployment and reads this same property — that is the control that settles which of
-            //   the three possible causes it was.
-            //
-            //   Record BEFORE the return, and never conditionally: a null usage is an ABSENCE and
-            //   ChatSpend records it as one.
+            // Usage comes from the provider response, not from replayed workflow text. Record it
+            // before returning and without a presence guard: ChatSpend distinguishes a reported
+            // zero, partial usage, and an absent usage block.
             state.Spend.Record(response.Usage);
 
             _progress.Publish(DiscoveryEvent.ModelResponseReceived(
-                nodeId, agentName, response.Text, operationId));
+                nodeId, agentName, response.Text, operationId, attemptNumber));
 
             return response.Text;
         }
@@ -208,7 +232,8 @@ public sealed class DiscoveryModelCall
         {
             // The CALLER cancelled. That is not a degradation, it is the answer.
             if (state.ModelCalls > callsBeforeThisAttempt)
-                _progress.Publish(DiscoveryEvent.ModelRequestCancelled(nodeId, agentName, operationId));
+                _progress.Publish(DiscoveryEvent.ModelRequestCancelled(
+                    nodeId, agentName, operationId, attemptNumber));
             throw;
         }
         catch (OperationCanceledException)
@@ -218,8 +243,8 @@ public sealed class DiscoveryModelCall
             if (state.ModelCalls > callsBeforeThisAttempt) state.Spend.RecordNoResponse();
             if (state.ModelCalls > callsBeforeThisAttempt)
                 _progress.Publish(DiscoveryEvent.ModelRequestFailed(
-                    nodeId, agentName, typeof(TimeoutException), operationId));
-            _progress.Publish(DiscoveryEvent.Degraded(agentName,
+                    nodeId, agentName, typeof(TimeoutException), operationId, attemptNumber));
+            _progress.Publish(DiscoveryEvent.Degraded(nodeId,
                 $"no response within {_timeout.TotalSeconds:0} s — the call was abandoned so the loop keeps moving"));
             return null;
         }
@@ -231,8 +256,8 @@ public sealed class DiscoveryModelCall
             if (state.ModelCalls > callsBeforeThisAttempt) state.Spend.RecordNoResponse();
             if (state.ModelCalls > callsBeforeThisAttempt)
                 _progress.Publish(DiscoveryEvent.ModelRequestFailed(
-                    nodeId, agentName, ex.GetType(), operationId));
-            _progress.Publish(DiscoveryEvent.Degraded(agentName,
+                    nodeId, agentName, ex.GetType(), operationId, attemptNumber));
+            _progress.Publish(DiscoveryEvent.Degraded(nodeId,
                 $"{ex.GetType().Name}: message withheld to prevent configuration disclosure"));
             return null;
         }
@@ -346,14 +371,18 @@ public sealed record MappedConstraint(
     [property: JsonPropertyName("source_signal_id")] string? SourceSignalId);
 
 /// <summary>
-/// The LIVE arm of stage 1: one structured model call, with the code-derived map as its floor.
+/// The LIVE arm of stage 1: one structured model call, with a bounded code-derived latent floor.
 /// </summary>
 /// <remarks>
 /// <para>
 /// The deterministic map is built FIRST, always. It supplies the ownership set, the
 /// anti-interests and the compatibility constraints — none of which are things a model should be
 /// the authority on — and it is the map that stands if the call fails or cannot be parsed. The
-/// model's contribution is the INTERESTS, which is the judgement the loop actually wants from it.
+/// The model contributes most of the INTERESTS, which is the judgement the loop actually wants
+/// from it. Up to <see cref="DiscoveryState.MaxCodeDerivedLatentFloorInterests"/> of the strongest
+/// code-derived latent conjunctions remain in the merged map. That makes "floor" an enforced
+/// invariant rather than merely the failure fallback, while leaving at least four slots for the
+/// model and keeping the global map bound intact.
 /// </para>
 /// <para>
 /// Every evidence id the model writes is checked against the customer's real purchase ids. An id
@@ -385,7 +414,12 @@ public sealed class ModelInterestMapper(Catalogue catalogue, DiscoveryModelCall 
             InterestMapperPrompt.Instructions,
             BuildSignalList(state, classified),
             state,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            static parsed => parsed.Interests is { Count: > 0 } interests
+                && interests.All(static item => item is not null)
+                && interests.Any(static item => !string.IsNullOrWhiteSpace(item.Label))
+                && (parsed.AntiInterests?.All(static item => item is not null) ?? true))
+            .ConfigureAwait(false);
 
         if (envelope?.Interests is { Count: > 0 })
         {
@@ -394,7 +428,7 @@ public sealed class ModelInterestMapper(Catalogue catalogue, DiscoveryModelCall 
         else
         {
             state.DegradedNotes.Add("InterestMapper: fell back to the code-derived map");
-            _progress.Publish(DiscoveryEvent.Degraded("InterestMapper",
+            _progress.Publish(DiscoveryEvent.ModelFallbackSelected("InterestMapper",
                 "no usable interest map came back — the code-derived map stands. This is a WARNING, not a failure: " +
                 "the loop still has a map, and the console says which one"));
         }
@@ -403,7 +437,9 @@ public sealed class ModelInterestMapper(Catalogue catalogue, DiscoveryModelCall 
         return state;
     }
 
-    /// <summary>Replaces the interests with the model's, after validating every field.</summary>
+    /// <summary>
+    /// Merges validated model interests with the bounded code-derived latent floor.
+    /// </summary>
     /// <param name="state">The run state.</param>
     /// <param name="envelope">The parsed envelope.</param>
     /// <param name="classified">The customer's classified purchase lines.</param>
@@ -424,11 +460,24 @@ public sealed class ModelInterestMapper(Catalogue catalogue, DiscoveryModelCall 
             realIds.Add(line.PurchaseId);
         }
 
-        state.Interests.Clear();
-        state.Coverage.Clear();
+        // PopulateFromCode ran immediately before this call. Preserve only its strongest latent
+        // conjunctions, and only while behavioural personalization is authorized. Direct history
+        // signals stay model-owned in the live arm; carrying all of them would turn a floor into a
+        // wholesale deterministic map and leave no meaningful mapper judgement.
+        var deterministicFloor = state.PersonalizationConsent
+            ? state.Interests
+                .Where(static interest =>
+                    interest.Origin == InterestOrigin.Mapper
+                    && interest.Kind == InterestKind.Latent
+                    && interest.EvidenceSignalIds.Distinct(StringComparer.OrdinalIgnoreCase).Count() >= 2)
+                .OrderByDescending(static interest => interest.Confidence)
+                .ThenBy(static interest => interest.Label, StringComparer.Ordinal)
+                .Take(DiscoveryState.MaxCodeDerivedLatentFloorInterests)
+                .ToList()
+            : [];
 
-        int index = 0;
-        foreach (var mapped in envelope.Interests!.Take(DiscoveryState.MaxInterests))
+        var modelInterests = new List<Interest>(DiscoveryState.MaxInterests);
+        foreach (var mapped in envelope.Interests ?? [])
         {
             if (string.IsNullOrWhiteSpace(mapped.Label)) continue;
 
@@ -448,9 +497,11 @@ public sealed class ModelInterestMapper(Catalogue catalogue, DiscoveryModelCall 
 
             if (terms.Count == 0) terms.Add(mapped.Label!.Trim());
 
-            state.Interests.Add(new Interest
+            modelInterests.Add(new Interest
             {
-                Id = $"I-{++index}",
+                // The merged map is sorted and numbered below. A temporary id prevents model
+                // response order from becoming an identity contract.
+                Id = string.Empty,
                 Label = mapped.Label!.Trim(),
                 Kind = string.Equals(mapped.Kind?.Trim(), "LATENT", StringComparison.OrdinalIgnoreCase)
                     ? InterestKind.Latent
@@ -466,9 +517,38 @@ public sealed class ModelInterestMapper(Catalogue catalogue, DiscoveryModelCall 
                 CategoryHints = [],
                 AttributeHints = new Dictionary<string, string>(StringComparer.Ordinal)
             });
+
+            if (modelInterests.Count == DiscoveryState.MaxInterests) break;
         }
 
-        foreach (var interest in state.Interests) state.CoverageFor(interest.Id);
+        // An envelope with only blank/invalid interest rows is not a usable model map. In that
+        // case the full code-derived map remains the fallback, matching MapAsync's null/empty path.
+        if (modelInterests.Count == 0) return;
+
+        // When the model independently names the exact same interest, prefer the mechanically
+        // evidenced floor row and do not spend a second slot on a duplicate label.
+        var modelCapacity = DiscoveryState.MaxInterests - deterministicFloor.Count;
+        var selectedModelInterests = modelInterests
+            .Where(model => !deterministicFloor.Any(floor =>
+                string.Equals(floor.Label, model.Label, StringComparison.OrdinalIgnoreCase)))
+            .Take(modelCapacity);
+
+        var merged = deterministicFloor
+            .Concat(selectedModelInterests)
+            .OrderByDescending(static interest => interest.Confidence)
+            .ThenBy(static interest => interest.Label, StringComparer.Ordinal)
+            .Take(DiscoveryState.MaxInterests)
+            .ToList();
+
+        state.Interests.Clear();
+        state.Coverage.Clear();
+
+        for (int index = 0; index < merged.Count; index++)
+        {
+            var interest = merged[index] with { Id = $"I-{index + 1}" };
+            state.Interests.Add(interest);
+            state.CoverageFor(interest.Id);
+        }
 
         // The model may ADD an anti-interest; it may not remove one the classifier derived.
         foreach (var anti in envelope.AntiInterests ?? [])
@@ -486,7 +566,7 @@ public sealed class ModelInterestMapper(Catalogue catalogue, DiscoveryModelCall 
     /// The signal list handed to the mapper.
     /// </summary>
     /// <remarks>
-    /// ⚠ §F.6 is a control-flow property here, not a redaction: when consent is withdrawn,
+    /// ⚠ the personalization opt-out is a control-flow property here, not a redaction: when consent is withdrawn,
     /// <c>classified</c> is EMPTY because the builder never read the history, so there is nothing
     /// to leave out of this string. The block below cannot leak what was never loaded.
     /// </remarks>
@@ -578,7 +658,14 @@ public sealed class ModelCoverageReviewer(
             CoverageReviewerPrompt.Instructions,
             BuildReviewerContext(state),
             state,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            static parsed => parsed.CoveredInterestIds is not null
+                && parsed.CoveredInterestIds.All(static item => item is not null)
+                && parsed.Gaps is not null
+                && parsed.Gaps.All(static item => item is not null)
+                && parsed.StopReason is CoverageVerdict.CoverageSufficient
+                    or CoverageVerdict.GapsRemain
+                    or CoverageVerdict.GapsUnresolvable).ConfigureAwait(false);
 
         if (verdict is null)
         {
@@ -593,7 +680,7 @@ public sealed class ModelCoverageReviewer(
                 "toward more work. This is safe ONLY because the round cap does not depend on the reviewer");
 
             state.DegradedNotes.Add("CoverageReviewer: synthesised a conservative verdict");
-            _progress.Publish(DiscoveryEvent.Degraded("CoverageReviewer", verdict.Assessment));
+            _progress.Publish(DiscoveryEvent.ModelFallbackSelected("CoverageReviewer", verdict.Assessment));
         }
 
         CoverageVerdictProjection.Project(state, verdict, _catalogue, _progress, _calibration);
@@ -644,15 +731,10 @@ public sealed class ModelCoverageReviewer(
             var coverage = state.CoverageFor(interest.Id);
             builder.AppendLine(CultureInfo.InvariantCulture,
                 $"  {interest.Id}  queries run: {(coverage.QueriesRun.Count == 0 ? "(none)" : string.Join(" | ", coverage.QueriesRun))}");
-            // ⚠ WHAT THE REVIEWER SEES IS PINNED TO WHAT ITS INSTRUCTIONS SAY IT SEES.
-            //   CoverageReviewerPrompt is design §C.3 verbatim and describes this ledger as "the
-            //   queries already run, how many candidates came back, the best search score". An
-            //   "attributable" count was briefly added here on 2026-09-06: a field the pinned
-            //   instructions do not name, sent to a live model with no definition, changing the
-            //   paid workflow's input in a way nothing measured. The attributable channel belongs
-            //   on the CONSOLE ledgers (DiscoveryPresentation, DiscoveryProjection.CoverageBar),
-            //   where it informs a reader; putting it in the prompt is a design change and has to
-            //   be made as one.
+            // Keep this context aligned with CoverageReviewerPrompt's declared ledger: queries,
+            // candidate count, best score, and status. Attribution remains a console observation;
+            // adding it here would change the paid model contract and requires an explicit prompt
+            // and evaluation change.
             builder.AppendLine(CultureInfo.InvariantCulture,
                 $"      candidates: {coverage.CandidateProductIds.Count}   best score: {coverage.BestScore:0.0000}   "
               + $"status: {coverage.Status}");
@@ -750,7 +832,11 @@ public sealed class ModelRanker(
             DiscoveryRankerPrompt.Instructions,
             BuildRankerContext(state, _catalogue),
             state,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            static parsed => parsed.Selections is { Count: > 0 } selections
+                && selections.All(static item => item is not null)
+                && selections.Any(static item => !string.IsNullOrWhiteSpace(item.ProductId)))
+            .ConfigureAwait(false);
 
         state.Ranked.Clear();
         state.SelectionWasDeterministic = envelope?.Selections is not { Count: > 0 };
@@ -791,7 +877,7 @@ public sealed class ModelRanker(
         else
         {
             state.DegradedNotes.Add("Ranker: fell back to the deterministic selection");
-            _progress.Publish(DiscoveryEvent.Degraded("Ranker",
+            _progress.Publish(DiscoveryEvent.ModelFallbackSelected("Ranker",
                 "no usable selection came back — the deterministic selection stands"));
             state.Ranked.AddRange(DeterministicRanker.Select(state, _catalogue, _calibration));
         }
@@ -869,16 +955,11 @@ public sealed class ModelRanker(
                 $"  {candidate.ProductId}  {candidate.Title}  ·  {candidate.CategoryPathText}  " +
                 $"(for {candidate.MatchedInterestId}, score {candidate.SearchScore:0.0000}, " +
                 $"{candidate.RatingCount} rating(s))");
-            // ⚠ Only tokens the RESOLVER accepts are offered. `ProductCandidate.Attributes` is the
-            //   FUSED set — tags, tag suffixes, spec keys, spec VALUES and `key=value` pairs — but
-            //   `Product.TryGetAttributeValue` resolves only a spec key or a whole tag. Rule 6 of the
-            //   ranker prompt tells the model to copy `grounding_attribute_key` from this list, so
-            //   listing a value like `230-g` or a suffix like `beginner` invites a citation that is
-            //   then dropped `attribute_not_found` — the model obeying the instruction literally and
-            //   being punished for it. Observed on the live run of 2026-09-04 ("230-g",
-            //   "1-kg-of-whole-beans", "beginner", "2-batteries" all dropped). Filtering here rather
-            //   than relaxing the resolver keeps the grounding check strict, and it self-maintains:
-            //   whatever the resolver accepts is exactly what the model is shown.
+            // Offer only tokens Product.TryGetAttributeValue can resolve: spec keys and whole tags.
+            // The fused candidate set also contains values, tag suffixes, and key=value pairs such
+            // as `230-g`, `beginner`, and `2-batteries`; exposing those would invite a citation the
+            // strict grounding check must drop. The prompt and resolver therefore share one token
+            // contract without weakening evidence validation.
             builder.AppendLine(CultureInfo.InvariantCulture,
                 $"      attribute keys: {string.Join(", ", ResolvableAttributeKeys(candidate, catalogue))}");
             if (candidate.ReviewIds.Count > 0)
@@ -927,7 +1008,7 @@ public sealed class ModelPresenter(Catalogue catalogue, DiscoveryModelCall model
         if (string.IsNullOrWhiteSpace(prose))
         {
             state.DegradedNotes.Add("Presenter: fell back to the composed answer");
-            _progress.Publish(DiscoveryEvent.Degraded("Presenter",
+            _progress.Publish(DiscoveryEvent.ModelFallbackSelected("Presenter",
                 "no prose came back — the deterministic composition stands. The LIST is unaffected either way: " +
                 "it is rendered from the screened selection, not from anything the model wrote"));
         }

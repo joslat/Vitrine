@@ -6,7 +6,7 @@ using System.Text.Json;
 namespace Galaxus.RecommendationAgent.Tools;
 
 /// <summary>
-/// The single JSON writer for every tool return value (design §C).
+/// The single JSON writer for every tool return value (the evaluation design).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -22,7 +22,7 @@ namespace Galaxus.RecommendationAgent.Tools;
 /// The options are pinned (camelCase via <see cref="JsonSerializerDefaults.Web"/>, not
 /// indented) so the wire shape is a property of THIS file rather than of whatever ambient
 /// defaults happen to be in force. Tool payloads are asserted on by the eval lane; a
-/// silently-renamed property is exactly the drift that produced design §0.5 / D-1.
+/// silently-renamed property is exactly the split-contract drift this shared schema prevents.
 /// </para>
 /// </remarks>
 public static class ToolJson
@@ -49,7 +49,7 @@ public static class ToolJson
     /// <remarks>
     /// An empty array would let "no data" masquerade as "no interests", and the agent would
     /// silently produce a worse answer with no signal that anything had been withheld. A
-    /// refusal is a fact the model can read, print and reason about (§F.6).
+    /// refusal is a fact the model can read, print and reason about.
     /// </remarks>
     /// <param name="code">A frozen machine code from <see cref="ToolRefusalCodes"/>.</param>
     /// <param name="reason">One sentence, addressed to the model, saying what to do instead.</param>
@@ -57,7 +57,7 @@ public static class ToolJson
         JsonSerializer.Serialize(new { status = "refused", code, reason }, Options);
 
     /// <summary>
-    /// The per-run tool-call budget is spent (§F.9).
+    /// The per-run tool-call budget is spent.
     /// </summary>
     /// <remarks>
     /// The instruction deliberately names the one tool that still works. <c>PresentRecommendation</c>
@@ -81,7 +81,7 @@ public static class ToolJson
         }, Options);
 
     /// <summary>
-    /// The per-turn DISTINCT-search cap is spent (§F.9, <see cref="ToolCallBudget.DistinctSearchCap"/>).
+    /// The per-turn DISTINCT-search cap is spent (the per-turn tool-call budget, <see cref="ToolCallBudget.DistinctSearchCap"/>).
     /// </summary>
     /// <remarks>
     /// Distinct from <see cref="BudgetExhausted"/> on purpose: the model is told which cap it hit,
@@ -108,9 +108,8 @@ public static class ToolJson
     /// work is not re-run; the model is pointed back at the answer it already has.
     /// </summary>
     /// <remarks>
-    /// MEASURED on the 2026-09-04 live run, case C-09: four byte-identical searches, then four
-    /// more, on about three distinct queries — twelve of twenty-four refusable slots and roughly
-    /// half of a 148-second turn spent re-running work that had already returned. The replay
+    /// In a measured C-09 live turn, repeated searches consumed twelve of twenty-four refusable
+    /// slots and roughly half of 148 seconds despite representing about three distinct queries. The replay
     /// carries the product ids the first answer carried so the model can recover without a second
     /// round trip, and it consumes no budget (<see cref="ToolCallBudget"/>).
     /// </remarks>
@@ -136,7 +135,7 @@ public static class ToolJson
     /// <remarks>
     /// Used only by <c>PresentRecommendation</c>. The arguments are recorded VERBATIM before
     /// this is returned — the tool never silently repairs them, because the eval reads the
-    /// arguments and a repaired argument is a defect that can never fire (design §0.5 / D-1).
+    /// arguments and a repaired argument is a defect that can never fire.
     /// </remarks>
     /// <param name="payload">The accepted payload, carrying <c>status = "accepted_with_warning"</c>.</param>
     public static string AcceptedWithWarning<T>(T payload) => JsonSerializer.Serialize(payload, Options);
@@ -153,8 +152,8 @@ public static class ToolJson
     /// Parses a refusal from the value that crosses the MEAI function-result boundary. In
     /// particular, <see cref="Microsoft.Extensions.AI.AIFunction.InvokeAsync"/> represents a
     /// tool's returned JSON string as a <see cref="JsonElement"/> whose value is itself that JSON
-    /// string. Accepting <see cref="object"/> here prevents callers from accidentally rebuilding
-    /// the old, permanently-blind <c>result is string</c> detector.
+    /// string. Accepting <see cref="object"/> here handles both boundary representations without a
+    /// type-specific detector that misses wrapped results.
     /// </summary>
     public static bool TryParseRefusal(object? result, out ToolRefusalPayload? refusal)
     {
@@ -275,15 +274,15 @@ public static class ToolRefusalCodes
     public const string UnknownCategory = "unknown_category";
 
     /// <summary>
-    /// FDPIC one-click opt-out is on for this customer (§F.6). Behavioural history is not
+    /// FDPIC one-click opt-out is on for this customer. Behavioural history is not
     /// available — enforced in the tool, not requested in the prompt.
     /// </summary>
     public const string PersonalizationDisabled = "personalization_disabled";
 
-    /// <summary>The per-run tool-call budget is spent (§F.9).</summary>
+    /// <summary>The per-run tool-call budget is spent.</summary>
     public const string BudgetExhausted = "budget_exhausted";
 
-    /// <summary>The per-turn DISTINCT-search cap is spent (§F.9). Lookups and replays still work.</summary>
+    /// <summary>The per-turn DISTINCT-search cap is spent. Lookups and replays still work.</summary>
     public const string SearchCapExhausted = "search_cap_exhausted";
 
     /// <summary>
@@ -295,7 +294,7 @@ public static class ToolRefusalCodes
     /// <summary>
     /// No retriever was bound before the run. The composition root did not call
     /// <see cref="GalaxusTools.Bind"/>; the semantic leg is unavailable and says so loudly
-    /// rather than returning zero hits, which would read as "nothing matched" (§D.4).
+    /// rather than returning zero hits, which would read as "nothing matched".
     /// </summary>
     public const string RetrieverUnbound = "retriever_unbound";
 

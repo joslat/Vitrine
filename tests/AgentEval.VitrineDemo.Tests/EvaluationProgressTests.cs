@@ -15,6 +15,10 @@ public sealed class EvaluationProgressTests
 
         Assert.Equal(0, result.ExitCode);
         Assert.Equal(6, result.Gates.Count);
+        var diagnostic = Assert.Single(result.Gates, static gate =>
+            gate.Authority == GateAuthority.Diagnostic);
+        Assert.Contains("Matched", diagnostic.Name, StringComparison.Ordinal);
+        Assert.Equal(5, result.Gates.Count(static gate => gate.IsVerdictBearing));
         Assert.DoesNotContain(result.Gates,
             static gate => gate.Name.Contains("control", StringComparison.OrdinalIgnoreCase));
         Assert.Equal(result.Gates.Count,
@@ -30,6 +34,17 @@ public sealed class EvaluationProgressTests
             progress.Events.Count(item => item.Kind == EvaluationProgressKind.BenchmarkCheckCompleted));
         Assert.All(progress.Events.Where(item => item.Kind == EvaluationProgressKind.GateCompleted),
             item => Assert.NotNull(item.Gate));
+        var diagnosticStarted = Assert.Single(progress.Events, static item =>
+            item.Kind == EvaluationProgressKind.GateStarted
+            && item.Authority == GateAuthority.Diagnostic);
+        Assert.Equal("judged", diagnosticStarted.Id);
+        var diagnosticCompleted = Assert.Single(progress.Events, static item =>
+            item.Kind == EvaluationProgressKind.GateCompleted
+            && item.Authority == GateAuthority.Diagnostic);
+        Assert.Equal("judged", diagnosticCompleted.Id);
+        Assert.Equal(5, progress.Events.Count(static item =>
+            item.Kind == EvaluationProgressKind.GateCompleted
+            && item.Authority == GateAuthority.Mandatory));
         Assert.All(progress.Events.Where(item => item.Kind == EvaluationProgressKind.ControlCompleted),
             item => Assert.NotNull(item.Control));
         foreach (var control in result.Controls)

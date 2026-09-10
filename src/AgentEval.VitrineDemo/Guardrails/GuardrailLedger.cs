@@ -8,38 +8,38 @@ namespace Galaxus.RecommendationAgent.Guardrails;
 /// <summary>Which stage of <see cref="GuardrailPipeline"/> produced a ledger entry.</summary>
 public enum GuardrailStage
 {
-    /// <summary>The construction-time read-only allow-list (§F.1, <see cref="ToolSurfaceInvariant"/>).</summary>
+    /// <summary>The construction-time read-only allow-list (the read-only tool-surface invariant, <see cref="ToolSurfaceInvariant"/>).</summary>
     ToolSurface,
 
-    /// <summary>The pre-search abstention gate (§F.8).</summary>
+    /// <summary>The pre-search abstention gate.</summary>
     AbstentionGate,
 
-    /// <summary>The interest-map builder's inbound sensitive-label screen (§F.5, §0.5 / D-6).</summary>
+    /// <summary>The interest-map builder's inbound sensitive-label screen.</summary>
     InterestMap,
 
-    /// <summary>Catalogue and ownership grounding (§F.2).</summary>
+    /// <summary>Catalogue and ownership grounding.</summary>
     CatalogueGrounding,
 
-    /// <summary>Two-sided evidence verification (§F.3).</summary>
+    /// <summary>Two-sided evidence verification.</summary>
     EvidenceRequired,
 
-    /// <summary>Outbound special-category screening (§F.5, §0.5 / D-6).</summary>
+    /// <summary>Outbound special-category screening.</summary>
     SensitiveInference,
 
-    /// <summary>Confidence banding (§F.7).</summary>
+    /// <summary>Confidence banding.</summary>
     ConfidenceBands,
 
-    /// <summary>Render-time price and stock re-verification (§F.4).</summary>
+    /// <summary>Render-time price and stock re-verification.</summary>
     PriceStock,
 
     /// <summary>
-    /// Candidate-set containment (§8.1 B-6a) — the model may only present what retrieval put in
+    /// Candidate-set containment — the model may only present what retrieval put in
     /// front of it. Appended after <see cref="PriceStock"/> so no existing member's ordinal moves.
     /// </summary>
     CandidateContainment,
 
     /// <summary>
-    /// Compatibility against the customer's own hardware (§8.1 B-7). Appended for the same
+    /// Compatibility against the customer's own hardware. Appended for the same
     /// reason as <see cref="CandidateContainment"/>.
     /// </summary>
     Compatibility
@@ -61,113 +61,111 @@ public enum GuardrailAction
 /// <summary>
 /// The frozen vocabulary of guardrail reasons. Constants rather than an enum because the
 /// reasons are printed in the ledger panel, serialised into the <c>--log</c> transcript, and
-/// read by the eval lane; a silently renamed enum member is exactly the drift that produced
-/// design §0.5 / D-1.
+/// read by the eval lane; a silently renamed enum member is exactly the drift this shared
+/// vocabulary prevents.
 /// </summary>
 public static class GuardrailReasons
 {
-    /// <summary>§F.2 — the product id does not resolve in the catalogue. A hallucinated SKU.</summary>
+    /// <summary>The catalogue-existence check — the product id does not resolve in the catalogue. A hallucinated SKU.</summary>
     public const string Ungrounded = "ungrounded";
 
-    /// <summary>§B.3 trap 1 — the customer already owns this exact SKU. Not a recommendation; an insult with a checkout button.</summary>
+    /// <summary>Persona trap 1 — the customer already owns this exact SKU. Not a recommendation; an insult with a checkout button.</summary>
     public const string AlreadyOwned = "already_owned";
 
-    /// <summary>§B.3 trap 2 — a durable the customer already owns, still inside its typical horizon. The upgrade lane is suppressed.</summary>
+    /// <summary>Persona trap 2 — a durable product the customer already owns, still inside its typical horizon. The upgrade lane is suppressed.</summary>
     public const string DurableStillInHorizon = "durable_still_in_horizon";
 
-    /// <summary>§F.3 — the evidence block is absent or empty on a behaviour-derived recommendation.</summary>
+    /// <summary>The two-sided evidence check — the evidence block is absent or empty on a behaviour-derived recommendation.</summary>
     public const string MissingEvidence = "missing_evidence";
 
-    /// <summary>§F.3 — the cited interest label is not present in the CODE-derived interest map.</summary>
+    /// <summary>The two-sided evidence check — the cited interest label is not present in the CODE-derived interest map.</summary>
     public const string UnknownSignalLabel = "unknown_signal_label";
 
-    /// <summary>§F.3 — a cited purchase id does not belong to this customer.</summary>
+    /// <summary>The two-sided evidence check — a cited purchase id does not belong to this customer.</summary>
     public const string ForeignPurchaseId = "foreign_purchase_id";
 
     /// <summary>
-    /// §F.3 / §8.1 B-5 — a cited purchase id belongs to this customer but is NOT one of the
+    /// The two-sided user-evidence check — a cited purchase id belongs to this customer but is NOT one of the
     /// purchases that evidence the cited interest signal.
     /// </summary>
     /// <remarks>
-    /// This is the arm that only exists once the model writes the user side itself. While the
-    /// user side was DERIVED from retrieval provenance the comparison was <c>x ⊆ x</c> and could
-    /// not fail — see the <see cref="ArmInapplicable"/> note Demo 1 writes when the fallback runs.
+    /// This arm requires model-written user evidence. A user side derived from retrieval provenance
+    /// would compare <c>x ⊆ x</c> and is therefore recorded as <see cref="ArmInapplicable"/>.
     /// </remarks>
     public const string PurchaseDoesNotEvidenceSignal = "purchase_does_not_evidence_signal";
 
-    /// <summary>§B.3 — a cited purchase id was classified as a gift, so it is evidence about a different person.</summary>
+    /// <summary>A cited purchase id was classified as a gift, so it is evidence about a different person.</summary>
     public const string GiftPurchaseCited = "gift_purchase_cited";
 
-    /// <summary>§F.6 — a stated-in-session signal was cited alongside purchase ids the agent was never given.</summary>
+    /// <summary>The personalization opt-out — a stated-in-session signal was cited alongside purchase ids the agent was never given.</summary>
     public const string StatedNeedCitesHistory = "stated_need_cites_history";
 
-    /// <summary>§F.3 — the cited attribute key exists in neither <c>Specs</c> nor <c>Tags</c>.</summary>
+    /// <summary>The two-sided evidence check — the cited attribute key exists in neither <c>Specs</c> nor <c>Tags</c>.</summary>
     public const string AttributeNotFound = "attribute_not_found";
 
-    /// <summary>§F.3 — the cited attribute value does not equal the catalogue value.</summary>
+    /// <summary>The two-sided evidence check — the cited attribute value does not equal the catalogue value.</summary>
     public const string AttributeValueMismatch = "attribute_value_mismatch";
 
-    /// <summary>§F.3 — the cited review id does not exist, or belongs to a different product.</summary>
+    /// <summary>The two-sided evidence check — the cited review id does not exist, or belongs to a different product.</summary>
     public const string ReviewNotFound = "review_not_found";
 
     /// <summary>Defect class D5 — the compact <c>attr:</c> / <c>review:</c> citation does not parse or does not resolve.</summary>
     public const string UnresolvableEvidence = "unresolvable_evidence";
 
-    /// <summary>§F.5 — the product sits under a category flagged <c>SensitiveInference</c>, and the customer did not ask for it.</summary>
+    /// <summary>The sensitive-category screen — the product sits under a category flagged <c>SensitiveInference</c>, and the customer did not ask for it.</summary>
     public const string SensitiveCategory = "sensitive_category";
 
-    /// <summary>§0.5 / D-6 — an emitted interest LABEL hit the special-category term set.</summary>
+    /// <summary>The sensitive-inference guard recorded that an emitted interest LABEL hit the special-category term set.</summary>
     public const string SensitiveLabel = "sensitive_label";
 
-    /// <summary>§0.5 / D-6 — a customer-facing reason string hit the special-category term set.</summary>
+    /// <summary>The sensitive-inference guard recorded that a customer-facing reason string hit the special-category term set.</summary>
     public const string SensitiveProse = "sensitive_prose";
 
-    /// <summary>§F.7 — confidence below <see cref="ConfidenceBands.SecondaryThreshold"/>.</summary>
+    /// <summary>The confidence-band policy — confidence below <see cref="ConfidenceBands.SecondaryThreshold"/>.</summary>
     public const string LowConfidence = "low_confidence";
 
-    /// <summary>§F.7 — confidence was NaN, negative, or above 1. A number that is not a confidence is not a pass.</summary>
+    /// <summary>The confidence-band policy — confidence was NaN, negative, or above 1. A number that is not a confidence is not a pass.</summary>
     public const string ConfidenceOutOfRange = "confidence_out_of_range";
 
-    /// <summary>§F.4 — the reason text states a price. The model is structurally forbidden to.</summary>
+    /// <summary>The live price-and-stock boundary — the reason text states a price. The model is structurally forbidden to.</summary>
     public const string StatedPrice = "stated_price";
 
-    /// <summary>§F.4 — zero stock. A demotion to <c>also_consider</c> with an explicit note, not a drop.</summary>
+    /// <summary>The live price-and-stock boundary — zero stock. A demotion to <c>also_consider</c> with an explicit note, not a drop.</summary>
     public const string OutOfStock = "out_of_stock";
 
-    /// <summary>§F.4 — the SKU cannot ship to the customer's market. A hard fact, so a drop.</summary>
+    /// <summary>The live price-and-stock boundary — the SKU cannot ship to the customer's market. A hard fact, so a drop.</summary>
     public const string MarketUnavailable = "market_unavailable";
 
     /// <summary>The same SKU was presented more than once in one turn.</summary>
     public const string DuplicatePresentation = "duplicate_presentation";
 
     /// <summary>
-    /// §8.1 B-6a — the SKU is real, but no retrieval route in this turn returned it. Existence is
+    /// The candidate-set containment rule — the SKU is real, but no retrieval route in this turn returned it. Existence is
     /// not containment: a model that names a catalogue id it never retrieved has guessed.
     /// </summary>
     public const string OutsideCandidateSet = "outside_candidate_set";
 
     /// <summary>
-    /// §8.1 B-7 — the accessory declares a <c>compat:</c> value in a family the customer's own
+    /// The owned-hardware compatibility rule — the accessory declares a <c>compat:</c> value in a family the customer's own
     /// hardware constrains, with a different value. 54 mm against an owned 58 mm is not a near miss.
     /// </summary>
     public const string IncompatibleWithOwned = "incompatible_with_owned";
 
     /// <summary>
-    /// §8.1 B-16 — a consumable the customer buys on a cadence, offered as a DISCOVERY. It belongs
-    /// in the replenishment lane, and saying so is the difference between a working lane and a
-    /// silent one: before this reason existed, Sofia's cartridges dropped as
-    /// <see cref="AlreadyOwned"/> and the replenishment lane was never seen working.
+    /// The replenishment-before-ownership rule — a consumable the customer buys on a cadence was
+    /// offered as discovery. It belongs in the replenishment lane, with cadence and due date,
+    /// rather than under <see cref="AlreadyOwned"/>.
     /// </summary>
     public const string ReplenishmentNotDiscovery = "replenishment_not_discovery";
 
-    /// <summary>§F.8 — the pre-search gate fired and nothing was searched for.</summary>
+    /// <summary>The pre-spend abstention gate fired, so nothing was searched for.</summary>
     public const string Abstained = "abstained";
 
     /// <summary>
     /// An arm of a guardrail could not run because its input set was empty — for example no
     /// category in the tree carries <c>SensitiveInference</c>. Recorded LOUDLY: an arm that
     /// cannot fire has a chance floor of 1.0, and reading its silence as a pass is the exact
-    /// failure shape design §0.5 / D-5 condemns for <c>PlaceOrder</c>.
+    /// failure shape the confirmation-gated commit-tool design condemns for <c>PlaceOrder</c>.
     /// </summary>
     public const string ArmInapplicable = "arm_inapplicable";
 
@@ -306,27 +304,27 @@ public sealed class GuardrailLedger
     /// <summary>How many recommendations the model proposed, across both trays. Alias of <see cref="InputCount"/>.</summary>
     public int Proposed => InputCount;
 
-    /// <summary>Dropped because the product id does not exist in the catalogue (§F.2).</summary>
+    /// <summary>Dropped because the product id does not exist in the catalogue.</summary>
     public int DroppedUngrounded => CountOf(GuardrailReasons.Ungrounded, GuardrailAction.Dropped);
 
     /// <summary>
-    /// Dropped by the two-sided evidence check (§F.3) — for any of its reasons: an invented
+    /// Dropped by the two-sided evidence check — for any of its reasons: an invented
     /// interest label, a foreign or gift purchase id, an attribute that does not exist, a value
     /// that does not match, a review that is not there, or a citation that does not parse.
     /// </summary>
     public int DroppedMissingEvidence =>
         _entries.Count(e => e.Action == GuardrailAction.Dropped && e.Stage == GuardrailStage.EvidenceRequired);
 
-    /// <summary>Dropped because the model stated a price (§F.4).</summary>
+    /// <summary>Dropped because the model stated a price.</summary>
     public int DroppedStatedPrice => CountOf(GuardrailReasons.StatedPrice, GuardrailAction.Dropped);
 
-    /// <summary>Demoted to <c>also consider</c> for sitting below the primary confidence band (§F.7).</summary>
+    /// <summary>Demoted to <c>also consider</c> for sitting below the primary confidence band.</summary>
     public int DemotedLowConfidence => CountOf(GuardrailReasons.LowConfidence, GuardrailAction.Demoted);
 
-    /// <summary>Demoted to <c>also consider</c> for being out of stock (§F.4).</summary>
+    /// <summary>Demoted to <c>also consider</c> for being out of stock.</summary>
     public int DemotedOutOfStock => CountOf(GuardrailReasons.OutOfStock, GuardrailAction.Demoted);
 
-    /// <summary>Blocked by the special-category screen, in either direction (§F.5, §0.5 / D-6).</summary>
+    /// <summary>Blocked by the special-category screen, in either direction.</summary>
     public int BlockedSensitive =>
         _entries.Count(e => e.Action == GuardrailAction.Dropped && e.Stage == GuardrailStage.SensitiveInference);
 
@@ -337,26 +335,22 @@ public sealed class GuardrailLedger
     /// two purchases were actually excluded would understate the best guardrail in the demo.
     /// </summary>
     /// <remarks>
-    /// ⚠ NULLABLE, and that is the point. The exclusion happens upstream of anything this ledger
-    /// observes, so only a caller that HAS the interest map can fill it in — Demo 1 does, Demo 2's
-    /// presentation node does not. Rendering a plain <c>int</c> printed <c>gift-excluded 0</c> on
-    /// Demo 2's panel for Marco, who has TWO gift exclusions: a false zero, in the flattering
-    /// direction, produced by a caller that never supplied the number rather than by a run in which
-    /// nothing was excluded. Null prints as "not supplied by this caller" and cannot be misread as
-    /// a measurement.
+    /// Nullable because the exclusion occurs upstream of this ledger. Only callers with an interest
+    /// map can supply the count; null renders as "not supplied by this caller" and cannot be
+    /// mistaken for a measured zero.
     /// </remarks>
     public int? GiftExcluded { get; set; }
 
-    /// <summary>How many surviving items had their price and stock re-read from the catalogue (§F.4).</summary>
+    /// <summary>How many surviving items had their price and stock re-read from the catalogue.</summary>
     public int PriceStockVerified { get; private set; }
 
     /// <summary>How many items reached the price/stock stage at all. The denominator of the line above.</summary>
     public int PriceStockRequested { get; private set; }
 
-    /// <summary>Tool calls spent this turn. Set by the demo from the tool-call budget scope (§F.9).</summary>
+    /// <summary>Tool calls spent this turn. Set by the demo from the tool-call budget scope.</summary>
     public int ToolCallsUsed { get; set; }
 
-    /// <summary>The per-turn tool-call cap. Set by the demo from the tool-call budget scope (§F.9).</summary>
+    /// <summary>The per-turn tool-call cap. Set by the demo from the tool-call budget scope.</summary>
     public int ToolCallCap { get; set; }
 
     /// <summary>
@@ -409,7 +403,7 @@ public sealed class GuardrailLedger
     /// <summary>
     /// The three counters that are populated upstream and have no entry of their own:
     /// <see cref="GiftExcluded"/>, <see cref="PriceStockVerified"/> and
-    /// <see cref="PriceStockRequested"/> (§8.1 B-15).
+    /// <see cref="PriceStockRequested"/> (the live-fact refresh requirement).
     /// </summary>
     /// <remarks>
     /// <para>

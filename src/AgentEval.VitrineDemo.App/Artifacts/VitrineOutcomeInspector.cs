@@ -60,6 +60,11 @@ internal static class VitrineOutcomeInspector
         if (artifact.Result.LiveEvaluation is { } liveEvaluation)
         {
             AppendLiveEvaluation(detail, liveEvaluation);
+            if (artifact.Result.Gates.Count > 0)
+            {
+                AppendGates(detail, artifact.Result.Gates);
+                AppendControls(detail, artifact.Result.Controls);
+            }
             return ($"LIVE EVALUATION OUTCOME · {liveEvaluation.PlanLabel} · {liveEvaluation.TerminalStatus}",
                 detail.ToString().Trim());
         }
@@ -132,8 +137,8 @@ internal static class VitrineOutcomeInspector
             .AppendLine(live.ExitCode.ToString(CultureInfo.InvariantCulture))
             .Append("  Quality pass bar: ").AppendLine(isSafety
                 ? "NOT APPLICABLE · safety uses compromise/resistance census"
-                : $"{Measured(live.PassThreshold)} · evaluator acceptance threshold, NOT a null/chance floor")
-            .AppendLine("  Measurement policy: provider failure cannot count as measured; bounded internal fallbacks are disclosed.")
+                : $"{Measured(live.PassThreshold)} · shipped default 1.000 requires all four authored criteria; NOT a null/chance floor")
+            .AppendLine("  Measurement policy: unrecovered provider stages cannot count as measured; recovered attempts and final fallbacks are disclosed.")
             .Append("  Session: ").AppendLine(live.SessionId)
             .Append("  Started / completed: ").Append(live.StartedAtUtc.ToString("O", CultureInfo.InvariantCulture))
             .Append(" / ").AppendLine(live.CompletedAtUtc.ToString("O", CultureInfo.InvariantCulture))
@@ -211,12 +216,19 @@ internal static class VitrineOutcomeInspector
                     .Append(" · looped ").Append(workflow.Looped)
                     .Append(" · stop ").Append(workflow.StopReason)
                     .Append(" · failures ").Append(workflow.FailureCount)
-                    .Append(" · bounded fallback degradations ").Append(workflow.DegradationCount)
+                    .Append(" · bounded degradation events ").Append(workflow.DegradationCount)
                     .Append(" · kinds ").Append(workflow.DegradationKinds.Count == 0
                         ? "none disclosed"
                         : string.Join(", ", workflow.DegradationKinds))
+                    .Append(" · provider failed/recovered/terminal ")
+                    .Append(workflow.ProviderFailedAttemptCount).Append('/')
+                    .Append(workflow.RecoveredProviderFailedAttemptCount).Append('/')
+                    .Append(workflow.TerminalProviderStageCount)
                     .Append(" · unknown executors/routes ").Append(workflow.UnknownExecutorCount).Append('/')
                     .AppendLine(workflow.UnknownRouteCount.ToString(CultureInfo.InvariantCulture));
+            if (trial.Workflow is { } providerWorkflow)
+                AppendList(text, "    Model-backed stage outcomes", providerWorkflow.ProviderStages.Select(stage =>
+                    $"{stage.ExecutorId} · {stage.Status} · attempts {stage.AttemptCount} · responses {stage.ResponseCount} · unusable {stage.UnusableAttemptCount} · failed {stage.FailedAttemptCount} · cancelled {stage.CancelledAttemptCount}"));
             AppendLiveUsage(text, "    Subject usage", trial.SubjectUsage);
             AppendLiveUsage(text, "    Judge usage", trial.JudgeUsage);
             AppendList(text, "    Check facts", trial.Checks.Select(check =>
@@ -243,6 +255,29 @@ internal static class VitrineOutcomeInspector
                     .Append(" · estimate ").Append(Measured(check.Reliability.Estimate))
                     .Append(" · Wilson [").Append(Measured(check.Reliability.Lower)).Append(", ")
                     .Append(Measured(check.Reliability.Upper)).AppendLine("]");
+        }
+
+        text.AppendLine().AppendLine("Terminal per-scenario Wilson decisions:")
+            .AppendLine("  These are the exact stochastic terminal-acceptance facts: every planned trial must be fully measured; a whole-trial success means use-case quality, response observed, and the arm-specific agent tool journal or workflow trace all passed; every arm/scenario must clear its 95% Wilson lower-bound floor of 0.500. Pooled per-check summaries are diagnostic and cannot replace them.");
+        if (live.ScenarioAcceptances is not { Count: > 0 })
+        {
+            text.AppendLine("  none recorded · not applicable to non-stochastic plans and absent from compatible schema 7/8 artifacts");
+        }
+        else
+        {
+            foreach (var decision in live.ScenarioAcceptances)
+                text.Append("  · ").Append(decision.ScenarioId).Append(" · ").Append(decision.PersonaId)
+                    .Append(" · ").Append(decision.ArmId).Append(" · ").Append(decision.Architecture)
+                    .Append(" · census M/N-A/N-M/total ").Append(decision.Census.Measured).Append('/')
+                    .Append(decision.Census.NotApplicable).Append('/').Append(decision.Census.NotMeasured)
+                    .Append('/').Append(decision.Census.Total)
+                    .Append(" · whole-trial successes/total ").Append(decision.Reliability.Successes).Append('/')
+                    .Append(decision.Reliability.Total)
+                    .Append(" · Wilson [").Append(Measured(decision.Reliability.Lower)).Append(", ")
+                    .Append(Measured(decision.Reliability.Upper)).Append(']')
+                    .Append(" · confidence ").Append(Measured(decision.ConfidenceLevel))
+                    .Append(" · minimum lower bound ").Append(Measured(decision.MinimumLowerBound))
+                    .Append(" · decision ").AppendLine(Measured(decision.Passed));
         }
 
         text.AppendLine("Evaluator-owned paired comparisons (no UI winner):");
@@ -281,6 +316,10 @@ internal static class VitrineOutcomeInspector
             .Append("  Subject / judge output limits; response preview characters: ")
             .Append(configuration.SubjectMaxOutputTokens).Append(" / ").Append(configuration.JudgeMaxOutputTokens)
             .Append("; ").AppendLine(configuration.ResponsePreviewCharacters.ToString(CultureInfo.InvariantCulture));
+        if (configuration.Acceptance is { } acceptance)
+            text.Append("  Terminal acceptance: ").Append(acceptance.Policy)
+                .Append(" · confidence ").Append(Measured(acceptance.ConfidenceLevel))
+                .Append(" · minimum Wilson lower bound ").AppendLine(Measured(acceptance.MinimumLowerBound));
         AppendList(text, "  Subject provenance", configuration.Subjects.Select(subject =>
             $"{subject.ArmId} · {subject.Architecture} · model {subject.ModelId} · judge relation {subject.JudgeSubjectRelation}"));
         if (configuration.Safety is { } safety)
@@ -473,10 +512,12 @@ internal static class VitrineOutcomeInspector
 
     private static void AppendGates(StringBuilder text, IReadOnlyList<VitrineGateSnapshot> gates)
     {
-        text.AppendLine().AppendLine("Evaluation gates:");
+        text.AppendLine().AppendLine("Mandatory gates and diagnostic evaluations:")
+            .AppendLine("  Mandatory gates control the process-equivalent exit; diagnostic rows remain visible evidence but cannot fail the suite.");
         foreach (var gate in gates)
         {
             text.Append("  · ").Append(gate.Name).Append(" · ").Append(gate.Outcome)
+                .Append(" · authority ").Append(gate.EffectiveAuthority)
                 .Append(" · pass ").Append(Measured(gate.Passed))
                 .Append(" · score ").Append(Measured(gate.Score))
                 .Append(" · chance floor ").Append(Floor(gate.ChanceFloor))

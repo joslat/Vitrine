@@ -14,7 +14,7 @@ namespace Galaxus.RecommendationAgent.Signals;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>There is no <c>IsGift</c> field to read</b> (design §0.5 / A-3). <see cref="Purchase"/>
+/// <b>There is no <c>IsGift</c> field to read</b>. <see cref="Purchase"/>
 /// deliberately carries only the four OBSERVABLE signals a real order record would have —
 /// gift wrap, an alternate shipping address, the presence of a gift message, and whether the
 /// customer went on to review the item — and gift-ness is derived from them here. The eval
@@ -24,7 +24,7 @@ namespace Galaxus.RecommendationAgent.Signals;
 /// <para>
 /// <b>Why this matters more than it looks.</b> Marco Iten's two most recent and most
 /// expensive purchases are a games console and a game, both gift-wrapped to an alternate
-/// address with a gift message and no review (§B.3). Every naive strategy — recency
+/// address with a gift message and no review. Every naive strategy — recency
 /// weighting, value weighting, "similar to your last purchase", category affinity —
 /// recommends a Pro Controller, and every one of them is confidently wrong, because Marco
 /// does not own a console. The fix is this class, not a sentence in a prompt.
@@ -48,7 +48,7 @@ namespace Galaxus.RecommendationAgent.Signals;
 /// </remarks>
 public static class PurchaseIntentClassifier
 {
-    // ── Weights (§A.3 fixes three of them; the other two are stated here) ─────────────
+    // ── Weights: three fixed inputs and two stated local choices ─────────────────
 
     /// <summary>Weight of a purchase the customer made for themselves. Full interest.</summary>
     public const double ForSelfWeight = 1.00;
@@ -65,10 +65,10 @@ public static class PurchaseIntentClassifier
     /// </summary>
     public const double UnknownWeight = 0.20;
 
-    /// <summary>Weight of a consumable on a stable cadence (§A.3). Routed out of discovery.</summary>
+    /// <summary>Weight of a consumable on a stable cadence. Routed out of discovery.</summary>
     public const double ReplenishmentWeight = 0.15;
 
-    /// <summary>Weight of a gift (§A.3). Zero — it is a signal about a DIFFERENT person.</summary>
+    /// <summary>Weight of a gift. Zero — it is a signal about a DIFFERENT person.</summary>
     public const double GiftWeight = 0.00;
 
     // ── Thresholds ───────────────────────────────────────────────────────────────────
@@ -91,12 +91,12 @@ public static class PurchaseIntentClassifier
     /// </summary>
     public const int GiftFollowOnWindowDays = 270;
 
-    /// <summary>Minimum repeat count before a consumable's cadence is believable (§B.3, Sofia).</summary>
+    /// <summary>Minimum repeat count before a consumable's cadence is believable (Sofia).</summary>
     public const int ReplenishmentMinimumPurchases = 3;
 
     /// <summary>
     /// Maximum coefficient of variation of the inter-purchase intervals for the cadence to
-    /// count as stable (§B.3). Sofia's cartridges run at CV 0.06 and her beans at CV 0.11.
+    /// count as stable. Sofia's cartridges run at CV 0.06 and her beans at CV 0.11.
     /// </summary>
     public const double ReplenishmentMaximumIntervalCv = 0.50;
 
@@ -262,7 +262,7 @@ public static class PurchaseIntentClassifier
         new(purchase, product, intent, WeightFor(intent), because);
 
     /// <summary>
-    /// The four observable signals, named in the order §B.3 prints them. Only the ones that
+    /// The four observable signals, named in the order the persona seed prints them. Only the ones that
     /// actually fired are listed — the string is evidence, not a template.
     /// </summary>
     private static string DescribeGiftSignals(Purchase purchase)

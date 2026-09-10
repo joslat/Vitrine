@@ -4,12 +4,12 @@
 namespace Galaxus.RecommendationAgent.Agents;
 
 /// <summary>
-/// The <c>InterestMapper</c> system prompt (design Demo 2 §C.2).
+/// The <c>InterestMapper</c> system prompt.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b><see cref="Prompt"/> is the design's text VERBATIM.</b> It is kept in its own constant and
-/// not edited, so a reviewer can diff it against §C.2 character for character. Everything this
+/// <b><see cref="Prompt"/> is the canonical prompt text.</b> It is kept in its own constant so
+/// reviewers can assess prompt changes independently. Everything this
 /// repository has to add — the id shapes its own seed data actually uses, and the JSON envelope
 /// that stands in for a schema-constrained response — lives in
 /// <see cref="RepositoryBinding"/> and <see cref="ResponseContract"/>, appended after it.
@@ -30,7 +30,7 @@ namespace Galaxus.RecommendationAgent.Agents;
 /// </remarks>
 public static class InterestMapperPrompt
 {
-    /// <summary>Design §C.2, verbatim. Do not edit without changing the design.</summary>
+    /// <summary>The canonical Demo02 interest-mapping prompt. Review changes with its DTO contract.</summary>
     public const string Prompt = """
 You build an INTEREST MAP for a Galaxus customer. You never recommend products
 and you never name one: your output is a set of interests and the search terms
@@ -123,8 +123,8 @@ REPOSITORY BINDING — the id shapes this deployment actually uses
 
     /// <summary>
     /// The JSON envelope the node parses. Property names are the contract — they are read by
-    /// name, so renaming one here without changing the DTO is exactly the lane drift §0.5 / D-1
-    /// is about.
+    /// name, so renaming one here without changing the DTO would recreate the split-contract drift
+    /// this shared envelope prevents.
     /// </summary>
     public const string ResponseContract = """
 

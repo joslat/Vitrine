@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VITRINE live evidence · liveEval02Workflow</title>
+<style>:root{color-scheme:dark;--bg:#0b1020;--panel:#141c31;--line:#33415f;--ink:#f3f6ff;--muted:#aebbd5;--accent:#6ee7c7;--bad:#ff9c9c}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,-apple-system,Segoe UI,sans-serif}main{max-width:1160px;margin:auto;padding:34px 22px 70px}a{color:var(--accent)}h1{font-size:clamp(2rem,5vw,3.8rem);line-height:1.05;margin:.3rem 0}h2{margin-top:2.4rem}h3{margin:1.4rem 0 .4rem}.eyebrow,.muted{color:var(--muted)}.eyebrow{text-transform:uppercase;letter-spacing:.14em;font-weight:700}.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin:16px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}.metric{background:#0f1729;border:1px solid var(--line);border-radius:10px;padding:12px}.metric strong{display:block;font-size:1.25rem}table{width:100%;border-collapse:collapse;margin:10px 0 22px}th,td{text-align:left;vertical-align:top;border-bottom:1px solid var(--line);padding:9px 8px}th{color:var(--muted);font-size:.78rem;text-transform:uppercase;letter-spacing:.06em}.scroll{overflow-x:auto}.status{color:var(--accent);font-weight:800}.warning{border-left:4px solid #f7c873}code{overflow-wrap:anywhere}@media print{body{background:#fff;color:#111}.panel,.metric{background:#fff;border-color:#bbb}.muted,.eyebrow,th{color:#444}a{color:#075985}}</style></head><body><main>
+<p><a href="../index.html">← VITRINE documentation</a></p>
+<p class="eyebrow">Sanitized live-evaluation receipt</p>
+<h1>liveEval02Workflow</h1>
+<p class="muted">Session <code>20260910T170542623Z-9b556309c0f24741903290ea7b54b4cf</code> · source schema 1.4 · source SHA-256 <code>f4c494141f0e30eb69d83f969658f4fad6735318158f8e3e5d8dc4a66e0bd209</code></p>
+<div class="grid">
+<div class="metric"><span class="muted">Terminal status</span><strong>passed</strong></div>
+<div class="metric"><span class="muted">Exit code</span><strong>0</strong></div>
+<div class="metric"><span class="muted">Started (UTC)</span><strong>2026-09-10T17:05:42.6358103+00:00</strong></div>
+<div class="metric"><span class="muted">Completed (UTC)</span><strong>2026-09-10T17:07:31.8010688+00:00</strong></div>
+<div class="metric"><span class="muted">Planned subject executions</span><strong>1</strong></div>
+<div class="metric"><span class="muted">Planned judge evaluations</span><strong>1</strong></div>
+<div class="metric"><span class="muted">Reported subject tokens</span><strong>14127</strong></div>
+<div class="metric"><span class="muted">Subject estimated cost</span><strong>$0.174255</strong></div>
+<div class="metric"><span class="muted">Reported judge tokens</span><strong>1998</strong></div>
+<div class="metric"><span class="muted">Judge estimated cost</span><strong>$0.022035</strong></div>
+</div>
+<div class="panel warning"><strong>Publication boundary.</strong> This receipt contains allow-listed aggregate evidence only. Exact queries, evaluator prompts, expected answers, ground truth, model responses, tool arguments, judge explanations, provider errors, endpoints, credentials, canaries, absolute paths and run directories are deliberately absent. Counts describe this session, not a universal model claim.</div>
+<h2>Configuration</h2><div class="panel">
+<p>Definition <code>vitrine-live-use-cases</code> 1.1.0+cases.sofia-capability-gap.rubric.e8da57b913f4df9e.threshold.3FF0000000000000.judge.configured-model.tokens.1200 · judge model <code>configured-judge-model</code> · rubric SHA-256 <code>e8da57b913f4df9efd9a91e6279eb51bfce6f06e6ac61863017276c9f4ca35e0</code></p><ul>
+<li><code>discovery-workflow-live</code> · workflow · model <code>configured-subject-model</code> · judge relation sameModel</li>
+</ul></div>
+<h2>Scenarios</h2><div class="grid">
+<article class="panel"><h3>Replenishment cadence and capability gap</h3><p>Sofia repeatedly buys beans and cartridges, owns a canister, and has no grinder on file. The run should separate replenishment from discovery and identify the missing capability without recommending another owned durable.</p><p class="muted"><code>sofia-capability-gap</code> · persona <code>USR-SK-03</code> · criteria finds-capability-gap, separates-lanes, avoids-owned-durable, grounds-advice</p></article>
+</div>
+<h2>Per-check diagnostic census</h2><p class="muted">These pooled rows explain each arm. When present, the separate per-scenario table owns terminal policy for stochastic plans.</p><div class="scroll"><table><thead><tr><th>Arm</th><th>Check</th><th>Census</th><th>Successes</th><th>Estimate</th><th>95% Wilson interval</th></tr></thead><tbody>
+<tr><td><code>discovery-workflow-live</code></td><td><code>vitrine.live.use-case-quality</code><br>Canonical use-case criteria</td><td>M 1 · N/A 0 · NM 0</td><td>1/1</td><td>1.000</td><td>[0.207, 1.000]</td></tr>
+<tr><td><code>discovery-workflow-live</code></td><td><code>vitrine.live.response-observed</code><br>A non-empty customer response was instrumented</td><td>M 1 · N/A 0 · NM 0</td><td>1/1</td><td>1.000</td><td>[0.207, 1.000]</td></tr>
+<tr><td><code>discovery-workflow-live</code></td><td><code>vitrine.live.agent-tool-journal</code><br>Agent tool journal is complete and read-only</td><td>M 0 · N/A 1 · NM 0</td><td>0/0</td><td>not measured</td><td>[not measured, not measured]</td></tr>
+<tr><td><code>discovery-workflow-live</code></td><td><code>vitrine.live.workflow-trace</code><br>Workflow executors and routes completed without failure</td><td>M 1 · N/A 0 · NM 0</td><td>1/1</td><td>1.000</td><td>[0.207, 1.000]</td></tr>
+</tbody></table></div>
+<h2>Criterion census</h2><div class="scroll"><table><thead><tr><th>Scenario</th><th>Arm</th><th>Criterion</th><th>Observed</th><th>Measured</th><th>Met</th><th>Unmet</th><th>N/A</th><th>Not measured</th></tr></thead><tbody>
+<tr><td><code>sofia-capability-gap</code></td><td><code>discovery-workflow-live</code></td><td><code>finds-capability-gap</code></td><td>1</td><td>1</td><td>1</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td><code>sofia-capability-gap</code></td><td><code>discovery-workflow-live</code></td><td><code>separates-lanes</code></td><td>1</td><td>1</td><td>1</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td><code>sofia-capability-gap</code></td><td><code>discovery-workflow-live</code></td><td><code>avoids-owned-durable</code></td><td>1</td><td>1</td><td>1</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td><code>sofia-capability-gap</code></td><td><code>discovery-workflow-live</code></td><td><code>grounds-advice</code></td><td>1</td><td>1</td><td>1</td><td>0</td><td>0</td><td>0</td></tr>
+</tbody></table></div>
+<h2>Trial usage and verdicts</h2>
+<section class="panel"><h3>sofia-capability-gap · discovery-workflow-live · repetition 1</h3><p>Status completed · measurement measured · passed <strong>True</strong></p>
+<p class="muted">Subject usage: measured; calls 3; tokens 14127; estimated cost $0.174255<br>Judge usage: measured; calls not measured; tokens 1998; estimated cost $0.022035</p><ul>
+<li><code>finds-capability-gap</code> · measured · met True</li>
+<li><code>separates-lanes</code> · measured · met True</li>
+<li><code>avoids-owned-durable</code> · measured · met True</li>
+<li><code>grounds-advice</code> · measured · met True</li>
+</ul>
+<p><strong>Provider-stage reliability:</strong> failed attempts 0 · recovered failed attempts 0 · terminal stages 0</p><ul>
+<li><code>InterestMapper</code> · completed · attempts 1 · responses 1 · unusable 0 · failed 0 · cancelled 0</li>
+<li><code>Presenter</code> · completed · attempts 1 · responses 1 · unusable 0 · failed 0 · cancelled 0</li>
+<li><code>Ranker</code> · completed · attempts 1 · responses 1 · unusable 0 · failed 0 · cancelled 0</li>
+</ul>
+</section>
+<p class="muted">JSON companion: <a href="vitrine-live-eval02-sofia-2026-09-10.json">vitrine-live-eval02-sofia-2026-09-10.json</a>. Generated deterministically from the private receipt by <code>eng/export-live-evidence.ps1</code>.</p></main></body></html>

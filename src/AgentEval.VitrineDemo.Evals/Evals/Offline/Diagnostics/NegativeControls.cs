@@ -251,7 +251,7 @@ public static class NegativeControlCatalog {
                     nameof(MatchedBindingPolicy.HasCanonicalMatchedK), ControlTranche.E02C),
                 environment => {
                     var production = RequireMeasuredMatchedProduction(environment);
-                    var bindings = MatchedSubjectBindings(production.MatchedGate);
+                    var bindings = MatchedSubjectBindings(production.MatchedQualityDiagnostic);
                     var appliedBySlot = bindings.ToDictionary(static item => item.Slot, static item => item.AppliedK, StringComparer.Ordinal);
                     return new MatchedKPanelProbe([
                         new MatchedKCase(
@@ -482,12 +482,12 @@ public static class NegativeControlCatalog {
                     nameof(CiProofPolicy.RequiredCiStepsPlanned), nameof(ControlEnvironment.ObserveCiPlanAsync),
                     nameof(CiProofPolicy.RequiredCiStepsPlanned), ControlTranche.E02C),
                 environment => Require(environment.Production, "production baselines").CiExecution,
-                probe => probe with { ExecutedGateCount = 0 },
-                (_, probe) => probe.ExecutedGateCount is null
-                    ? ControlAssessment.Missing("The real offline gate execution receipt is absent.")
+                probe => probe with { ExecutedCheckStageCount = 0 },
+                (_, probe) => probe.ExecutedCheckStageCount is null
+                    ? ControlAssessment.Missing("The real offline six-stage evaluation receipt is absent.")
                     : M(CiProofPolicy.RequiredCiStepsPlanned(probe),
-                        $"required={Join(probe.Required)}; planned={Join(probe.Planned)}; solution={probe.Solution}; child exit={probe.GateExitCode}; executed gates={probe.ExecutedGateCount}"),
-                "discard the receipt from the real non-recursive offline gate execution"),
+                        $"required={Join(probe.Required)}; planned={Join(probe.Planned)}; solution={probe.Solution}; child exit={probe.CheckStageExitCode}; executed check stages={probe.ExecutedCheckStageCount}; authority split=5 mandatory+1 diagnostic"),
+                "discard the receipt from the real non-recursive offline check-stage execution"),
             D("NC-27", "ARunThatSaysItSpendsSaysHowMuch", "cost",
                 B(typeof(ProviderUsageMeasurement), typeof(GalaxusDiscoveryLoop), typeof(ProviderUsageMeasurement),
                     nameof(ProviderUsageMeasurement.IsConsistent), nameof(GalaxusDiscoveryLoop.RunAsync),
@@ -563,11 +563,11 @@ public static class NegativeControlCatalog {
                     var criterion = VitrineEvalCriteria.JudgedCriteria[0];
                     var request = Personas.CanonicalPromptFor(Personas.NadiaUserId);
                     var authoredDecision = VitrineEvalCriteria.DecideApplicability(criterion, request);
-                    var observation = production.MatchedGate.AgentEval!.Observations
+                    var observation = production.MatchedQualityDiagnostic.AgentEval!.Observations
                         .SingleOrDefault(item => item.Id == $"demo01:{criterion.Id}")
-                        ?? throw new MissingProductionObservationException("Matched judged gate omitted applicability provenance.");
+                        ?? throw new MissingProductionObservationException("Matched-quality diagnostic omitted applicability provenance.");
                     if (!Enum.TryParse<ApplicabilityEvidenceSource>(observation.Surface, out var source))
-                        throw new MissingProductionObservationException("Matched judged gate carried invalid applicability provenance.");
+                        throw new MissingProductionObservationException("Matched-quality diagnostic carried invalid applicability provenance.");
                     return new RequestCoverageProbe(
                         criterion.Id,
                         request,
@@ -583,7 +583,7 @@ public static class NegativeControlCatalog {
                     nameof(AgentEvalProvenance.HasIndependentBoundary), nameof(EvaluationSuite.JudgedGateAsync),
                     nameof(AgentEvalProvenance.HasIndependentBoundary), ControlTranche.E02C),
                 environment => {
-                    var provenance = RequireMeasuredMatchedProduction(environment).MatchedGate.AgentEval!;
+                    var provenance = RequireMeasuredMatchedProduction(environment).MatchedQualityDiagnostic.AgentEval!;
                     return new ProvenanceProbe(provenance);
                 },
                 probe => probe with { Value = probe.Value.WithSubjectPassFailForControl() },
@@ -753,7 +753,7 @@ public static class NegativeControlCatalog {
                     nameof(AgentEval.Evals.Meta.ObservationCensus.Measured), ControlTranche.E02C),
                 environment => {
                     var production = RequireMeasuredMatchedProduction(environment);
-                    var observations = production.MatchedGate.AgentEval!.Observations;
+                    var observations = production.MatchedQualityDiagnostic.AgentEval!.Observations;
                     var expectedIds = VitrineEvalCriteria.JudgedCriteria
                         .SelectMany(static criterion => new[] { $"demo01:{criterion.Id}", $"demo02:{criterion.Id}" })
                         .ToHashSet(StringComparer.Ordinal);
@@ -762,7 +762,7 @@ public static class NegativeControlCatalog {
                         .ToArray();
                     if (demoObservations.Length != expectedIds.Count ||
                         !demoObservations.Select(static observation => observation.Id).ToHashSet(StringComparer.Ordinal).SetEquals(expectedIds))
-                        throw new MissingProductionObservationException("The matched judged gate does not contain the exact canonical applicability census.");
+                        throw new MissingProductionObservationException("The matched-quality diagnostic does not contain the exact canonical applicability census.");
                     var notApplicable = VitrineEvalCriteria.DecideApplicability(
                         VitrineEvalCriteria.JudgedCriteria[0], "   ").Applicable ? 0 : 1;
                     var notMeasured = production.MissingGate.Outcome == GateMeasurementOutcome.NotMeasured ? 1 : 0;
@@ -912,15 +912,15 @@ public static class NegativeControlCatalog {
     }
     private static ProductionControlBaselines RequireMeasuredMatchedProduction(ControlEnvironment environment) {
         var production = Require(environment.Production, "production baselines");
-        if (production.MatchedGate.Outcome != GateMeasurementOutcome.Measured ||
-            production.MatchedGate.AgentEval is null ||
+        if (production.MatchedQualityDiagnostic.Outcome != GateMeasurementOutcome.Measured ||
+            production.MatchedQualityDiagnostic.AgentEval is null ||
             production.MatchedDiagnostics.Demo01Criteria.Count != VitrineEvalCriteria.JudgedCriteria.Length ||
             production.MatchedDiagnostics.Demo02Criteria.Count != VitrineEvalCriteria.JudgedCriteria.Length)
-            throw new MissingProductionObservationException("The matched judged production observation is incomplete.");
+            throw new MissingProductionObservationException("The matched-quality diagnostic production observation is incomplete.");
         return production;
     }
-    private static IReadOnlyList<SubjectBinding> MatchedSubjectBindings(GateResult gate) {
-        var observations = gate.AgentEval!.Observations
+    private static IReadOnlyList<SubjectBinding> MatchedSubjectBindings(GateResult diagnostic) {
+        var observations = diagnostic.AgentEval!.Observations
             .Where(static observation => observation.Id.StartsWith("binding:", StringComparison.Ordinal))
             .ToArray();
         if (observations.Length < 2 || observations.Any(static item => item.Score is null || item.SampleCount is null))

@@ -228,12 +228,9 @@ public static class CoverageReviewGate
 
         foreach (var interest in starved)
         {
-            // ⚠ THE LINE NAMES THE REASON THIS INTEREST IS STARVED, not the only reason there used
-            //   to be. Since the coverage gate stopped keying on the retriever's ranking there are
-            //   two, and they have two different answers: an interest that NAMES NOTHING is starved
-            //   with candidates well above the floor, and printing "no candidate above the score
-            //   floor (0.0120)" beside two candidates at 0.5 sends the reader to the threshold —
-            //   which is exactly the fix that must not be made.
+            // Name the actual starvation condition. An unnameable interest can be starved even
+            // with high-scoring candidates, so describing that case as a score-floor failure would
+            // point remediation at the wrong control.
             var starvedCoverage = state.CoverageFor(interest.Id);
             lines.Add(starvedCoverage.AttributionVocabularyEmpty
                 ? $"{interest.Id} \"{interest.Label}\" NAMES NOTHING a product could be matched against — no attribute "
@@ -372,11 +369,9 @@ public sealed class DeterministicRanker(
         // RRF scores are small positive numbers with no upper bound of interest; squashing keeps
         // the second operand inside 0..1 without pretending it is a probability.
         //
-        // ⚠ THE CONSTANT BELOW IS THE SHAPE PARAMETER, NEVER THE COVERAGE CUT. They were one
-        //   constant until 2026-09-06 and they still carry the same value, which is why the split
-        //   moved no number — but a cut has an admit rate and a half-saturation constant does not,
-        //   so calibrating one through the other was a silent coupling into `ConfidenceBands`.
-        //   Eval 03's gating row `CoverageCutIsNotTheConfidenceShapeParameter` holds them apart.
+        // This is the confidence transform's half-saturation parameter, never the coverage cut.
+        // A cut has an admit rate and a shape parameter does not; Eval 03's
+        // CoverageCutIsNotTheConfidenceShapeParameter gate keeps those roles separate.
         double retrieval = candidate.SearchScore <= 0
             ? 0.0
             : calibration.ShapeRetrievalConfidence(candidate.SearchScore);
@@ -446,6 +441,10 @@ public sealed class DeterministicPresenter(Catalogue catalogue, IDiscoveryProgre
 /// </remarks>
 public static class DiscoveryPresentation
 {
+    private const string PartialDisclosureHeading = "Partial result — some interests are not covered yet";
+    private const string PartialDisclosureNextStep =
+        "Next step: add the missing preferences, or ask an advisor to review these gaps before relying on the recommendations.";
+
     /// <summary>Screens, prints, and writes <see cref="DiscoveryState.FinalAnswer"/>.</summary>
     /// <param name="state">The run state.</param>
     /// <param name="catalogue">The catalogue façade.</param>
@@ -472,7 +471,7 @@ public static class DiscoveryPresentation
             ? PurchaseIntentClassifier.ClassifyAll(profile.Purchases, catalogue.BySku, Personas.DemoToday)
             : [];
 
-        var domainMap = DiscoveryProjection.ToDomainInterestMap(state);
+        var domainMap = DiscoveryProjection.ToDomainInterestMap(state, classified);
 
         var context = GuardrailContext.Create(
             catalogue.BySku,
@@ -481,12 +480,27 @@ public static class DiscoveryPresentation
             classified,
             categories: catalogue.Categories,
             customerUtterance: state.SessionRequest,
-            asOf: Personas.DemoToday);
+            asOf: Personas.DemoToday) with
+        {
+            // ProductContainmentCheck already screens the Ranker's selection against this same
+            // collection. Hand it to the shared presentation pipeline too, so that stage is an
+            // independently active defence rather than an arm_inapplicable ledger entry.
+            CandidateProductIds = state.Candidates
+                .Select(static candidate => candidate.ProductId)
+                .ToHashSet(StringComparer.Ordinal)
+        };
 
-        var raw = BuildSet(state, catalogue, domainMap);
+        var raw = BuildSet(state, catalogue, domainMap) with
+        {
+            Replenishment = ReplenishmentLaneBuilder.Build(
+                domainMap,
+                classified,
+                catalogue)
+        };
 
         progress.Publish(DiscoveryEvent.Presented(
-            $"live price and stock read for {raw.PresentedCount} SKU(s) at render time — never from model context"));
+            $"live price and stock read for {raw.PresentedCount} discovery SKU(s) and " +
+            $"{raw.Replenishment.Count} repeat-buy SKU(s) at render time — never from model context"));
 
         // Apply, NOT ApplyWithAbstentionGate: the abstention gate is Demo 1's PRE-SEARCH control
         // and it cannot fire on a turn that has already retrieved. Running it here would add an
@@ -494,7 +508,7 @@ public static class DiscoveryPresentation
         var outcome = GuardrailPipeline.Apply(raw, context);
 
         outcome.Ledger.Note(GuardrailStage.AbstentionGate, GuardrailReasons.ArmInapplicable, "—",
-            "the §F.8 abstention gate is a PRE-SEARCH control and does not apply to a loop that has already " +
+            "the abstention gate is a PRE-SEARCH control and does not apply to a loop that has already " +
             "retrieved. The loop's equivalent is its stop reason, printed in the run summary");
 
         // The arms below can only fail on a claim a MODEL wrote. Which claims those are depends on
@@ -541,9 +555,8 @@ public static class DiscoveryPresentation
         }
 
         // One authoritative delivered artifact: downstream judging, the UI, exports, and the
-        // text-channel answer all receive the composition made from the screened set above.
-        // The model draft is retained separately; letting unscreened prose replace this value
-        // allowed the customer to see one artifact while the eval graded another.
+        // text-channel answer all receive the composition made from the screened set above. The
+        // model draft remains diagnostic and never replaces the screened customer answer.
         state.PresenterDraft = string.IsNullOrWhiteSpace(modelProse) ? null : modelProse.Trim();
         var composedAnswer = ComposeAnswer(state, catalogue, outcome);
         state.CustomerAnswerSafety = CustomerAnswerScreen.Screen(composedAnswer, state.SessionRequest);
@@ -615,26 +628,11 @@ public static class DiscoveryPresentation
     {
         ArgumentNullException.ThrowIfNull(state);
 
-        var uncovered = state.UncoveredInterests();
-        if (!state.IsPartialAnswer && uncovered.Count == 0) return;
+        var lines = PartialDisclosureLines(state);
+        if (lines.Count == 0) return;
 
         Console.ForegroundColor = ConsoleColor.Yellow;
-        Console.WriteLine("  ⚠  Not covered in this session");
-
-        foreach (var interest in uncovered)
-        {
-            var coverage = state.CoverageFor(interest.Id);
-            Console.WriteLine($"     • {interest.Id}  {interest.Label} — searched {coverage.QueriesRun.Count} time(s), " +
-                              $"{coverage.CandidateProductIds.Count} candidate(s) credited, " +
-                              $"{coverage.AttributableProductIds.Count} of them carrying anything this interest names"
-                            + (coverage.AttributionVocabularyEmpty
-                                ? " (⚠ and this interest names NOTHING a product could be matched against)"
-                                : ""));
-            if (coverage.LastGapReason is { Length: > 0 } reason)
-                Console.WriteLine($"       {reason}");
-        }
-
-        Console.WriteLine($"     Stop reason: {state.StopReason}. Handing this to a human: [ask the community] [advisor chat]");
+        foreach (var line in lines) Console.WriteLine($"  {line}");
         Console.ResetColor();
         Console.WriteLine();
     }
@@ -678,13 +676,28 @@ public static class DiscoveryPresentation
             builder.AppendLine();
         }
 
-        // ⚠ THE FOOTNOTE IS A FOOTNOTE TO A TRAY, and with no tray there is nothing for it to be a
-        //   footnote to. When the loop presents nothing, the customer-facing account of that is the
-        //   shortfall section — the interest, why it could not be served, and a handover to a human
-        //   — not a bare list of rejected SKUs. Emitting the list alone would turn an abstention
-        //   into a several-hundred-character answer, which is the shape plan item 8.18 exists to
-        //   remove: a customer who named nothing must be shown nothing, and "shown nothing" has to
-        //   be measurable as a zero-length answer rather than as a shorter one.
+        if (outcome.Cleaned.Replenishment.Count > 0)
+        {
+            builder.AppendLine("Due for a repeat buy — separate from discovery");
+            foreach (var item in outcome.Cleaned.Replenishment)
+            {
+                var name = catalogue.TryGet(item.ProductId, out var product) && product is not null
+                    ? product.Name
+                    : item.ProductId;
+                var due = item.IsOverdue
+                    ? $"overdue by {-item.DaysUntilDue} days"
+                    : $"due in {item.DaysUntilDue} days";
+                builder.AppendLine(
+                    $"  · {name} ({item.ProductId}) — {due}; last bought " +
+                    $"{item.DaysSinceLastPurchase} days ago, typical cadence {item.TypicalReplenishDays} days");
+            }
+
+            builder.AppendLine();
+        }
+
+        // A rejection list is a footnote to a tray. With no presented item, the shortfall section
+        // carries the customer-facing explanation and handoff; emitting only rejected SKUs would
+        // turn an abstention into a non-empty recommendation answer.
         if (state.DroppedSkus.Count > 0 && builder.Length > 0)
         {
             builder.AppendLine("Deliberately not shown");
@@ -692,6 +705,49 @@ public static class DiscoveryPresentation
                 builder.AppendLine($"  · {dropped.ProductId} — {dropped.Reason}");
         }
 
+        var partialDisclosure = PartialDisclosureLines(state);
+        if (partialDisclosure.Count > 0)
+        {
+            if (builder.Length > 0) builder.AppendLine();
+            foreach (var line in partialDisclosure) builder.AppendLine(line);
+        }
+
         return builder.ToString();
     }
+
+    private static IReadOnlyList<string> PartialDisclosureLines(DiscoveryState state)
+    {
+        if (!state.IsPartialAnswer) return [];
+
+        var lines = new List<string> { PartialDisclosureHeading };
+        var uncovered = state.UncoveredInterests();
+        if (uncovered.Count == 0)
+        {
+            lines.Add("  · Coverage was not approved, but no uncovered interest label was retained.");
+        }
+        else
+        {
+            foreach (var interest in uncovered)
+                lines.Add($"  · {interest.Label}");
+        }
+
+        lines.Add($"Stop reason: {state.StopReason} — {StopReasonForCustomer(state.StopReason)}");
+        lines.Add(PartialDisclosureNextStep);
+        return lines;
+    }
+
+    private static string StopReasonForCustomer(DiscoveryStopReason reason) => reason switch
+    {
+        DiscoveryStopReason.RoundLimitReached =>
+            "the bounded discovery round limit was reached before coverage was complete.",
+        DiscoveryStopReason.NoProgress =>
+            "another round added no new product, so repeating it was unlikely to help.",
+        DiscoveryStopReason.GapsUnresolvable =>
+            "no materially different catalogue-grounded query remained for the uncovered interests.",
+        DiscoveryStopReason.GapsRemain =>
+            "coverage is incomplete and another discovery round would normally be needed.",
+        DiscoveryStopReason.CoverageSufficient =>
+            "coverage was recorded as sufficient, but the final approval flag was not set.",
+        _ => "coverage was not approved before presentation.",
+    };
 }

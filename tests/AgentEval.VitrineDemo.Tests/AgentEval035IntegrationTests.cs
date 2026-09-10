@@ -102,6 +102,27 @@ public sealed class AgentEval035IntegrationTests
     }
 
     [Fact]
+    public async Task TopologyProductionEvalRequiresTheExactEdgeCount()
+    {
+        var exact = await VitrineProductionChecks.EvaluateAdmittedAsync(
+            VitrineProductionChecks.Topology,
+            TopologyProductionEval.Input(new(
+                VitrineEvalCriteria.ExecutorCount,
+                VitrineEvalCriteria.ConditionalLoopBackEdges,
+                VitrineEvalCriteria.EdgeCount)));
+        var extraEdge = await VitrineProductionChecks.EvaluateAdmittedAsync(
+            VitrineProductionChecks.Topology,
+            TopologyProductionEval.Input(new(
+                VitrineEvalCriteria.ExecutorCount,
+                VitrineEvalCriteria.ConditionalLoopBackEdges,
+                VitrineEvalCriteria.EdgeCount + 1)));
+
+        Assert.True(exact.Score.Passed);
+        Assert.Equal(MeasurementState.Measured, extraEdge.Score.CensusBucket());
+        Assert.False(extraEdge.Score.Passed);
+    }
+
+    [Fact]
     public void NonTestResultProjectionPreservesAllThreeToolJournalStatesExactly()
     {
         var observation = new RecommendationSurfaceObservation(

@@ -7,7 +7,7 @@ param(
     [switch] $NoRestore,
 
     # Bounded lane used by the CI-chain negative control; it executes this script and the
-    # model-free gates without recursively launching the test suite or the 43 controls.
+    # six model-free offline check stages without recursively launching the test suite or the 43 controls.
     [switch] $EvalProofOnly,
 
     [string] $ProofReportPath

@@ -2,7 +2,6 @@
 // Copyright (c) 2026 José Luis Latorre Millas
 
 using System.Diagnostics;
-using Azure.AI.OpenAI;
 using Galaxus.RecommendationAgent.Catalog;
 using Galaxus.RecommendationAgent.Retrieval;
 using Microsoft.Agents.AI.Workflows;
@@ -18,7 +17,7 @@ namespace Galaxus.RecommendationAgent.Workflows;
 /// simulation of the agent — every claim about what the model adds needs both arms.
 /// </param>
 /// <param name="PersonalizationDisabled">
-/// The FDPIC one-click opt-out (§F.6). The history is not filtered or summarised; it is not read,
+/// The FDPIC one-click opt-out. The history is not filtered or summarised; it is not read,
 /// so it never reaches the state and therefore never reaches a prompt.
 /// </param>
 /// <param name="SessionRequest">
@@ -43,7 +42,7 @@ namespace Galaxus.RecommendationAgent.Workflows;
 /// <param name="ModelCallTimeout">
 /// Wall-clock ceiling on ONE model call. Null uses
 /// <see cref="DiscoveryModelCall.DefaultModelCallTimeout"/>. A stalled deployment must degrade,
-/// not queue — see the remarks on that property for the measurement that forced it.
+/// not queue indefinitely.
 /// </param>
 public sealed record DiscoveryLoopOptions(
     bool Offline = false,
@@ -125,18 +124,9 @@ public sealed record DiscoveryRunResult(
     /// </summary>
     /// <remarks>
     /// <para>
-    /// ⚠ <b>This exists because a failing node used to be indistinguishable from a healthy run at
-    /// the process boundary.</b> <c>GalaxusDiscoveryLoop.RunAsync</c> publishes an <c>ExecutorFailedEvent</c> as a
-    /// <c>Degraded</c> progress note and keeps draining the stream — deliberately, so one bad node
-    /// does not take the run down. But a <c>Degraded</c> note is a WARNING channel: the demo printed
-    /// the throw and still returned a full recommendation tray and exit code 0. A reader who checks
-    /// the exit code — CI, above all — saw green.
-    /// </para>
-    /// <para>
-    /// Reproduced, not theorised: removing one entry from <c>QueryVocabulary</c>'s localisation
-    /// table makes <c>CoverageReviewer</c> throw its B-9 self-check. <c>Evals -- 4</c> exits 1;
-    /// <c>Agent -- 2 --offline</c> printed <c>⚠ [CoverageReviewer] executor FAILED</c> and exited
-    /// <b>0</b>. Warnings are for degradation the run survived intact. A node that threw is not that.
+    /// Executor failures remain distinct from <c>Degraded</c> progress notes. The stream continues
+    /// draining so diagnostics and any partial state survive, but a thrown node is still a process-
+    /// boundary failure and must not be reported as a healthy run.
     /// </para>
     /// <para>
     /// The list is the fact; deciding what to DO with it belongs to the caller, because the eval
@@ -244,7 +234,7 @@ public static class DiscoveryWorkflowFactory
                                         ? "➡ ROUTE  CoverageReviewer → Ranker   [coverage sufficient]"
                                         : $"➡ ROUTE  CoverageReviewer → Ranker   [{s.ResolveStopReason()}]   (degraded — PARTIAL answer)",
                                     progress),
-                label: "coverage sufficient")
+                label: "approved / bounded partial")
 
             .AddEdge<DiscoveryState>(
                 rankerExecutor, presenterExecutor,
@@ -305,7 +295,7 @@ public static class GalaxusDiscoveryLoop
     /// a default persona: running the wrong persona's history produces a plausible, wrong demo.
     /// </exception>
     /// <exception cref="InvalidOperationException">
-    /// The live arm was requested and Azure credentials are not configured. Run with
+    /// The live arm was requested and the selected Azure authentication path is not locally ready. Run with
     /// <see cref="DiscoveryLoopOptions.Offline"/> to use the deterministic arm instead.
     /// </exception>
     public static async ValueTask<DiscoveryRunResult> RunAsync(
@@ -413,9 +403,8 @@ public static class GalaxusDiscoveryLoop
 
                 case ExecutorFailedEvent failed:
                     // A node that throws must not take the run down silently. The message-borne
-                    // counter means the round it was in did not consume budget either. It is ALSO
-                    // recorded as a failure: publishing it only on the warning channel is how a
-                    // throwing reviewer used to reach exit code 0.
+                    // counter means the round it was in did not consume budget either. Record it
+                    // separately from the warning channel so the process boundary can fail.
                     failures.Add($"{failed.ExecutorId}: executor failure details withheld");
                     progress.Publish(DiscoveryEvent.Degraded(failed.ExecutorId,
                         "executor FAILED; details withheld to prevent configuration disclosure"));
@@ -505,15 +494,7 @@ public static class GalaxusDiscoveryLoop
 
     private static IChatClient CreateChatClient()
     {
-        var configuration = Config.CaptureLiveConfiguration();
-        if (configuration is null)
-        {
-            throw new InvalidOperationException(
-                "Azure OpenAI credentials are not configured. Set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY, " +
-                "or run the loop with DiscoveryLoopOptions { Offline = true } — the deterministic arm needs no key.");
-        }
-
-        var azureClient = new AzureOpenAIClient(configuration.Endpoint, configuration.Key);
+        var azureClient = AzureOpenAiClientFactory.CreateConfigured(out var configuration);
         return azureClient.GetChatClient(configuration.ModelDeployment).AsIChatClient();
     }
 }

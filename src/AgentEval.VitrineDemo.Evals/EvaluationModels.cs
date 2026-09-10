@@ -30,6 +30,8 @@ public sealed record GateResult {
     public AgentEval.Evals.Meta.ChanceFloor? ChanceFloor { get; }
     public string Evidence { get; }
     public GateMeasurementOutcome Outcome { get; }
+    public GateAuthority Authority { get; init; } = GateAuthority.Mandatory;
+    public bool IsVerdictBearing => Authority == GateAuthority.Mandatory;
     public AgentEvalProvenance? AgentEval { get; init; }
     public HonestyClaims? HonestInterpretation { get; init; }
     public AgentEval.Evals.Meta.MeasurementState? AgentEvalMeasurementState { get; init; }
@@ -66,6 +68,7 @@ public sealed record GateResult {
     }
 }
 public enum GateMeasurementOutcome { Measured, NotApplicable, NotMeasured, InstrumentError }
+public enum GateAuthority { Mandatory, Diagnostic }
 public enum EvaluationExecutionProfile { OfflineDeterministic }
 public sealed record EvaluationExecutionProvenance(EvaluationExecutionProfile Profile, string DemoScope,
     string SubjectEngine, string EvaluatorEngine, string? DeploymentName, int? Demo01SubjectModelCalls,
@@ -209,14 +212,17 @@ public sealed record SuiteResult(IReadOnlyList<GateResult> Gates, IReadOnlyList<
     public EvaluationExecutionProvenance? Execution { get; init; }
     public bool RequireCanonicalControlPanel { get; init; }
     public int CaughtControls => Controls.Count(control => control.Caught);
-    public int ExitCode => RequireCanonicalControlPanel && !NegativeControlCatalog.HasCanonicalExecutionScope(Controls) ||
-                           Gates.Any(gate => gate.Outcome == GateMeasurementOutcome.InstrumentError) ||
+    private IEnumerable<GateResult> MandatoryGates => Gates.Where(static gate => gate.IsVerdictBearing);
+    public int ExitCode => Gates.Any(static gate => !Enum.IsDefined(gate.Authority)) ||
+                           RequireCanonicalControlPanel && !NegativeControlCatalog.HasCanonicalExecutionScope(Controls) ||
+                           MandatoryGates.Any(gate => gate.Outcome == GateMeasurementOutcome.InstrumentError) ||
                            Controls.Any(control => control.HasInfrastructureFailure)
         ? EvaluationExitCodes.InfrastructureFailure
-        : Gates.Any(gate => gate.Outcome == GateMeasurementOutcome.NotMeasured) ||
+        : MandatoryGates.Any(gate => gate.Outcome is GateMeasurementOutcome.NotApplicable
+                or GateMeasurementOutcome.NotMeasured) ||
           Controls.Any(control => control.HasMissingMeasurement)
             ? EvaluationExitCodes.NotMeasured
-            : Gates.Any(gate => gate.Passed == false) || Controls.Any(control => control.HasMeasuredFailure)
+            : MandatoryGates.Any(gate => gate.Passed == false) || Controls.Any(control => control.HasMeasuredFailure)
                 ? EvaluationExitCodes.GateFailed
                 : EvaluationExitCodes.Passed;
 }

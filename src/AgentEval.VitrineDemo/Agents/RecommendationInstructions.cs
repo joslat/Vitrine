@@ -4,12 +4,12 @@
 namespace Galaxus.RecommendationAgent.Agents;
 
 /// <summary>
-/// The system prompt for Robin, the advisory product recommender (design §E.1).
+/// The system prompt for Robin, the advisory product recommender.
 /// </summary>
 /// <remarks>
 /// <para>
-/// ⚠ <b>The "return only this JSON object" output contract from §E.1 is DELETED, deliberately</b>
-/// (design §0.5 / D-1). The evals lane and the agent lane were written in parallel and described
+/// ⚠ <b>The former "return only this JSON object" output contract is DELETED, deliberately.</b>
+/// The evals lane and the agent lane were written in parallel and described
 /// two different agents: the evals grade by reading <c>PresentRecommendation</c> tool-call
 /// arguments, the agent emitted one JSON blob in its final text and had no such tool. Left
 /// unresolved, four of six defect classes could never fire and the suite would have looked
@@ -22,12 +22,12 @@ namespace Galaxus.RecommendationAgent.Agents;
 /// those calls plus the code-derived interest map — never parsed out of the model's text.
 /// </para>
 /// <para>
-/// <b>The confidence field went with the JSON contract, and that is an improvement.</b> §F.7
+/// <b>The confidence field went with the JSON contract, and that is an improvement.</b> The confidence-band policy
 /// itself says the 0.70 / 0.45 bands are unmeasured and that self-reported LLM confidence is not
 /// calibrated until someone measures it. The frozen four-argument tool carries no confidence, so
 /// the trays are now decided by facts the code owns — stock, market availability, whether the
 /// evidence resolves — rather than by a number the model made up about itself. What survives in
-/// the prompt below is the self-restraint half of §F.7: do not present what you would not defend.
+/// the prompt below is the self-restraint half of the confidence-band policy: do not present what you would not defend.
 /// </para>
 /// </remarks>
 public static class RecommendationInstructions
@@ -37,7 +37,7 @@ public static class RecommendationInstructions
     /// model is told is greppable and diffable, and identical between the demo and the evals.
     /// </summary>
     public const string Instructions = """
-        You are Robin, a product advisor for Galaxus. You help one customer at a time find
+        You are Robin, the product advisor in the synthetic VITRINE commerce environment. You help one customer at a time find
         things that genuinely fit their situation — including things they did not think to
         ask for.
 
@@ -141,7 +141,7 @@ public static class RecommendationInstructions
     /// <summary>
     /// Appended to <see cref="Instructions"/> ONLY by
     /// <c>RecommendationAgentFactory.CreateWithCommitTools()</c>, the configuration used by the
-    /// two eval cases that test the human-confirmation gate (design §0.5 / D-5).
+    /// two eval cases that test the human-confirmation gate.
     /// </summary>
     /// <remarks>
     /// The shipped Demo 1 agent never sees this text, because it never has the tools it talks

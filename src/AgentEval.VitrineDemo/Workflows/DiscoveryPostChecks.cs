@@ -85,7 +85,7 @@ public static class DiscoveryPostChecks
 /// stops being statistically unlikely and becomes impossible. Note the honest boundary: this
 /// check cannot see an injected interest whose SKU came back through a real search — that is
 /// what <see cref="QueryVocabulary"/> is for, and the two controls sit at different layers on
-/// purpose (design §0.5 / D-3).
+/// purpose.
 /// </remarks>
 public static class ProductContainmentCheck
 {
@@ -139,17 +139,10 @@ public static class ProductContainmentCheck
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Why this exists: the gate was fixed and the tray was not (plan item 8.18).</b>
-/// <c>aae2024d</c> stopped the COVERAGE gate keying on the retriever's ranking: an interest whose
-/// attribution vocabulary is empty is UNCOVERED and STARVED however many candidates came back and
-/// however well they scored, so the reviewer reports <c>GAPS_UNRESOLVABLE</c> and the loop does
-/// not go round again. That fixed the LOOP. It did not fix the ANSWER: the candidates retrieved in
-/// round 1, <i>before</i> the gate ran, are already in
-/// <see cref="DiscoveryState.Candidates"/>, and the Ranker reads the candidate set — not the
-/// coverage ledger. MEASURED at <c>41cd09a2</c> on <c>--real-vectors</c>: Luca Ferrari
-/// (<c>USR-LF-04</c>) — one order line and the contentless utterance <i>"Hi — what do you
-/// recommend for me?"</i> — went from five presented products to <b>two</b>, and two is not zero.
-/// A customer who named nothing was still shown a tray.
+/// Coverage and presentation enforce the same invariant: an interest with an empty attribution
+/// vocabulary is STARVED regardless of candidate count or score, and no ranked item credited to it
+/// may reach the customer. This filter is necessary because round-one candidates already exist
+/// before the coverage verdict and the Ranker reads that candidate set directly.
 /// </para>
 /// <para>
 /// <b>It screens the INTEREST, not the candidate.</b> The narrow, unambiguous case is the one that
@@ -157,8 +150,8 @@ public static class ProductContainmentCheck
 /// that interest is arbitrary by construction. The WIDER case — a candidate that carries nothing a
 /// nameable interest names — is measured and printed on every ledger
 /// (<see cref="InterestCoverage.AttributableProductIds"/>) and deliberately NOT gated here: it
-/// flips four of Eval 07's five personas and removes the corpus's only approved exit, which is a
-/// decision about what the shipped demo answers rather than a defect fix (plan item 8.21).
+/// would flip four of Eval 07's five personas and remove the corpus's only approved exit, which is
+/// a product-policy decision rather than this structural safety invariant.
 /// </para>
 /// <para>
 /// <b>It runs where BOTH rankers pass.</b> <see cref="DeterministicRanker"/> and the model Ranker

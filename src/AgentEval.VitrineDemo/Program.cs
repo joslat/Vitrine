@@ -10,6 +10,7 @@
 //   dotnet run --project src/AgentEval.VitrineDemo
 //   dotnet run --project src/AgentEval.VitrineDemo -- 1                     Demo 01, offline by default
 //   dotnet run --project src/AgentEval.VitrineDemo -- 2                     Demo 02, offline by default
+//   dotnet run --project src/AgentEval.VitrineDemo -- 1 --scripted          Demo 01, deterministic agent + tools
 //   dotnet run --project src/AgentEval.VitrineDemo -- 1 --live --confirm-paid
 //   dotnet run --project src/AgentEval.VitrineDemo -- 2 --no-personalization
 //   dotnet run --project src/AgentEval.VitrineDemo -- 1 --user USR-MI-02
@@ -18,6 +19,7 @@
 
 using System.Text;
 using Galaxus.RecommendationAgent;
+using Galaxus.RecommendationAgent.Agents;
 using Galaxus.RecommendationAgent.Catalog;
 using Galaxus.RecommendationAgent.Demos;
 using Galaxus.RecommendationAgent.Retrieval;
@@ -29,12 +31,13 @@ Console.OutputEncoding = Encoding.UTF8;
 // CLI flags (any order):
 //   0 .. 9                  Menu entry (skips the interactive menu). 1 and 3-7 run Demo 01, 2 and
 //                           8-9 run Demo 02, and 0 runs Demo 02's termination proof. The two
-//                           headline selectors are 1 and 2 — the design's §F demo script types
+//                           headline selectors are 1 and 2 — the documented demo script types
 //                           exactly `-- 1` and then `-- 2` — and the rest are conveniences that
 //                           only differ from those two by a persona or a toggle. See ShowMenuAsync.
 //   --user <USR-XX-NN>      Persona to run. Overrides the digit's persona.
-//   --no-personalization    §F.6 opt-out: history is not read, the turn runs on stated need.
+//   --no-personalization    the personalization opt-out: history is not read, the turn runs on stated need.
 //   --offline               Explicitly select the default deterministic, no-provider arm.
+//   --scripted              Demo 01: real agent/tools with the deterministic local chat client.
 //   --live                  Request the model-backed subject arm (never inferred from credentials).
 //   --confirm-paid          Required with every provider-capable option before work can start.
 //   --rebuild-embeddings    Regenerate Data/catalogue.embeddings.json from a LIVE embedding model.
@@ -59,6 +62,13 @@ if (parsed is null)
 if (parsed.HelpRequested)
 {
     PrintUsage();
+    return;
+}
+
+if (HasForcedOfflineArmConflict(parsed))
+{
+    PrintForcedOfflineArmConflict(parsed.Selector!);
+    Environment.ExitCode = 2;
     return;
 }
 
@@ -108,12 +118,9 @@ try
 }
 finally
 {
-    // ⚠ A RUN THAT SAYS IT SPENDS MUST SAY HOW MUCH. `--real-vectors` prints "This run EMBEDS
-    //   QUERIES LIVE … it spends" on every entry point, and until 2026-09-06 only Demo 01 closed
-    //   the loop with the figure — `-- 2 --offline --real-vectors` declared a cost and reported
-    //   none. PrintLiveSpend is print-once per process, so Demo 01's in-panel call still lands
-    //   where it belongs and this one covers every other selector. Pinned by Eval 03's gating row
-    //   `ARunThatSaysItSpendsSaysHowMuch`.
+    // Any path that advertises paid live query embeddings must report the observed usage.
+    // PrintLiveSpend is print-once per process: Demo 01 can place it in-panel, while this finalizer
+    // covers every other selector, including failures and cancellations.
     Galaxus.RecommendationAgent.Retrieval.EmbeddingSpace.PrintLiveSpend();
     logScope?.Dispose();
 }
@@ -122,11 +129,9 @@ finally
 
 // Returns null when an argument is not understood — the caller then exits 2.
 //
-// ⚠ Mirrors Galaxus.RecommendationAgent.Evals' parser deliberately. The previous version ended in
-// `parsed.Selector ??= args[i]`, which swallowed an unknown flag once a selector had been seen:
-// `-- 1 --offlien` ran a LIVE, paid turn while reading as a request for the offline arm. A flag
-// with a leading '-' that this switch does not name is a typo, and a missing value for a flag
-// that needs one is a typo too. Both now refuse rather than no-op.
+// Mirrors Galaxus.RecommendationAgent.Evals' parser deliberately. Any unrecognised leading-dash
+// token or missing option value is an error: a typo must never change an offline request into a
+// provider-capable run.
 static ParsedArgs? ParseArgs(string[] args)
 {
     var parsed = new ParsedArgs();
@@ -187,6 +192,10 @@ static ParsedArgs? ParseArgs(string[] args)
                 parsed.Offline = true;
                 break;
 
+            case "--scripted":
+                parsed.Scripted = true;
+                break;
+
             case "--live":
                 parsed.Live = true;
                 break;
@@ -221,7 +230,10 @@ static ParsedArgs? ParseArgs(string[] args)
         }
     }
 
-    return parsed.Live && parsed.Offline ? null : parsed;
+    var selectedSubjectArms = (parsed.Offline ? 1 : 0)
+                              + (parsed.Scripted ? 1 : 0)
+                              + (parsed.Live ? 1 : 0);
+    return selectedSubjectArms > 1 ? null : parsed;
 }
 
 static bool RequiresPaidConfirmation(ParsedArgs parsed) =>
@@ -229,6 +241,16 @@ static bool RequiresPaidConfirmation(ParsedArgs parsed) =>
 
 static bool IsSelector(string token) =>
     token is "0" or "1" or "2" or "3" or "4" or "5" or "6" or "7" or "8" or "9";
+
+static bool HasForcedOfflineArmConflict(ParsedArgs parsed) =>
+    parsed.Selector is "0" or "7" or "8" or "9"
+    && (parsed.Scripted || parsed.Live);
+
+static void PrintForcedOfflineArmConflict(string selector) =>
+    Console.Error.WriteLine(
+        $"Selector {selector} is a fixed zero-model alias and cannot be combined with " +
+        "--scripted or --live. Use selector 1, 4 or 6 for a committed Demo01 scripted arm. " +
+        "No provider call was made.");
 
 // Maps a menu digit to a demo, a persona and its toggles. Every subject selector is offline unless
 // the operator supplies BOTH --live and --confirm-paid; configured credentials never select a paid
@@ -238,11 +260,11 @@ static bool IsSelector(string token) =>
 // is part of the resolved choice rather than inferred at the call site, so a new selector cannot
 // silently route to the wrong demo.
 //
-// ⚠ 1 = Demo 01 and 2 = Demo 02 is a CONTRACT, not a convenience. The design's §F demo script is
-// nine minutes of typing `-- 1`, talking, then typing `-- 2`; a numbering in which `-- 2` ran a
-// different persona of the SAME demo would break the script in the room. Marco, Sofia and Luca
-// moved to 3, 4 and 5 for that reason. Nothing outside this file referenced the old digits.
-static bool TryResolveSelector(ParsedArgs parsed, out (int Demo, string UserId, bool NoPersonalization, bool Offline) choice)
+// 1 = Demo 01 and 2 = Demo 02 is a documented presentation contract: the walkthrough invokes
+// those selectors in sequence. Persona-specific Demo 01 shortcuts therefore use 3-7.
+static bool TryResolveSelector(
+    ParsedArgs parsed,
+    out (int Demo, string UserId, bool NoPersonalization, RecommendationExecutionArm Arm) choice)
 {
     var (demo, defaultUser, defaultNoPersonalization, defaultOffline) = parsed.Selector switch
     {
@@ -281,21 +303,49 @@ static bool TryResolveSelector(ParsedArgs parsed, out (int Demo, string UserId, 
         return false;
     }
 
+    var arm = defaultOffline || parsed.Offline
+        ? RecommendationExecutionArm.ZeroModelBaseline
+        : parsed.Scripted
+            ? RecommendationExecutionArm.ScriptedAgent
+            : parsed.Live
+                ? RecommendationExecutionArm.LiveAzure
+                : RecommendationExecutionArm.ZeroModelBaseline;
+
     choice = (
         demo,
         string.IsNullOrWhiteSpace(parsed.UserId) ? defaultUser : parsed.UserId.Trim(),
         parsed.NoPersonalization || defaultNoPersonalization,
-        parsed.Offline || defaultOffline || !parsed.Live);
+        arm);
 
     return true;
 }
 
 // The one place a resolved choice becomes a run.
 static async Task RunChoiceAsync(
-    (int Demo, string UserId, bool NoPersonalization, bool Offline) choice,
+    (int Demo, string UserId, bool NoPersonalization, RecommendationExecutionArm Arm) choice,
     int? modelTimeoutSeconds = null,
     string? reportPath = null)
 {
+    if (choice.Arm == RecommendationExecutionArm.ScriptedAgent && choice.Demo != 1)
+    {
+        Console.Error.WriteLine(
+            "--scripted selects Demo01's deterministic ChatClientAgent arm and cannot be used " +
+            "with Demo02 or the termination proof. No provider call was made.");
+        Environment.ExitCode = 2;
+        return;
+    }
+
+    if (choice.Arm == RecommendationExecutionArm.ScriptedAgent
+        && !OfflineRecommendationScript.Supports(choice.UserId))
+    {
+        Console.Error.WriteLine(
+            $"No committed Demo01 scripted trajectory exists for customer '{choice.UserId}'. " +
+            "Use Nadia (USR-NB-01), Sofia (USR-SK-03), the zero-model baseline, or live Azure. " +
+            "No provider call was made.");
+        Environment.ExitCode = 2;
+        return;
+    }
+
     if (choice.Demo == 3)
     {
         var probes = await Galaxus.RecommendationAgent.Workflows.DiscoveryTerminationProbe.RunAllAsync();
@@ -307,13 +357,15 @@ static async Task RunChoiceAsync(
     if (choice.Demo == 2)
     {
         Environment.ExitCode = await Demo02_InterestMapWorkflow.RunAsync(
-            choice.UserId, choice.NoPersonalization, choice.Offline,
+            choice.UserId, choice.NoPersonalization,
+            choice.Arm == RecommendationExecutionArm.ZeroModelBaseline,
             Galaxus.RecommendationAgent.Workflows.DiscoveryState.DefaultMaxDiscoveryRounds,
             modelTimeoutSeconds is { } s ? TimeSpan.FromSeconds(s) : null);
         return;
     }
 
-    await Demo01_RecommendationAgent.RunAsync(choice.UserId, choice.NoPersonalization, choice.Offline, reportPath);
+    await Demo01_RecommendationAgent.RunAsync(
+        choice.UserId, choice.NoPersonalization, choice.Arm, reportPath);
 }
 
 // ── Menu ──────────────────────────────────────────────────────────────────────
@@ -351,7 +403,7 @@ static async Task ShowMenuAsync(ParsedArgs parsed)
         Console.ForegroundColor = ConsoleColor.Cyan;
         Console.WriteLine(@"
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║          Galaxus — Robin, the recommendation agent (MAF demo)                ║
+║          VITRINE — Robin, the recommendation agent (MAF demo)                ║
 ╠══════════════════════════════════════════════════════════════════════════════╣
 ║                                                                              ║
 ║   ── The demo script, in the order it is told ──────────────────────────     ║
@@ -363,12 +415,12 @@ static async Task ShowMenuAsync(ParsedArgs parsed)
 ║   3  Marco  · gift trap            Two gift purchases, suppressed in code   ║
 ║   4  Sofia  · replenish + gap      Owns the beans, owns no grinder          ║
 ║   5  Luca   · thin signal          The abstention gate, before any spend    ║
-║   6  Nadia, personalization OFF    §F.6 — the tool refuses, not the prompt   ║
+║   6  Nadia, personalization OFF    Tool refusal, not a prompt-only rule      ║
 ║   7  Nadia, OFFLINE baseline       No model call. The arm to compare against ║
 ║                                                                              ║
 ║   ── Demo 02 · toggles and the termination proof ───────────────────────     ║
 ║   8  Nadia, LOOP offline           The loop's mechanics at zero cost         ║
-║   9  Nadia, LOOP offline, no pers. §F.6 through the loop                     ║
+║   9  Nadia, LOOP offline, no pers. Tool refusal through the loop             ║
 ║   0  PROVE the three terminations  Forces each stop, discriminates each one  ║
 ║                                                                              ║
 ║   R  Rebuild embedding assets      Paid; start menu with --confirm-paid      ║
@@ -378,7 +430,14 @@ static async Task ShowMenuAsync(ParsedArgs parsed)
 ");
         Console.ResetColor();
 
-        if (!parsed.Live && parsed.Space is EmbeddingSpaceChoice.RealVectors)
+        if (parsed.Scripted)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("  Demo01 uses the deterministic local ChatClientAgent and real read-only tools.");
+            Console.WriteLine("  Demo02 and the termination proof do not accept --scripted.\n");
+            Console.ResetColor();
+        }
+        else if (!parsed.Live && parsed.Space is EmbeddingSpaceChoice.RealVectors)
         {
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine("  Subject selectors are offline. Real-vector query embedding is confirmed and");
@@ -395,8 +454,9 @@ static async Task ShowMenuAsync(ParsedArgs parsed)
         else if (!Config.IsConfigured)
         {
             Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("  ⚠️  Live mode was confirmed, but Azure OpenAI credentials were not found.");
-            Console.WriteLine("     Set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT.");
+            Console.WriteLine("  ⚠️  Live mode was confirmed, but Azure OpenAI is not locally ready.");
+            Console.WriteLine($"     {Config.Readiness.BlockingReason}");
+            Console.WriteLine("     See docs/Vitrine-Live-Run-Setup.html for API-key, local Entra, and managed-identity setup.");
             Console.WriteLine("     Remove --live to keep every menu entry offline.\n");
             Console.ResetColor();
         }
@@ -422,6 +482,11 @@ static async Task ShowMenuAsync(ParsedArgs parsed)
         else
         {
             var selection = parsed with { Selector = key.ToString() };
+            if (HasForcedOfflineArmConflict(selection))
+            {
+                PrintForcedOfflineArmConflict(selection.Selector!);
+                continue;
+            }
             if (!TryResolveSelector(selection, out var choice))
             {
                 continue;
@@ -439,9 +504,8 @@ static async Task ShowMenuAsync(ParsedArgs parsed)
 
 // Regenerates the committed PRODUCT embedding index from a LIVE embedding deployment.
 //
-// One asset, since B-21: there used to be a second holding 71 pre-guessed query vectors, and
-// serving queries out of it is what made the real-vector path retrieve nothing. Queries are
-// embedded live at search time now. What this switch writes is the INDEX, and its model stamp
+// This switch writes only the PRODUCT INDEX. Queries are embedded live at search time rather than
+// served from a finite table of pre-authored query vectors. The index's model stamp
 // is load-bearing: EmbeddingSpace reads it back to decide which live deployment is even allowed
 // to embed queries against these vectors.
 //
@@ -457,7 +521,7 @@ static async Task<int> RebuildEmbeddingsAsync()
     {
         Console.ForegroundColor = ConsoleColor.Yellow;
         Console.WriteLine($"\n  ⚠️  Cannot rebuild the embedding assets: {reason}");
-        Console.WriteLine("     Set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY and (optionally)");
+        Console.WriteLine("     Configure the endpoint and one supported authentication mode, plus (optionally)");
         Console.WriteLine("     AZURE_OPENAI_EMBEDDING_DEPLOYMENT, then run --rebuild-embeddings again.");
         Console.WriteLine("     The demo itself needs none of this: its default retrieval path is offline.");
         Console.ResetColor();
@@ -497,7 +561,7 @@ static async Task<int> RebuildEmbeddingsAsync()
 static void PrintUsage()
 {
     Console.WriteLine(@"
-Galaxus.RecommendationAgent — Demo 01 (Robin, the single agent) and Demo 02 (the
+VITRINE recommendation sample — Demo 01 (Robin, the single agent) and Demo 02 (the
 bounded discovery loop), plus the loop's termination proof.
 
   dotnet run --project src/AgentEval.VitrineDemo [-- <selector>] [flags]
@@ -511,7 +575,8 @@ The two headline selectors, in the order the demo script types them:
       same-customer comparison against Demo 01, run: -- 2 --user USR-NB-01 (Nadia's
       coverage is sufficient in round 1, so the loop declines to spend a second one).
       Both are deterministic and offline by default. To request a model-backed subject,
-      add BOTH --live and --confirm-paid.
+      use --scripted for Demo01's local deterministic ChatClientAgent, or add BOTH
+      --live and --confirm-paid for a provider-backed subject.
 
 Selectors 3-7 are Demo 01's other personas and toggles:
   3   Marco Iten      USR-MI-02   the gift trap
@@ -528,14 +593,19 @@ so the offline loop is one keystroke from the menu:
 Selector 0 proves the loop's three terminations (offline, no cost, exit code 1 on failure):
   0   Forces the round cap, no-progress and gaps-unresolvable in turn, and shows why each
       outcome could NOT have been produced by the other two. Also checks the loop-back edge
-      and the D-3 vocabulary constraint in BOTH directions.
+      and the query-vocabulary constraint in BOTH directions.
+      Selectors 0, 7, 8 and 9 are fixed zero-model aliases; they reject --scripted and --live.
 
 Flags:
   --user <USR-XX-NN>     Run this persona instead of the selector's default.
-  --no-personalization   §F.6 opt-out. GetPurchaseHistory and GetInterestMap refuse;
+  --no-personalization   Tool-enforced opt-out. GetPurchaseHistory and GetInterestMap refuse;
                          the turn runs on what the customer says in this conversation.
   --offline              Explicitly select the default deterministic retrieval +
                          guardrail arm. No provider call is made.
+  --scripted             Demo 01 only. Run the real ChatClientAgent and registered
+                         read-only tools against a committed Nadia/Sofia deterministic
+                         local chat trajectory. By itself this needs no remote chat
+                         model or paid confirmation.
   --live                 Request the model-backed subject arm. Credentials alone never
                          enable it. Requires --confirm-paid.
   --confirm-paid         Explicit acknowledgement required before --live,
@@ -577,6 +647,7 @@ sealed record ParsedArgs
     public string? UserId { get; set; }
     public bool NoPersonalization { get; set; }
     public bool Offline { get; set; }
+    public bool Scripted { get; set; }
     public bool Live { get; set; }
     public bool ConfirmPaid { get; set; }
     public bool RebuildEmbeddings { get; set; }

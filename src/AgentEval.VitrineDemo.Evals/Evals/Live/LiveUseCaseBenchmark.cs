@@ -481,8 +481,8 @@ internal sealed class WorkflowTraceEval(LiveProgressReporter progress)
             && terminalStop && stopMatchesRounds;
         return Verdict(passed,
             passed
-                ? $"all five executors ran; {workflow.Routes.Count} route fact(s), {workflow.DiscoveryRounds} round(s), no execution failures, and {workflow.DegradationCount} disclosed fallback degradation(s) [{string.Join(", ", workflow.DegradationKinds)}]."
-                : $"the workflow trace was incomplete, unknown, failed, or did not traverse the required forward route sequence; {workflow.DegradationCount} fallback degradation(s) were disclosed.",
+                ? $"all five executors ran; {workflow.Routes.Count} route fact(s), {workflow.DiscoveryRounds} round(s), no execution failures, and {workflow.DegradationCount} disclosed degradation event(s) [{string.Join(", ", workflow.DegradationKinds)}]."
+                : $"the workflow trace was incomplete, unknown, failed, or did not traverse the required forward route sequence; {workflow.DegradationCount} degradation event(s) were disclosed.",
             observation.ScenarioId);
     }
 }

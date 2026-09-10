@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 José Luis Latorre Millas
 
-using Azure.AI.OpenAI;
 using Galaxus.RecommendationAgent.Guardrails;
 using Galaxus.RecommendationAgent.Observability;
 using Galaxus.RecommendationAgent.Tools;
@@ -12,11 +11,11 @@ using ChatOptions = Microsoft.Extensions.AI.ChatOptions;
 namespace Galaxus.RecommendationAgent.Agents;
 
 /// <summary>
-/// Builds Robin, the advisory recommendation agent (design §E.2, MAF 1.17.0 exact API).
+/// Builds Robin, the advisory recommendation agent against the MAF 1.17.0 API.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Two factories, on purpose (design §0.5 / D-5).</b> <see cref="Create()"/> registers the
+/// <b>Two factories, on purpose.</b> <see cref="Create()"/> registers the
 /// THIRTEEN read-only tools and nothing else — that is what Demo 1 ships, and
 /// <see cref="ToolSurfaceInvariant.AssertReadOnly"/> throws at construction if anything
 /// mutating ever creeps in, so adding a purchase tool later cannot be done by accident: the app
@@ -55,7 +54,7 @@ public static class RecommendationAgentFactory
     /// Creates the SHIPPED agent: thirteen read-only tools, connected to Azure OpenAI using
     /// <see cref="Config"/>'s three-step deployment ladder.
     /// </summary>
-    /// <exception cref="InvalidOperationException">Azure credentials are not configured, or the tool surface is not read-only.</exception>
+    /// <exception cref="InvalidOperationException">Azure live configuration is not ready, or the tool surface is not read-only.</exception>
     public static ChatClientAgent Create() => Create(CreateConfiguredChatClient());
 
     /// <summary>Creates the live Azure-backed shipped agent with invocation-time observation.</summary>
@@ -93,11 +92,10 @@ public static class RecommendationAgentFactory
         var tools = registeredTools.Tools.ToArray();
 
         // Mechanical guarantee, not a promise: throws if the registered set differs from the
-        // thirteen-name read-only allow-list in either direction (§F.1). The list is AUTHORED in
+        // thirteen-name read-only allow-list in either direction. The list is AUTHORED in
         // ToolSurfaceInvariant.ReadOnlyToolNames as literal strings; the array below is
-        // ASSEMBLED from method groups. The two are independent, which is what makes the check
-        // bite instead of agreeing with itself — and it is why A-1's ten-tools-against-a-nine-name
-        // allow-list would have failed the app at startup rather than passing quietly.
+        // ASSEMBLED from method groups. Their independent authorship makes drift fail at startup
+        // instead of letting the surface validate against a second copy of itself.
         ToolSurfaceInvariant.AssertReadOnly(tools);
 
         return new ChatClientAgent(new ObservedChatClient(chatClient, events), new ChatClientAgentOptions
@@ -115,9 +113,9 @@ public static class RecommendationAgentFactory
     /// <summary>
     /// Creates the TESTED agent: the thirteen read-only tools plus <c>AddToCart</c> and
     /// <c>PlaceOrder</c> behind an approval requirement. Used only by the two eval cases that
-    /// exercise the human-confirmation gate (design §0.5 / D-5). Never shipped in Demo 1.
+    /// exercise the human-confirmation gate. Never shipped in Demo 1.
     /// </summary>
-    /// <exception cref="InvalidOperationException">Azure credentials are not configured, or the commit tools are not approval-gated.</exception>
+    /// <exception cref="InvalidOperationException">Azure live configuration is not ready, or the commit tools are not approval-gated.</exception>
     public static ChatClientAgent CreateWithCommitTools() => CreateWithCommitTools(CreateConfiguredChatClient());
 
     /// <summary>
@@ -187,7 +185,7 @@ public static class RecommendationAgentFactory
         AIFunctionFactory.Create(GalaxusTools.ListDepartments),
         AIFunctionFactory.Create(GalaxusTools.GetCatalogueStatistics),
 
-        // The one sanctioned recommendation channel (§0.5 / D-1).
+        // The one sanctioned recommendation channel.
         AIFunctionFactory.Create(GalaxusTools.PresentRecommendation)
     ];
 
@@ -213,12 +211,22 @@ public static class RecommendationAgentFactory
     ];
 
     /// <summary>Builds the Azure OpenAI chat client from <see cref="Config"/>.</summary>
-    public static IChatClient CreateConfiguredChatClient()
+    public static IChatClient CreateConfiguredChatClient() =>
+        CreateConfiguredChatClient(Config.Model);
+
+    /// <summary>
+    /// Builds an Azure OpenAI chat client for an explicit deployment through the same resource and
+    /// authentication composition used by the subject and embedding paths. Evals use this overload
+    /// with <see cref="Config.JudgeDeployment"/> so judge routing can be independent.
+    /// </summary>
+    /// <param name="deployment">Deployment name in the configured Azure OpenAI resource.</param>
+    public static IChatClient CreateConfiguredChatClient(string deployment)
     {
-        var configuration = Config.CaptureLiveConfiguration()
-            ?? throw new InvalidOperationException("Azure OpenAI is not configured.");
-        var azureClient = new AzureOpenAIClient(configuration.Endpoint, configuration.Key);
-        return azureClient.GetChatClient(configuration.ModelDeployment).AsIChatClient();
+        ArgumentException.ThrowIfNullOrWhiteSpace(deployment);
+        if (!Config.IsValidDeploymentName(deployment))
+            throw new ArgumentException("The Azure OpenAI deployment name contains unsupported characters.", nameof(deployment));
+        var azureClient = AzureOpenAiClientFactory.CreateConfigured(out _);
+        return azureClient.GetChatClient(deployment.Trim()).AsIChatClient();
     }
 }
 

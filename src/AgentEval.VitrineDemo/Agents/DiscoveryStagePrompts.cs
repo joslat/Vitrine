@@ -8,7 +8,7 @@ namespace Galaxus.RecommendationAgent.Agents;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Not given verbatim in the design — §B.4 specifies the Ranker's SHAPE (one model call, then
+/// The Ranker's contract specifies its SHAPE (one model call, then
 /// three deterministic post-checks) rather than its words. This prompt is authored to that shape
 /// and says so.
 /// </para>

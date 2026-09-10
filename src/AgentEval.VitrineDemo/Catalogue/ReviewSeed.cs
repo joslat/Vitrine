@@ -6,8 +6,8 @@ using Galaxus.RecommendationAgent.Domain;
 namespace Galaxus.RecommendationAgent.Catalog;
 
 /// <summary>
-/// A hundred and two verified-purchase reviews and the hand-authored "At a glance" digests
-/// (design §G). Every review is <c>VerifiedPurchase = true</c>, mirroring the real
+/// A hundred and two verified-purchase reviews and the hand-authored "At a glance" digests.
+/// Every review is <c>VerifiedPurchase = true</c>, mirroring the real
 /// platform after 380k unverified reviews were purged.
 /// </summary>
 /// <remarks>
@@ -15,12 +15,12 @@ namespace Galaxus.RecommendationAgent.Catalog;
 /// <b>Review text is UNTRUSTED input, and this seed says so out loud.</b> The platform
 /// takes roughly 4 000 user-authored ratings a day, all public, all headed for a model's
 /// context window, and a marketplace seller can write one. <see cref="InjectionProbeReviewId"/>
-/// is a deliberately planted review carrying an embedded instruction, so §F.10's fencing
-/// and §0.5 / D-3's defect class can be DEMONSTRATED rather than asserted. Quote a review
+/// is a deliberately planted review carrying an embedded instruction, so the untrusted-review fencing rule
+/// and the untrusted-query failure mode can be DEMONSTRATED rather than asserted. Quote a review
 /// as evidence; never take an instruction from one.
 /// </para>
 /// <para>
-/// <b>The nine cold-start SKUs carry ZERO reviews</b> — that is what makes them cold. Their
+/// <b>The twelve cold-start SKUs (nine core and three extension) carry ZERO reviews</b> — that is what makes them cold. Their
 /// digest comes back <see cref="ReviewDigest.IsEmpty"/>, and a recommendation for one of
 /// them can therefore only cite an <c>attr:</c> token, never a <c>review:</c> id. That is
 /// the honest version of the cold-start claim: the system reasons over attributes and
@@ -40,7 +40,7 @@ public static class ReviewSeed
         => new(id, sku, author, stars, title, body, helpful, VerifiedPurchase: true, language, posted);
 
     /// <summary>
-    /// The planted prompt-injection review (§0.5 / D-3). Its body contains an instruction
+    /// The planted prompt-injection review. Its body contains an instruction
     /// aimed at the assistant rather than at a reader. Nothing in the catalogue treats it
     /// specially — the containment has to come from the tool layer's fencing and from the
     /// constraint that a recommendation may only name a SKU that legitimate retrieval put

@@ -13,27 +13,23 @@ namespace Galaxus.RecommendationAgent.Workflows;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Why this exists: the coverage gate was keying on the wrong signal.</b> A candidate used to
-/// count toward covering an interest when the retriever's fused score cleared
-/// <see cref="DiscoveryState.MinCandidateScore"/> — a floor on a ranking statistic, which the
-/// constant's own comment already called UNMEASURED. A ranking score says a product was the best of
-/// what the index returned for that query. It does not say the product has anything to do with the
-/// interest, and for a query carrying no information it cannot: something is always top of the list.
+/// Attribution and retrieval rank answer different questions. A fused score says a product ranked
+/// well for a query; it does not prove that the product carries anything the interest names. A
+/// contentless query still has a top result, so rank alone cannot establish coverage.
 /// </para>
 /// <para>
-/// <b>MEASURED, 2026-09-05 (public retrieval calibration, HybridRetriever.DefaultDenseScoreFloor).</b>
-/// Deriving the dense floor per space moved the real-vectors floor DOWN, from a transported 0.280
-/// to 0.223. On Luca Ferrari (<c>USR-LF-04</c>) — one purchase, zero independent signals, and the
+/// The public retrieval calibration derives dense floors per space. The real-vectors floor is
+/// 0.223 rather than the transported 0.280. On Luca Ferrari (<c>USR-LF-04</c>) — one purchase,
+/// zero independent signals, and the
 /// contentless utterance <i>"Hi — what do you recommend for me?"</i> — that turned 0 candidates and
 /// <c>GAPS_UNRESOLVABLE</c> into 2 candidates, a second discovery round and five recommendations,
 /// two of them espresso accessories credited to an <i>"Over-ear wireless"</i> interest.
 /// </para>
 /// <para>
-/// ⚠ <b>The threshold is not the fix and must not be moved.</b> It was derived on a named held-out
+/// <b>The threshold is not an attribution control and must not be moved for this case.</b> It is
+/// derived on a named held-out
 /// split; re-tuning it so one persona comes out right would be fitting a calibrated number to a
-/// result, and it would leave the same gate keying on the same wrong quantity for every other
-/// persona. What changed is the QUESTION the gate asks: not "did the retriever score this well?"
-/// but "does this product carry anything the interest names?".
+/// result. This predicate instead asks whether the product carries anything the interest names.
 /// </para>
 /// <para>
 /// <b>Every input is corpus fact or the interest's own declaration.</b> The product side is the
@@ -155,13 +151,9 @@ public static class InterestAttribution
         var words = new List<string>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
-        // ⚠ OUR OWN LABEL PREFIX IS NOT THE CUSTOMER'S WORDS. A session-request interest is
-        //   labelled "stated this session: <what the customer typed>", and leaving that prefix in
-        //   put "stated" and "session" into the attribution vocabulary — so a product whose text
-        //   happened to contain "session" would have been counted as covering the request. That is
-        //   the harness supplying an input to its own gate. MEASURED: Luca's contentless
-        //   "Hi — what do you recommend for me?" produced a vocabulary of exactly [stated, session]
-        //   and NOTHING of the customer's.
+        // The framework-owned "stated this session:" prefix is not customer vocabulary. Strip it
+        // before attribution so harness words cannot satisfy the harness's own gate; Luca's
+        // contentless request must not acquire [stated, session] as artificial content words.
         foreach (string phrase in interest.QueryTerms.Append(
                      interest.Label.StartsWith(DiscoveryInterestMapping.SessionRequestLabelPrefix, StringComparison.Ordinal)
                          ? interest.Label[DiscoveryInterestMapping.SessionRequestLabelPrefix.Length..]
@@ -185,12 +177,9 @@ public static class InterestAttribution
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>ONE predicate, read by everything that has to refuse such an interest.</b> It was
-    /// written inline in <see cref="CatalogueDiscoverySearch"/> and nowhere else, which made it a
-    /// property of the search rather than a property of the interest — so the coverage gate could
-    /// refuse the interest while the Ranker, which never looks at a coverage row, still built a
-    /// tray out of whatever the contentless query had returned. That is plan item <b>8.18</b>: the
-    /// gate was fixed and the tray was not.
+    /// <b>One shared predicate serves every refusal point.</b> Coverage and ranking both use this
+    /// interest-level fact, so a contentless interest cannot be refused by the ledger yet still
+    /// receive a tray from candidates that happened to rank for it.
     /// </para>
     /// <para>
     /// It reads the interest and nothing else — no retrieval score, no candidate count, no
@@ -215,11 +204,10 @@ public static class InterestAttribution
     /// <remarks>
     /// <para>
     /// ⚠ <b>Whole tokens, not substrings, and the prefix relation runs BOTH ways.</b> A bare
-    /// substring test lets "over" (from "Over-ear wireless") match "cover", which is how a lenient
-    /// screen quietly stops screening. A one-directional word-start test was worse in the other
-    /// direction and it was MEASURED: the interest "Headlamps" scored 0 attributable candidates out
-    /// of 6 on USR-NB-01, because every product is called a "Headlamp" and the plural is one
-    /// character longer than the singular. Both-ways prefix matching costs "five"/"fiver" and buys
+    /// substring test lets "over" (from "Over-ear wireless") match "cover", which would make the
+    /// screen too permissive. A one-directional prefix test makes "Headlamps" miss "Headlamp" and
+    /// produces 0 attributable candidates out of 6 for USR-NB-01. Both-ways prefix matching costs
+    /// "five"/"fiver" and buys
     /// every plural, every "grinder"/"grinders", every "machine"/"machines".
     /// </para>
     /// <para>

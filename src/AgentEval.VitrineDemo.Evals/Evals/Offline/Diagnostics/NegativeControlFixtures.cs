@@ -159,12 +159,12 @@ internal sealed record ControlEnvironment(
             ?? throw new InvalidDataException("The committed honesty evidence was not available to production controls.");
         var honestyClaims = HonestyInterpretation.Build(honesty);
         var forcedChoiceCalibration = ForcedChoiceCalibrationFixture.Capture();
-        EvaluationSuite.JudgedGateDiagnostics? matchedDiagnostics = null;
-        var matchedGate = await EvaluationSuite.JudgedGateAsync(
+        EvaluationSuite.JudgedQualityDiagnosticDetails? matchedDiagnostics = null;
+        var matchedQualityDiagnostic = await EvaluationSuite.JudgedGateAsync(
             cancellationToken,
             diagnostics => matchedDiagnostics = diagnostics).ConfigureAwait(false);
         if (matchedDiagnostics is null)
-            throw new InvalidDataException("The matched judged gate produced no boundary diagnostics.");
+            throw new InvalidDataException("The matched-quality diagnostic produced no boundary diagnostics.");
         var cleaned = nadia.Outcome?.Cleaned.AllPresented.FirstOrDefault()
             ?? throw new InvalidDataException("The production Nadia run produced no screened recommendation for guardrail controls.");
         var interestMap = nadia.InterestMap
@@ -256,7 +256,7 @@ internal sealed record ControlEnvironment(
                 honesty,
                 honestyClaims,
                 forcedChoiceCalibration,
-                matchedGate,
+                matchedQualityDiagnostic,
                 matchedDiagnostics,
                 guardrailPresentation,
                 new CommitOrderingProbe(groundedCommitTrace, blindCommitTrace, UseBlindTrace: false),
@@ -311,7 +311,7 @@ internal sealed record ControlEnvironment(
                 if (report.RootElement.TryGetProperty("gates", out var gates) && gates.ValueKind == JsonValueKind.Array)
                     gateCount = gates.GetArrayLength();
             }
-            return observation with { GateExitCode = process.ExitCode, ExecutedGateCount = gateCount };
+            return observation with { CheckStageExitCode = process.ExitCode, ExecutedCheckStageCount = gateCount };
         }
         finally {
             if (File.Exists(reportPath)) File.Delete(reportPath);
@@ -333,8 +333,8 @@ internal sealed record ControlEnvironment(
 }
 internal sealed record ProductionControlBaselines(
     GraderRunSelectionProbe GraderCases, HonestyEvidenceArtifact Honesty, HonestyClaims HonestyClaims,
-    ForcedChoiceCalibrationObservation ForcedChoiceCalibration, GateResult MatchedGate,
-    EvaluationSuite.JudgedGateDiagnostics MatchedDiagnostics, GuardrailPresentationProbe GuardrailPresentation,
+    ForcedChoiceCalibrationObservation ForcedChoiceCalibration, GateResult MatchedQualityDiagnostic,
+    EvaluationSuite.JudgedQualityDiagnosticDetails MatchedDiagnostics, GuardrailPresentationProbe GuardrailPresentation,
     CommitOrderingProbe CommitOrdering, ToolRefusalBoundaryObservation RefusalBoundary,
     ToolRefusalBoundaryObservation StringOnlyRefusalBoundary, ToolRefusalBoundaryObservation LooseCodeRefusalBoundary,
     ReportWriteProbe ReportWrite, CiExecutionPlanProbe CiExecution,
@@ -410,7 +410,7 @@ internal sealed record MockedTestPlanDocument(
     string TestFilter, bool FailOnNonZero);
 internal sealed record CiExecutionPlanProbe(
     IReadOnlySet<string> Required, IReadOnlySet<string> Planned, string Solution,
-    int? GateExitCode, int? ExecutedGateCount);
+    int? CheckStageExitCode, int? ExecutedCheckStageCount);
 internal sealed record CalibrationPolicyProbe(DiscoveryCalibrationPolicy Policy);
 internal sealed record RouteOutcome(string CaseId, bool LoopedBack);
 internal sealed record RouteCensusProbe(IReadOnlyList<RouteOutcome> Outcomes);
@@ -488,7 +488,7 @@ internal static class CiProofPolicy {
     }
     public static bool RequiredCiStepsPlanned(CiExecutionPlanProbe probe) =>
         probe.Solution == "AgentEval.VitrineDemo.slnx" && probe.Required.IsSubsetOf(probe.Planned) &&
-        probe.GateExitCode == EvaluationExitCodes.Passed && probe.ExecutedGateCount == 6;
+        probe.CheckStageExitCode == EvaluationExitCodes.Passed && probe.ExecutedCheckStageCount == 6;
 }
 internal static class CausalControlPolicies {
     public static bool SilentWipeoutDetectorHasBothDirections(DenseWipeoutPanelProbe probe) =>

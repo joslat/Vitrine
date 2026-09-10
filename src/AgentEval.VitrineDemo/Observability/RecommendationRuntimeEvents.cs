@@ -135,10 +135,17 @@ public static partial class RecommendationRuntimeEvents
         var safe = value;
         var configuredKey = Environment.GetEnvironmentVariable("AZURE_OPENAI_API_KEY");
         var configuredEndpoint = Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT");
+        var configuredManagedIdentityClientId =
+            Environment.GetEnvironmentVariable("AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID");
         if (!string.IsNullOrWhiteSpace(configuredKey))
             safe = safe.Replace(configuredKey, "[REDACTED_KEY]", StringComparison.Ordinal);
         if (!string.IsNullOrWhiteSpace(configuredEndpoint))
             safe = safe.Replace(configuredEndpoint, "[REDACTED_ENDPOINT]", StringComparison.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(configuredManagedIdentityClientId))
+            safe = safe.Replace(
+                configuredManagedIdentityClientId,
+                "[REDACTED_MANAGED_IDENTITY]",
+                StringComparison.OrdinalIgnoreCase);
         safe = UrlPattern().Replace(safe, "[REDACTED_URL]");
         safe = SecretAssignmentPattern().Replace(safe, match => $"{match.Groups[1].Value}=[REDACTED]");
         // Normalize platform line endings without flattening the exact customer-facing artifact.
@@ -155,8 +162,12 @@ public static partial class RecommendationRuntimeEvents
         if (string.IsNullOrWhiteSpace(value)) return false;
         var apiKey = Environment.GetEnvironmentVariable("AZURE_OPENAI_API_KEY");
         var endpoint = Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT");
+        var managedIdentityClientId =
+            Environment.GetEnvironmentVariable("AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID");
         return !string.IsNullOrWhiteSpace(apiKey) && value.Contains(apiKey, StringComparison.Ordinal)
             || !string.IsNullOrWhiteSpace(endpoint) && value.Contains(endpoint, StringComparison.OrdinalIgnoreCase)
+            || !string.IsNullOrWhiteSpace(managedIdentityClientId)
+                && value.Contains(managedIdentityClientId, StringComparison.OrdinalIgnoreCase)
             || UrlPattern().IsMatch(value)
             || SecretAssignmentPattern().IsMatch(value);
     }

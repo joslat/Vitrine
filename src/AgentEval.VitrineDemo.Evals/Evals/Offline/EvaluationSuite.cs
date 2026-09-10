@@ -15,10 +15,10 @@ public static class EvaluationSuite {
         var gates = new List<GateResult>();
         var sink = progress ?? NullEvaluationProgressSink.Instance;
         var execution = PlannedExecution();
-        const int totalGates = 6;
+        const int totalStages = 6;
         sink.PublishSafely(new(EvaluationProgressKind.SuiteStarted, "suite", "VITRINE evaluation suite",
             "Running the typed offline evaluation chain. Zero provider model calls are possible from this suite.",
-            Completed: 0, Total: totalGates));
+            Completed: 0, Total: totalStages));
         VitrineEvalCriteria.Validate();
         gates.Add(await ObserveGateAsync("catalogue", "Catalogue contract", sink,
             () => CatalogueGateAsync(leaveCatalogueAblated, cancellationToken), cancellationToken,
@@ -31,14 +31,15 @@ public static class EvaluationSuite {
             () => JudgedGateAsync(
                 cancellationToken,
                 captureExecution: observed => execution = observed),
-            cancellationToken).ConfigureAwait(false));
+            cancellationToken,
+            authority: GateAuthority.Diagnostic).ConfigureAwait(false));
         gates.Add(await ObserveGateAsync("injection", "RedTeam injection", sink,
             () => InjectionGateAsync(cancellationToken), cancellationToken).ConfigureAwait(false));
         gates.Add(await ObserveGateAsync("recall", "Memory recall", sink,
             () => RecallGateAsync(cancellationToken), cancellationToken).ConfigureAwait(false));
         gates.Add(await ObserveGateAsync("honesty", "Honesty claim", sink,
             () => HonestyGateAsync(cancellationToken), cancellationToken).ConfigureAwait(false));
-        if (!ValidateAgentEvalManifest(gates.Select(static gate => gate.AgentEval).ToArray()))
+        if (!ValidateMandatoryAgentEvalManifest(gates))
             gates[^1] = GateResult.InstrumentError(
                 "AgentEval provenance manifest",
                 null,
@@ -71,9 +72,10 @@ public static class EvaluationSuite {
         var canonicalControlScope = includeControls && NegativeControlCatalog.HasCanonicalRegisteredPanel(controls);
         var catalogueSelfTestSucceeded = leaveCatalogueAblated
             && result.ExitCode == EvaluationExitCodes.GateFailed
-            && gates.Count == totalGates
+            && gates.Count == totalStages
             && gates[0] is { Outcome: GateMeasurementOutcome.Measured, Passed: false }
-            && gates.Skip(1).All(static gate => gate is { Outcome: GateMeasurementOutcome.Measured, Passed: true })
+            && gates.Skip(1).Where(static gate => gate.IsVerdictBearing)
+                .All(static gate => gate is { Outcome: GateMeasurementOutcome.Measured, Passed: true })
             && (!includeControls || canonicalControlScope && controls.All(static control => control.Caught));
         sink.PublishSafely(new(EvaluationProgressKind.SuiteCompleted, "suite", "VITRINE evaluation suite",
             catalogueSelfTestSucceeded
@@ -82,12 +84,12 @@ public static class EvaluationSuite {
                 ? canonicalControlScope
                     ? $"Exit code {result.ExitCode}; {result.CaughtControls}/{controls.Count} registered control mutations caught."
                     : $"Exit code {result.ExitCode}; {result.CaughtControls}/{controls.Count} controls caught; registered-panel scope is not established."
-                : $"Exit code {result.ExitCode}; six non-control gates executed for the non-recursive CI proof.",
+                : $"Exit code {result.ExitCode}; five mandatory gates and one matched-quality diagnostic executed for the non-recursive CI proof.",
             Passed: result.ExitCode == EvaluationExitCodes.NotMeasured
                 ? null
                 : result.ExitCode == EvaluationExitCodes.Passed,
-            Completed: totalGates,
-            Total: totalGates,
+            Completed: totalStages,
+            Total: totalStages,
             IncludesDiagnosticControls: includeControls,
             Expectation: catalogueSelfTestSucceeded
                 ? EvaluationProgressExpectation.CatalogueSelfTestSucceeded
@@ -103,11 +105,22 @@ public static class EvaluationSuite {
         ("recall", "AgentEval.Evals.AtomicCodeEval"),
         ("honesty", "AgentEval.Evals.AtomicCodeEval"),
     ];
-    internal static bool ValidateAgentEvalManifest(IReadOnlyList<AgentEvalProvenance?> manifest) {
-        if (manifest.Count != AgentEvalIntegrationPlan.Length) return false;
-        for (var index = 0; index < AgentEvalIntegrationPlan.Length; index++) {
+    private static readonly (string Id, string LibraryType)[] MandatoryAgentEvalIntegrationPlan =
+        AgentEvalIntegrationPlan.Where(static item => item.Id != "matched-quality").ToArray();
+    internal static bool ValidateAgentEvalManifest(IReadOnlyList<AgentEvalProvenance?> manifest) =>
+        ValidateAgentEvalManifest(manifest, AgentEvalIntegrationPlan);
+    internal static bool ValidateMandatoryAgentEvalManifest(IReadOnlyList<GateResult> checks) =>
+        ValidateAgentEvalManifest(
+            checks.Where(static check => check.IsVerdictBearing)
+                .Select(static check => check.AgentEval).ToArray(),
+            MandatoryAgentEvalIntegrationPlan);
+    private static bool ValidateAgentEvalManifest(
+        IReadOnlyList<AgentEvalProvenance?> manifest,
+        IReadOnlyList<(string Id, string LibraryType)> plan) {
+        if (manifest.Count != plan.Count) return false;
+        for (var index = 0; index < plan.Count; index++) {
             var actual = manifest[index];
-            var expected = AgentEvalIntegrationPlan[index];
+            var expected = plan[index];
             if (actual?.HasIndependentBoundary != true ||
                 !string.Equals(actual.IntegrationId, expected.Id, StringComparison.Ordinal) ||
                 !string.Equals(actual.LibraryType, expected.LibraryType, StringComparison.Ordinal))
@@ -121,8 +134,13 @@ public static class EvaluationSuite {
         IEvaluationProgressSink progress,
         Func<Task<GateResult>> run,
         CancellationToken cancellationToken,
-        EvaluationProgressExpectation expectation = EvaluationProgressExpectation.None) {
-        progress.PublishSafely(new(EvaluationProgressKind.GateStarted, id, name, "Evaluation started."));
+        EvaluationProgressExpectation expectation = EvaluationProgressExpectation.None,
+        GateAuthority authority = GateAuthority.Mandatory) {
+        progress.PublishSafely(new(EvaluationProgressKind.GateStarted, id, name,
+            authority == GateAuthority.Diagnostic
+                ? "Diagnostic evaluation started; this row has no suite-exit authority."
+                : "Mandatory evaluation gate started.",
+            Authority: authority));
         GateResult result;
         try {
             result = await run().ConfigureAwait(false);
@@ -133,8 +151,9 @@ public static class EvaluationSuite {
         catch (Exception exception) when (exception is not OutOfMemoryException) {
             result = GateResult.InstrumentError(name, ProductionFloorFor(id), exception.GetType());
         }
+        result = result with { Authority = authority };
         progress.PublishSafely(new(EvaluationProgressKind.GateCompleted, id, result.Name, result.Evidence,
-            result.Passed, Gate: result, Expectation: expectation));
+            result.Passed, Gate: result, Expectation: expectation, Authority: authority));
         return result;
     }
     internal static Task<GateResult> ObserveGateForTestAsync(
@@ -218,8 +237,17 @@ public static class EvaluationSuite {
     }
     internal static async Task<GateResult> JudgedGateAsync(
         CancellationToken cancellationToken,
-        Action<JudgedGateDiagnostics>? capture = null,
-        Action<EvaluationExecutionProvenance>? captureExecution = null) {
+        Action<JudgedQualityDiagnosticDetails>? capture = null,
+        Action<EvaluationExecutionProvenance>? captureExecution = null) =>
+        (await RunJudgedDiagnosticAsync(cancellationToken, capture, captureExecution).ConfigureAwait(false)) with
+        {
+            Authority = GateAuthority.Diagnostic,
+        };
+
+    private static async Task<GateResult> RunJudgedDiagnosticAsync(
+        CancellationToken cancellationToken,
+        Action<JudgedQualityDiagnosticDetails>? capture,
+        Action<EvaluationExecutionProvenance>? captureExecution) {
         var canonicalRequest = Personas.CanonicalPromptFor(Personas.NadiaUserId);
         var demo01 = await RecommendationRunEngine.RunAsync(
             new RecommendationRunOptions(Personas.NadiaUserId, Arm: RecommendationExecutionArm.ScriptedAgent),
@@ -307,7 +335,7 @@ public static class EvaluationSuite {
             new(SlotFor(demo01Evaluation.Artifact.Origin), demo01Evaluation.Artifact.SourcePresented, demo01Evaluation.ArtifactSkuCount),
             new(SlotFor(demo02Evaluation.Artifact.Origin), demo02Evaluation.Artifact.SourcePresented, demo02Evaluation.ArtifactSkuCount),
         ]);
-        capture?.Invoke(new JudgedGateDiagnostics(
+        capture?.Invoke(new JudgedQualityDiagnosticDetails(
             demo01Result.CriteriaResults?.ToArray() ?? [],
             demo02Result.CriteriaResults?.ToArray() ?? [],
             judge.CallCount,
@@ -448,7 +476,7 @@ public static class EvaluationSuite {
         string Subject,
         int SourcePresented,
         int ArtifactSkuCount);
-    internal sealed record JudgedGateDiagnostics(
+    internal sealed record JudgedQualityDiagnosticDetails(
         IReadOnlyList<AgentEval.Core.CriterionResult> Demo01Criteria,
         IReadOnlyList<AgentEval.Core.CriterionResult> Demo02Criteria,
         int JudgeCalls,
@@ -834,9 +862,10 @@ public static class EvaluationSuite {
                 "BenchmarkRunner.RunAsync",
                 check.EvalFactory().GetType().FullName ?? "AgentEval.Evals.AtomicCodeEval"),
         };
-        // The admitted reference-arm result is the product gate. AgainstReference and the
-        // deliberately degraded arm are persisted diagnostic facts whose expected direction
-        // is enforced by --self-test, never a second unadmitted pass/fail policy here.
+        // The admitted reference-arm result is the measured input to this non-verdict-bearing
+        // matched-quality diagnostic. AgainstReference and the deliberately degraded arm are
+        // persisted diagnostic facts whose expected direction is enforced by --self-test,
+        // never a second unadmitted pass/fail policy here.
         return AttachProvenance(GateResult.FromAdmitted(
             name, reference.Result, check.Floor, diagnosticEvidence));
     }

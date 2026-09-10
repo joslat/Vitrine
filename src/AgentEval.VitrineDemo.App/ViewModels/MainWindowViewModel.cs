@@ -71,9 +71,7 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
     public string EvidenceBoundary =>
         "The UI observes execution. Criteria, floors, scoring, controls, and verdicts remain in AgentEval.VitrineDemo.Evals.";
 
-    public string LiveReadiness => Config.IsConfigured
-        ? $"Live available · deployment {Config.Model}"
-        : "Live unavailable · no credentials detected; every default path remains offline.";
+    public string LiveReadiness => Config.Readiness.SafeSummary;
 
     public IReadOnlyList<VitrineRunMode> Modes { get; } = Enum.GetValues<VitrineRunMode>();
 
@@ -99,7 +97,7 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
             if (!SetProperty(ref _selectedMode, value)) return;
             // Paid consent is deliberately one-shot and mode-scoped. Returning to the same
             // paid plan must never reuse an acknowledgement made in a different UI context.
-            Setup.PaidEvaluationAcknowledged = false;
+            Setup.PaidExecutionAcknowledged = false;
             if (value == VitrineRunMode.Demo02) Setup.SelectWorkflowDemonstrationPersona();
             if (value == VitrineRunMode.Demo01) Setup.SelectRecommendationDemonstrationPersona();
             if (value == VitrineRunMode.Ablation)
@@ -122,6 +120,8 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
     public bool IsCatalogueSelfTestMode => SelectedMode == VitrineRunMode.Ablation;
     public bool IsProfiledEvaluationMode => SelectedMode == VitrineRunMode.Evals;
     public bool IsLiveEvaluationMode => IsProfiledEvaluationMode && Setup.IsLiveEvaluationPlan;
+    public bool IsPaidExecutionMode => IsLiveEvaluationMode
+        || (IsDemoMode && Setup.SelectedArm.Arm == RecommendationExecutionArm.LiveAzure);
     public bool IsLiveScenarioEvaluationMode => IsLiveEvaluationMode && Setup.SupportsLiveScenarioSelection;
     public bool IsSafetyEvaluationMode => IsLiveEvaluationMode && Setup.IsSafetyEvaluationPlan;
     public bool IsStochasticEvaluationMode => IsLiveEvaluationMode && Setup.SupportsEvaluationRepetitions;
@@ -217,7 +217,7 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
                 ? Setup.IsLiveEvaluationPlan
                     ? !Setup.IsSelectedLivePlanConfigured
                         ? "LIVE EVAL UNAVAILABLE"
-                        : !Setup.PaidEvaluationAcknowledged
+                        : !Setup.PaidExecutionAcknowledged
                             ? "CONFIRM PAID EVAL"
                             : $"RUN {Setup.SelectedEvaluationPlan.Label.ToUpperInvariant()}"
                     : "RUN OFFLINE EVALS"
@@ -226,7 +226,11 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
               && !OfflineRecommendationScript.Supports(Setup.SelectedPersona.Id)
                 ? "SCRIPT UNAVAILABLE"
                 : IsDemoMode && Setup.SelectedArm.Arm == RecommendationExecutionArm.LiveAzure
-                    ? Config.IsConfigured ? "RUN LIVE AZURE" : "LIVE UNAVAILABLE"
+                    ? !Config.IsConfigured
+                        ? "LIVE UNAVAILABLE"
+                        : !Setup.PaidExecutionAcknowledged
+                            ? "CONFIRM PAID LIVE"
+                            : "RUN LIVE AZURE"
                     : IsDemoMode && Setup.SelectedArm.Arm == RecommendationExecutionArm.ScriptedAgent
                         ? "RUN MOCKED MODEL"
                         : IsDemoMode && Setup.SelectedArm.Arm == RecommendationExecutionArm.ZeroModelBaseline
@@ -276,7 +280,7 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
                $"{Setup.SelectedLiveScenario.CaseCount} stable case(s), {Setup.EffectiveEvaluationRepetitions} repetition(s), " +
                $"{Setup.PlannedLiveSubjectRuns} subject execution(s), and {Setup.PlannedLiveJudgeCalls} judge evaluation(s). " +
                "Every arm/repetition is persisted locally. Provider failure cannot count as measured; bounded internal workflow fallbacks are disclosed.",
-        VitrineRunMode.Evals => "Offline Evals targets Demo01 + Demo02: an ADR-032 deterministic benchmark plus judged-quality, red-team, memory/honesty, topology/catalogue, and 43 causal-control lanes. Provider LLM calls and cost are exactly zero.",
+        VitrineRunMode.Evals => "Offline Evals targets Demo01 + Demo02: a deterministic AgentEval benchmark plus judged-quality, red-team, memory/honesty, topology/catalogue, and 43 registered mutation controls (20 production-observation rows + 23 boundary/calibration fixtures). Provider LLM calls and cost are exactly zero.",
         VitrineRunMode.Ablation => "Catalogue integrity self-test removes one row only from an isolated catalogue snapshot. Expected exit 1 proves detection; state is restored afterward and no provider LLM is used.",
         _ => string.Empty,
     };
@@ -287,7 +291,7 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
             || OfflineRecommendationScript.Supports(Setup.SelectedPersona.Id))
         && (!IsDemoMode
             || Setup.SelectedArm.Arm != RecommendationExecutionArm.LiveAzure
-            || Config.IsConfigured)
+            || Config.IsConfigured && Setup.PaidExecutionAcknowledged)
         && (!IsProfiledEvaluationMode || Setup.CanRunSelectedEvaluationPlan);
 
     private bool CanClear() => !IsRunning &&
@@ -360,25 +364,33 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
 
     internal VitrineRunRequest CaptureRunRequestForExecution()
     {
+        var isDemo = SelectedMode is VitrineRunMode.Demo01 or VitrineRunMode.Demo02;
+        var personaScope = isDemo
+            ? Setup.SelectedPersona.Id
+            : Setup.IsSafetyEvaluationPlan
+                ? VitrineRunRequest.NotApplicablePersonaScope
+                : Setup.SupportsLiveScenarioSelection && Setup.SelectedLiveScenario.Id is { } scenarioId
+                    ? LiveUseCaseScenarios.Require(scenarioId).PersonaId
+                    : VitrineRunRequest.MultiplePersonasScope;
         var request = new VitrineRunRequest(
             SelectedMode,
-            Setup.SelectedPersona.Id,
-            Setup.PersonalizationEnabled,
+            personaScope,
+            isDemo ? Setup.PersonalizationEnabled : null,
             Setup.SelectedArm.Arm,
             Setup.MaxRounds,
             SelectedMode == VitrineRunMode.Evals
                 ? Setup.SelectedEvaluationPlan.Plan
                 : VitrineEvaluationPlan.OfflineSuite,
-            Setup.SupportsLiveScenarioSelection ? Setup.SelectedLiveScenario.Id : null,
-            Setup.EffectiveEvaluationRepetitions,
-            SelectedMode == VitrineRunMode.Evals && Setup.PaidEvaluationAcknowledged);
-        if (request.Mode == VitrineRunMode.Evals
-            && request.EvaluationPlan != VitrineEvaluationPlan.OfflineSuite
-            && request.PaidEvaluationConfirmed)
+            SelectedMode == VitrineRunMode.Evals && Setup.SupportsLiveScenarioSelection
+                ? Setup.SelectedLiveScenario.Id
+                : null,
+            SelectedMode == VitrineRunMode.Evals ? Setup.EffectiveEvaluationRepetitions : 1,
+            IsPaidExecutionMode && Setup.PaidExecutionAcknowledged);
+        if (request.PaidExecutionConfirmed)
         {
             // Capture consent into this immutable request, then consume it before any paid work.
             // A retry, even after a safe failure, therefore requires an explicit fresh click.
-            Setup.PaidEvaluationAcknowledged = false;
+            Setup.PaidExecutionAcknowledged = false;
         }
         return request;
     }
@@ -538,7 +550,7 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
         });
     }
 
-    private static string Describe(VitrineRunOutcome outcome)
+    internal static string Describe(VitrineRunOutcome outcome)
     {
         if (outcome.Recommendation is { } recommendation)
         {
@@ -550,24 +562,34 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
         if (outcome.Workflow is { } workflow)
             return $"Demo02: {workflow.ExecutorIds.Count} executors, {workflow.RoutesTaken.Count} route observations, loop-back {(workflow.Looped ? "observed" : "not taken")}, stop {workflow.State.StopReason}; usage {workflow.State.ProviderUsage.ToDisplayString()}.";
         if (outcome.Evaluation is { } evaluation)
-            return $"Evaluation: process-equivalent exit {evaluation.ExitCode}; {evaluation.CaughtControls}/{evaluation.Controls.Count} registered control mutations detected and recovered; {evaluation.Gates.Count} gates; local AgentEval run {evaluation.OfflineBenchmark?.RunDirectory ?? "NOT WRITTEN"}.";
+        {
+            var mandatory = evaluation.Gates.Count(static gate => gate.IsVerdictBearing);
+            var diagnostics = evaluation.Gates.Count - mandatory;
+            return $"Evaluation: process-equivalent exit {evaluation.ExitCode}; {evaluation.CaughtControls}/{evaluation.Controls.Count} registered control mutations detected and recovered; " +
+                $"{mandatory} mandatory gates and {diagnostics} diagnostic evaluations; local AgentEval run {evaluation.OfflineBenchmark?.RunDirectory ?? "NOT WRITTEN"}.";
+        }
         if (outcome.LiveEvaluation is { } live)
             return $"{VitrineEvaluationPlans.Require(live.Plan).Label}: {live.Trials.Count} scenario trial(s), " +
                    $"{live.Runs.Count} AgentEval run director{(live.Runs.Count == 1 ? "y" : "ies")}, " +
                    $"status {live.TerminalStatus}, exit {live.ExitCode}; local outcome {live.Persistence.OutcomePath}.";
+        if (outcome.FailureKind == VitrineRunCoordinator.PaidExecutionConfirmationRequiredFailureKind)
+            return "Paid live execution was not started. Confirm the one-shot Paid Execution acknowledgement, " +
+                   "then run again. No provider request was made.";
         return outcome.Cancelled ? "Run cancelled." : $"Run failed safely: {outcome.FailureKind ?? "unknown failure"}.";
     }
 
-    private static string DescribeStatus(VitrineRunOutcome outcome)
+    internal static string DescribeStatus(VitrineRunOutcome outcome)
     {
         if (outcome.Cancelled) return "Cancelled · partial events retained";
+        if (outcome.FailureKind == VitrineRunCoordinator.PaidExecutionConfirmationRequiredFailureKind)
+            return "Paid live execution not started · confirmation required · no provider request made";
         if (outcome.FailureKind is not null) return $"Failed safely · {outcome.FailureKind}";
         if (outcome.Evaluation is { ExitCode: 0 })
             return $"Evaluation passed · {outcome.Events.Count} authoritative events";
         if (outcome.Evaluation is { ExitCode: 1 })
             return outcome.Request.Mode == VitrineRunMode.Ablation
                 ? "Catalogue integrity self-test detected the planted defect · expected exit 1 · isolated state restored"
-                : "Evaluation gates failed · process-equivalent exit 1";
+                : "One or more mandatory evaluation gates or registered controls failed · process-equivalent exit 1";
         if (outcome.Evaluation is { ExitCode: EvaluationExitCodes.NotMeasured })
             return "Evaluation NOT MEASURED · process-equivalent exit 3";
         if (outcome.Evaluation is { ExitCode: EvaluationExitCodes.InfrastructureFailure })
@@ -642,6 +664,7 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
         RaisePropertyChanged(nameof(IsCatalogueSelfTestMode));
         RaisePropertyChanged(nameof(IsProfiledEvaluationMode));
         RaisePropertyChanged(nameof(IsLiveEvaluationMode));
+        RaisePropertyChanged(nameof(IsPaidExecutionMode));
         RaisePropertyChanged(nameof(IsLiveScenarioEvaluationMode));
         RaisePropertyChanged(nameof(IsSafetyEvaluationMode));
         RaisePropertyChanged(nameof(IsStochasticEvaluationMode));
@@ -658,7 +681,7 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
             or nameof(RunSetupViewModel.SelectedEvaluationPlan)
             or nameof(RunSetupViewModel.SelectedLiveScenario)
             or nameof(RunSetupViewModel.EvaluationRepetitions)
-            or nameof(RunSetupViewModel.PaidEvaluationAcknowledged))
+            or nameof(RunSetupViewModel.PaidExecutionAcknowledged))
         {
             if (!IsRunning && IsProfiledEvaluationMode
                 && eventArgs.PropertyName is nameof(RunSetupViewModel.SelectedEvaluationPlan)
@@ -671,6 +694,7 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
             RaisePropertyChanged(nameof(ModeExplanation));
             RaisePropertyChanged(nameof(RunButtonText));
             RaisePropertyChanged(nameof(IsLiveEvaluationMode));
+            RaisePropertyChanged(nameof(IsPaidExecutionMode));
             RaisePropertyChanged(nameof(IsLiveScenarioEvaluationMode));
             RaisePropertyChanged(nameof(IsSafetyEvaluationMode));
             RaisePropertyChanged(nameof(IsStochasticEvaluationMode));

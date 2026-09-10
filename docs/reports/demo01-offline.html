@@ -31,6 +31,7 @@ h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5f6672;ma
 @media (max-width:1000px){.split{grid-template-columns:1fr}
   .col-side .card{margin-left:24px}.col-main .card{margin-right:24px}}
 
+.tour{margin:14px 24px 0;font-size:13px}.tour a{color:#1d4ed8;text-underline-offset:3px}
 .oneline{margin:0 0 12px;font-size:15px}
 .said{margin:0 0 16px;padding:12px 16px;background:#f7f8fa;border-left:3px solid #16181d;
       border-radius:0 6px 6px 0;font-size:15px;color:#2c3038}
@@ -115,8 +116,9 @@ h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5f6672;ma
 .foot p:last-child{margin:0}</style>
 </head>
 <body>
+<nav class="tour"><a href="https://azuresamurai.blog/Vitrine/">← Back to the VITRINE tour</a></nav>
 <header class="top">
-  <div class="brand">Galaxus · <b>Robin</b>, the recommendation agent</div>
+  <div class="brand">VITRINE · <b>Robin</b>, the recommendation agent</div>
   <div class="top-meta"><span class="pill">Demo 01 — one agent</span><span class="pill">offline baseline — no model call</span></div>
 </header>
 <section class="card who">
@@ -136,55 +138,7 @@ h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5f6672;ma
 <div class="col-main">
 <section class="card">
   <h2>2 · What Robin recommended</h2>
-  <p class="lbl">Recommended · 3</p>
-  <div class="tray">
-    <article class="prod">
-      <div class="prod-head">
-        <div>
-          <div class="prod-name">Nitecore NB10000 Gen 3 ultralight power bank</div>
-          <div class="dim small">Nitecore · Power &amp; Travel Tech › Power banks › Ultralight power banks · <span class="mono">GLX-8005</span></div>
-        </div>
-        <div class="conf" title="self-reported by the selector; uncalibrated, it routes between trays">conf 0.73</div>
-      </div>
-      <div class="price">CHF 79.00 <span class="dim small">· 19 in stock · 2 working days</span></div>
-      <p class="why">Retrieved for the derived interest &quot;multi-day trips, starts before sunrise, carried&quot;. Selected by the baseline arm, with no model call.</p>
-      <div class="ev">
-        <div class="ev-side"><span class="ev-lbl">Your signal</span> multi-day trips, starts before sunrise, carried <span class="mono dim">← PUR-NB-01, PUR-NB-02, PUR-NB-03, PUR-NB-04, PUR-NB-05</span></div>
-        <div class="ev-side"><span class="ev-lbl">Catalogue</span> Ports: 1 USB-C, 1 USB-A <span class="mono dim">[attr:ports]</span></div>
-      </div>
-    </article>
-    <article class="prod">
-      <div class="prod-head">
-        <div>
-          <div class="prod-name">Salomon X Ultra 4 GTX hiking shoe</div>
-          <div class="dim small">Salomon · Outdoor &amp; Hiking › Footwear › Hiking shoes · <span class="mono">GLX-2008</span></div>
-        </div>
-        <div class="conf" title="self-reported by the selector; uncalibrated, it routes between trays">conf 0.78</div>
-      </div>
-      <div class="price">CHF 189.00 <s class="dim">CHF 219.00</s> <span class="dim small">· 19 in stock · 2 working days</span></div>
-      <p class="why">Retrieved for the derived interest &quot;Headlamps&quot;. Selected by the baseline arm, with no model call.</p>
-      <div class="ev">
-        <div class="ev-side"><span class="ev-lbl">Your signal</span> multi-day trips, starts before sunrise, carried <span class="mono dim">← PUR-NB-01, PUR-NB-02, PUR-NB-03, PUR-NB-04, PUR-NB-05</span></div>
-        <div class="ev-side"><span class="ev-lbl">Catalogue</span> Weight: 380 g per shoe <span class="mono dim">[attr:weight]</span></div>
-      </div>
-    </article>
-    <article class="prod">
-      <div class="prod-head">
-        <div>
-          <div class="prod-name">Black Diamond Distance Carbon Z trekking poles</div>
-          <div class="dim small">Black Diamond · Outdoor &amp; Hiking › Trekking poles › Folding poles · <span class="mono">GLX-2004</span></div>
-        </div>
-        <div class="conf" title="self-reported by the selector; uncalibrated, it routes between trays">conf 0.80</div>
-      </div>
-      <div class="price">CHF 179.00 <span class="dim small">· 16 in stock · 2 working days</span></div>
-      <p class="why">Retrieved for the derived interest &quot;Headlamps&quot;. Selected by the baseline arm, with no model call.</p>
-      <div class="ev">
-        <div class="ev-side"><span class="ev-lbl">Your signal</span> multi-day trips, starts before sunrise, carried <span class="mono dim">← PUR-NB-01, PUR-NB-02, PUR-NB-03, PUR-NB-04, PUR-NB-05</span></div>
-        <div class="ev-side"><span class="ev-lbl">Catalogue</span> Weight: 290 g per pair <span class="mono dim">[attr:weight]</span></div>
-      </div>
-    </article>
-  </div>
-  <p class="lbl">You might also consider · 3</p>
+  <p class="lbl">You might also consider · 1</p>
   <div class="tray">
     <article class="prod prod-second">
       <div class="prod-head">
@@ -192,43 +146,13 @@ h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5f6672;ma
           <div class="prod-name">Sony FE 16-35 mm F4 PZ G</div>
           <div class="dim small">Sony · Photography › Lenses › Wide-angle zoom · <span class="mono">GLX-1002</span></div>
         </div>
-        <div class="conf" title="self-reported by the selector; uncalibrated, it routes between trays">conf 0.69</div>
+        <div class="conf" title="code-derived routing heuristic; uncalibrated, it routes between trays">conf 0.69</div>
       </div>
       <div class="price">CHF 1349.00 <span class="dim small">· 3 in stock · 2 working days</span></div>
-      <p class="why">Retrieved for the derived interest &quot;multi-day trips, starts before sunrise, carried&quot;. Selected by the baseline arm, with no model call.</p>
+      <p class="why">Matches the derived interest &quot;multi-day trips, starts before sunrise, carried&quot; because &#39;multi&#39; meets &#39;multi&#39; in the product&#39;s title, category or attributes. Selected by the baseline arm, with no model call.</p>
       <div class="ev">
         <div class="ev-side"><span class="ev-lbl">Your signal</span> multi-day trips, starts before sunrise, carried <span class="mono dim">← PUR-NB-01, PUR-NB-02, PUR-NB-03, PUR-NB-04, PUR-NB-05</span></div>
         <div class="ev-side"><span class="ev-lbl">Catalogue</span> Focal length: 16-35 mm <span class="mono dim">[attr:focal-length]</span></div>
-      </div>
-    </article>
-    <article class="prod prod-second">
-      <div class="prod-head">
-        <div>
-          <div class="prod-name">Hyperlite Mountain Gear Camera Pod 2 chest pack</div>
-          <div class="dim small">Hyperlite Mountain Gear · Outdoor &amp; Hiking › Backpacks › Chest packs · <span class="mono">GLX-2010</span></div>
-        </div>
-        <div class="conf" title="self-reported by the selector; uncalibrated, it routes between trays">conf 0.49</div>
-      </div>
-      <div class="price">CHF 179.00 <span class="dim small">· 4 in stock · 2 working days</span></div>
-      <p class="why">Retrieved for the derived interest &quot;Mirrorless full-frame&quot;. Selected by the baseline arm, with no model call.</p>
-      <div class="ev">
-        <div class="ev-side"><span class="ev-lbl">Your signal</span> Mirrorless full-frame <span class="mono dim">← PUR-NB-01</span></div>
-        <div class="ev-side"><span class="ev-lbl">Catalogue</span> Weight: 165 g <span class="mono dim">[attr:weight]</span></div>
-      </div>
-    </article>
-    <article class="prod prod-second">
-      <div class="prod-head">
-        <div>
-          <div class="prod-name">Ortlieb Handlebar-Pack QR, 11 L</div>
-          <div class="dim small">Ortlieb · Cycling › Bags › Handlebar bags · <span class="mono">GLX-6001</span></div>
-        </div>
-        <div class="conf" title="self-reported by the selector; uncalibrated, it routes between trays">conf 0.48</div>
-      </div>
-      <div class="price">CHF 189.00 <span class="dim small">· 11 in stock · 2 working days</span></div>
-      <p class="why">Retrieved for the derived interest &quot;Mirrorless full-frame&quot;. Selected by the baseline arm, with no model call.</p>
-      <div class="ev">
-        <div class="ev-side"><span class="ev-lbl">Your signal</span> Mirrorless full-frame <span class="mono dim">← PUR-NB-01</span></div>
-        <div class="ev-side"><span class="ev-lbl">Catalogue</span> Weight: 1.1 kg <span class="mono dim">[attr:weight]</span></div>
       </div>
     </article>
   </div>
@@ -255,11 +179,12 @@ h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5f6672;ma
       <div class="chk-head"><span class="chk-name">Catalogue grounding + ownership</span><span class="chk-verdict">NOT MEASURED</span></div>
       <div class="chk-what">The SKU must resolve in the catalogue, and must not be something the customer already owns.</div>
       <div class="chk-entry"><span class="mono">replenishment lane</span> <b>not tested</b> · <span class="mono dim">arm_inapplicable</span><div class="dim small">this customer has no purchase on a replenishment cadence, so the replenishment_not_discovery arm had nothing to fire against (chance floor 1.0 — not a pass). The already-owned arm beside it DID run.</div></div>
+      <div class="chk-entry"><span class="mono">GLX-8005</span> <b>dropped</b> · <span class="mono dim">durable_still_in_horizon</span><div class="dim small">the customer already owns a durable in the &#39;Power banks&#39; category still inside its typical service life; Nitecore NB10000 Gen 3 ultralight power bank is a same-category replacement, not a missing capability — the upgrade lane is suppressed, not merely down-ranked</div></div>
     </li>
     <li class="chk chk-na">
       <div class="chk-head"><span class="chk-name">Two-sided evidence</span><span class="chk-verdict">NOT MEASURED</span></div>
       <div class="chk-what">Each item must cite a code-derived interest AND a catalogue fact that resolves. Plausible prose cannot pass.</div>
-      <div class="chk-entry"><span class="mono">user-side evidence</span> <b>not tested</b> · <span class="mono dim">arm_inapplicable</span><div class="dim small">6 of 6 presentation(s) carried NO userEvidence argument, so their user side was DERIVED from retrieval provenance. On those the arm can fail only when no derived interest explains the product at all — it cannot catch a wrongly cited purchase, because nothing was cited. Do not read its silence as a pass</div></div>
+      <div class="chk-entry"><span class="mono">user-side evidence</span> <b>not tested</b> · <span class="mono dim">arm_inapplicable</span><div class="dim small">2 of 2 presentation(s) carried NO userEvidence argument, so their user side was DERIVED from retrieval provenance. On those the arm can fail only when no derived interest explains the product at all — it cannot catch a wrongly cited purchase, because nothing was cited. Do not read its silence as a pass</div></div>
       <div class="chk-entry"><span class="mono">product-side value + citation</span> <b>not tested</b> · <span class="mono dim">arm_inapplicable</span><div class="dim small">attribute_value_mismatch and unresolvable_evidence cannot fire on this path. The tool carries ONE evidence string, so the product-side key AND value are both resolved from the catalogue before the check runs, and the compact citation is rebuilt from the key that resolution already verified. The product-side arm that IS discriminating is attribute_not_found, on the model&#39;s verbatim citation. Do not read these two arms&#39; silence as a pass</div></div>
       <div class="chk-entry"><span class="mono">offline baseline arm</span> <b>not tested</b> · <span class="mono dim">arm_inapplicable</span><div class="dim small">no model ran: the citations below were read straight from the catalogue and the reason strings were composed by this file, so the evidence, grounding, sensitive_prose and stated_price arms cannot fail on this path either. The already_owned arm is likewise pre-empted — the offline selector passes the customer&#39;s owned SKUs as a retrieval exclusion, so nothing owned ever reaches the filter. This panel measures the BASELINE, not the agent</div></div>
     </li>
@@ -268,11 +193,9 @@ h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5f6672;ma
       <div class="chk-what">A product under a sensitive leaf is not surfaced unless the customer asked for it.</div>
     </li>
     <li class="chk chk-hit">
-      <div class="chk-head"><span class="chk-name">Confidence banding</span><span class="chk-verdict">CAUGHT 3</span></div>
+      <div class="chk-head"><span class="chk-name">Confidence banding</span><span class="chk-verdict">CAUGHT 1</span></div>
       <div class="chk-what">Routes between the two trays. A number that is not a confidence is not a pass.</div>
       <div class="chk-entry"><span class="mono">GLX-1002</span> <b>demoted</b> · <span class="mono dim">low_confidence</span><div class="dim small">confidence 0.69 is below the primary threshold 0.70 — moved to &#39;also consider&#39;</div></div>
-      <div class="chk-entry"><span class="mono">GLX-2010</span> <b>demoted</b> · <span class="mono dim">low_confidence</span><div class="dim small">confidence 0.49 is below the primary threshold 0.70 — moved to &#39;also consider&#39;</div></div>
-      <div class="chk-entry"><span class="mono">GLX-6001</span> <b>demoted</b> · <span class="mono dim">low_confidence</span><div class="dim small">confidence 0.48 is below the primary threshold 0.70 — moved to &#39;also consider&#39;</div></div>
     </li>
     <li class="chk chk-ok">
       <div class="chk-head"><span class="chk-name">Price + stock authority</span><span class="chk-verdict">CLEAN</span></div>
@@ -289,16 +212,17 @@ h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5f6672;ma
   </ul>
   <p class="lbl">This turn, counted</p>
   <table class="nums">
-    <tr><td>Proposed → shown</td><td class="num">6 → 6</td></tr>
-    <tr><td>Removed by a guardrail</td><td class="num">0</td></tr>
-    <tr><td>Moved to the second tray</td><td class="num">3</td></tr>
+    <tr><td>Proposed → shown</td><td class="num">2 → 1</td></tr>
+    <tr><td>Removed by a guardrail</td><td class="num">1</td></tr>
+    <tr><td>Moved to the second tray</td><td class="num">1</td></tr>
     <tr><td>Purchases ruled out as gifts</td><td class="num">0</td></tr>
-    <tr><td>Prices re-read from the catalogue</td><td class="num">6 of 6</td></tr>
+    <tr><td>Prices re-read from the catalogue</td><td class="num">1 of 1</td></tr>
     <tr><td>Tool calls spent</td><td class="num absent">n/a — this arm makes no refusable tool calls</td></tr>
   </table>
   <p class="lbl">What this page does not measure</p>
-  <p class="note">Everything above is <b>one turn</b>. The claims that need more than one turn — does the loop cover more of a customer's interests than the single agent, does a hostile product review change what gets recommended, is the answer stable when the same turn is repeated — cannot be read off this page in either direction. They are measured separately, over the whole persona set, with negative controls and a chance floor per arm:</p>
+  <p class="note">Everything above is <b>one turn</b>. The claims that need more than one turn — does the loop cover more of a customer's interests than the single agent, does a hostile product review change what gets recommended, is the answer stable when the same turn is repeated — cannot be read off this page in either direction. The credential-free <span class="mono">--all</span> command runs deterministic offline gates, a benchmark scoped to exactly <b>2 synthetic cases/personas × 3 deterministic arms × 2 repetitions</b>, and registered mutation controls. That benchmark's admitted checks record chance floor <span class="mono">NotDerivable</span> because no defensible random-answer chance floor is derivable; it does not run the paid multi-scenario or repeated-model plans:</p>
   <pre class="cmd">dotnet run --project src/AgentEval.VitrineDemo.Evals -- --all</pre>
+  <p class="note">For those claims, select the corresponding live eval plan and pass <span class="mono">--confirm-paid</span>. Live plans declare their actual scenario and repetition scope and do not manufacture a per-arm chance floor where none is derivable.</p>
 </section>
 </div>
 </div>

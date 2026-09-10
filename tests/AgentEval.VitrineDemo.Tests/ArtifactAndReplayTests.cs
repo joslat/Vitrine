@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 using AgentEval.VitrineDemo.App.Artifacts;
+using AgentEval.VitrineDemo.App.Controls;
 using AgentEval.VitrineDemo.App.Models;
 using AgentEval.VitrineDemo.App.Runtime;
 using AgentEval.VitrineDemo.App.ViewModels;
@@ -535,19 +536,25 @@ public sealed class ArtifactAndReplayTests
     [Fact]
     public void HtmlGraphCoordinatesAreInvariantUnderCommaDecimalCultures()
     {
-        var nodes = Enumerable.Range(1, 7)
-            .Select(index => new VitrineGraphNode($"node-{index}", $"Node {index}", "executor"))
-            .ToArray();
-        var graph = new VitrineGraphSnapshot("fractional layout", VitrineGraphSource.MafWorkflow, nodes, []);
+        var graph = VitrineGraphFactory.FromRegisteredDemo01Functions();
         var artifact = VitrineArtifactSerializer.Create(new VitrineRunOutcome(
-            Guid.NewGuid(), new(VitrineRunMode.Demo02, Personas.NadiaUserId), graph, []));
+            Guid.NewGuid(), new(VitrineRunMode.Demo01, Personas.NadiaUserId), graph, []));
+        var projected = new GraphViewModel();
+        projected.Load(graph);
+        const double width = 1100;
+        var height = RuntimeGraphControl.RequiredHeightForLayout(projected, width);
+        var positions = RuntimeGraphControl.Layout(projected, width, height);
+        var expectedFraction = positions.Values
+            .SelectMany(static point => new[] { point.X, point.Y })
+            .First(value => Math.Abs(value - Math.Round(value)) > 0.0001)
+            .ToString("0.###", CultureInfo.InvariantCulture);
         var previousCulture = CultureInfo.CurrentCulture;
         try
         {
             CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
             var html = VitrineHtmlReport.Render(artifact);
 
-            Assert.Contains("243.333", html, StringComparison.Ordinal);
+            Assert.Contains(expectedFraction, html, StringComparison.Ordinal);
             Assert.DoesNotMatch(new Regex("(?:x1|x2|y1|y2|x|y)=\\\"[0-9]+,[0-9]+", RegexOptions.CultureInvariant), html);
         }
         finally

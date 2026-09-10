@@ -107,6 +107,8 @@ public sealed class EvaluationRemediationTests
         var gate = await EvaluationSuite.JudgedGateAsync(default);
 
         Assert.True(gate.Passed);
+        Assert.Equal(GateAuthority.Diagnostic, gate.Authority);
+        Assert.False(gate.IsVerdictBearing);
         Assert.NotNull(gate.AgentEval);
         Assert.Equal("AgentEval.Evals.AtomicCodeEval", gate.AgentEval!.LibraryType);
         Assert.Contains("IEvaluator criterion observation", gate.AgentEval.Mechanism, StringComparison.Ordinal);
@@ -147,6 +149,10 @@ public sealed class EvaluationRemediationTests
         var manifest = suite.Gates.Select(static gate => gate.AgentEval).ToArray();
 
         Assert.True(EvaluationSuite.ValidateAgentEvalManifest(manifest));
+        Assert.True(EvaluationSuite.ValidateMandatoryAgentEvalManifest(suite.Gates));
+        var missingDiagnosticEvidence = suite.Gates.Select(gate =>
+            gate.Authority == GateAuthority.Diagnostic ? gate with { AgentEval = null } : gate).ToArray();
+        Assert.True(EvaluationSuite.ValidateMandatoryAgentEvalManifest(missingDiagnosticEvidence));
         var duplicate = manifest.ToArray();
         duplicate[1] = duplicate[0];
         Assert.False(EvaluationSuite.ValidateAgentEvalManifest(duplicate));

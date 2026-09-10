@@ -397,6 +397,29 @@ public sealed class EvaluationHardeningTests
     }
 
     [Fact]
+    public void MandatoryNotApplicableCannotProduceSuccessfulSuiteCompletion()
+    {
+        var notApplicable = GateResult.NotApplicable(
+            "mandatory observation", null, "The mandatory observation did not apply.");
+        var diagnosticFailure = new GateResult(
+            "matched-quality diagnostic", false, 0, null, "Diagnostic comparison failed.")
+        {
+            Authority = GateAuthority.Diagnostic,
+        };
+
+        Assert.Equal(EvaluationExitCodes.NotMeasured,
+            new SuiteResult([notApplicable], []).ExitCode);
+        Assert.Equal(EvaluationExitCodes.Passed,
+            new SuiteResult([diagnosticFailure], []).ExitCode);
+        Assert.False(diagnosticFailure.IsVerdictBearing);
+        var html = EvaluationReportHtml.Render(new SuiteResult([diagnosticFailure], []));
+        Assert.Contains("<th>Authority</th>", html, StringComparison.Ordinal);
+        Assert.Contains(">Diagnostic</td>", html, StringComparison.Ordinal);
+        Assert.Contains("Diagnostic rows remain visible evidence but cannot fail the suite", html,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void GateOnlyConsoleProjectionDoesNotInventAControlPanel()
     {
         var suite = new SuiteResult(

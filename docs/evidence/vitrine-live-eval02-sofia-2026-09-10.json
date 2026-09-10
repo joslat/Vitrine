@@ -1,0 +1,389 @@
+{
+  "publicEvidenceSchemaVersion": "1.1",
+  "source": {
+    "schemaVersion": "1.4",
+    "sha256": "f4c494141f0e30eb69d83f969658f4fad6735318158f8e3e5d8dc4a66e0bd209",
+    "implementationCommit": "028ac51bd73987b6c4292e78408a9b56de560fe2"
+  },
+  "plan": "liveEval02Workflow",
+  "terminalStatus": "passed",
+  "exitCode": 0,
+  "sessionId": "20260910T170542623Z-9b556309c0f24741903290ea7b54b4cf",
+  "startedAtUtc": "2026-09-10T17:05:42.6358103+00:00",
+  "completedAtUtc": "2026-09-10T17:07:31.8010688+00:00",
+  "workload": {
+    "scenarioCount": 1,
+    "armCount": 1,
+    "repetitions": 1,
+    "plannedSubjectCalls": 1,
+    "plannedJudgeEvaluations": 1,
+    "safetyAttackCount": 0,
+    "plannedSafetyProbes": 0,
+    "maximumSafetyModelCalls": 0
+  },
+  "configuration": {
+    "definitionKey": "vitrine-live-use-cases",
+    "definitionVersion": "1.1.0+cases.sofia-capability-gap.rubric.e8da57b913f4df9e.threshold.3FF0000000000000.judge.configured-model.tokens.1200",
+    "judgeModelLabel": "configured-judge-model",
+    "judgeRubricSha256": "e8da57b913f4df9efd9a91e6279eb51bfce6f06e6ac61863017276c9f4ca35e0",
+    "subjectMaxOutputTokens": 4000,
+    "judgeMaxOutputTokens": 1200,
+    "subjects": [
+      {
+        "armId": "discovery-workflow-live",
+        "architecture": "workflow",
+        "modelLabel": "configured-subject-model",
+        "judgeSubjectRelation": "sameModel"
+      }
+    ],
+    "acceptance": {
+      "policy": "everyTrialMustPass"
+    }
+  },
+  "scenarios": [
+    {
+      "id": "sofia-capability-gap",
+      "personaId": "USR-SK-03",
+      "title": "Replenishment cadence and capability gap",
+      "description": "Sofia repeatedly buys beans and cartridges, owns a canister, and has no grinder on file. The run should separate replenishment from discovery and identify the missing capability without recommending another owned durable.",
+      "criterionIds": [
+        "finds-capability-gap",
+        "separates-lanes",
+        "avoids-owned-durable",
+        "grounds-advice"
+      ]
+    }
+  ],
+  "scenarioAcceptances": [],
+  "arms": [
+    {
+      "armId": "discovery-workflow-live",
+      "architecture": "workflow",
+      "repetitions": 1,
+      "checks": [
+        {
+          "key": "vitrine.live.use-case-quality",
+          "name": "Canonical use-case criteria",
+          "census": {
+            "measured": 1,
+            "notApplicable": 0,
+            "notMeasured": 0,
+            "total": 1
+          },
+          "reliability": {
+            "measurement": "measured",
+            "successes": 1,
+            "total": 1,
+            "estimate": 1.0,
+            "lower": 0.20654931437723742,
+            "upper": 1.0
+          }
+        },
+        {
+          "key": "vitrine.live.response-observed",
+          "name": "A non-empty customer response was instrumented",
+          "census": {
+            "measured": 1,
+            "notApplicable": 0,
+            "notMeasured": 0,
+            "total": 1
+          },
+          "reliability": {
+            "measurement": "measured",
+            "successes": 1,
+            "total": 1,
+            "estimate": 1.0,
+            "lower": 0.20654931437723742,
+            "upper": 1.0
+          }
+        },
+        {
+          "key": "vitrine.live.agent-tool-journal",
+          "name": "Agent tool journal is complete and read-only",
+          "census": {
+            "measured": 0,
+            "notApplicable": 1,
+            "notMeasured": 0,
+            "total": 1
+          },
+          "reliability": {
+            "measurement": "notMeasured",
+            "successes": 0,
+            "total": 0,
+            "estimate": null,
+            "lower": null,
+            "upper": null
+          }
+        },
+        {
+          "key": "vitrine.live.workflow-trace",
+          "name": "Workflow executors and routes completed without failure",
+          "census": {
+            "measured": 1,
+            "notApplicable": 0,
+            "notMeasured": 0,
+            "total": 1
+          },
+          "reliability": {
+            "measurement": "measured",
+            "successes": 1,
+            "total": 1,
+            "estimate": 1.0,
+            "lower": 0.20654931437723742,
+            "upper": 1.0
+          }
+        }
+      ]
+    }
+  ],
+  "comparisons": [],
+  "trials": [
+    {
+      "scenarioId": "sofia-capability-gap",
+      "personaId": "USR-SK-03",
+      "armId": "discovery-workflow-live",
+      "architecture": "workflow",
+      "repetition": 1,
+      "measurement": "measured",
+      "subjectStatus": "completed",
+      "checks": [
+        {
+          "key": "vitrine.live.use-case-quality",
+          "name": "Canonical use-case criteria",
+          "measurement": "measured",
+          "score": 1.0,
+          "passed": true
+        },
+        {
+          "key": "vitrine.live.response-observed",
+          "name": "A non-empty customer response was instrumented",
+          "measurement": "measured",
+          "score": 1.0,
+          "passed": true
+        },
+        {
+          "key": "vitrine.live.agent-tool-journal",
+          "name": "Agent tool journal is complete and read-only",
+          "measurement": "notApplicable"
+        },
+        {
+          "key": "vitrine.live.workflow-trace",
+          "name": "Workflow executors and routes completed without failure",
+          "measurement": "measured",
+          "score": 1.0,
+          "passed": true
+        }
+      ],
+      "criteria": [
+        {
+          "id": "finds-capability-gap",
+          "measurement": "measured",
+          "met": true
+        },
+        {
+          "id": "separates-lanes",
+          "measurement": "measured",
+          "met": true
+        },
+        {
+          "id": "avoids-owned-durable",
+          "measurement": "measured",
+          "met": true
+        },
+        {
+          "id": "grounds-advice",
+          "measurement": "measured",
+          "met": true
+        }
+      ],
+      "subjectUsage": {
+        "status": "measured",
+        "modelCalls": 3,
+        "inputTokens": 7219,
+        "outputTokens": 6908,
+        "totalTokens": 14127,
+        "estimatedCostUsd": 0.174255
+      },
+      "judgeUsage": {
+        "status": "measured",
+        "modelCalls": null,
+        "inputTokens": null,
+        "outputTokens": null,
+        "totalTokens": 1998,
+        "estimatedCostUsd": 0.022035000000000003
+      },
+      "passed": true,
+      "failure": null,
+      "workflow": {
+        "executors": [
+          {
+            "executorId": "InterestMapper",
+            "executionCount": 1
+          },
+          {
+            "executorId": "Discovery",
+            "executionCount": 2
+          },
+          {
+            "executorId": "CoverageReviewer",
+            "executionCount": 2
+          },
+          {
+            "executorId": "Ranker",
+            "executionCount": 1
+          },
+          {
+            "executorId": "Presenter",
+            "executionCount": 1
+          }
+        ],
+        "routes": [
+          "map-to-discovery",
+          "discovery-to-review",
+          "review-to-more-discovery",
+          "discovery-to-review",
+          "review-to-ranker",
+          "ranker-to-presenter"
+        ],
+        "discoveryRounds": 2,
+        "maximumRounds": 3,
+        "superSteps": 7,
+        "stopReason": "GapsUnresolvable",
+        "looped": true,
+        "failureCount": 0,
+        "degradationCount": 0,
+        "degradationKinds": [],
+        "unknownExecutorCount": 0,
+        "unknownRouteCount": 0,
+        "providerStages": [
+          {
+            "executorId": "InterestMapper",
+            "attemptCount": 1,
+            "responseCount": 1,
+            "unusableAttemptCount": 0,
+            "failedAttemptCount": 0,
+            "cancelledAttemptCount": 0,
+            "status": "completed",
+            "lastUnusableAttemptNumber": 0,
+            "lastUsableResponseAttemptNumber": 1
+          },
+          {
+            "executorId": "Presenter",
+            "attemptCount": 1,
+            "responseCount": 1,
+            "unusableAttemptCount": 0,
+            "failedAttemptCount": 0,
+            "cancelledAttemptCount": 0,
+            "status": "completed",
+            "lastUnusableAttemptNumber": 0,
+            "lastUsableResponseAttemptNumber": 3
+          },
+          {
+            "executorId": "Ranker",
+            "attemptCount": 1,
+            "responseCount": 1,
+            "unusableAttemptCount": 0,
+            "failedAttemptCount": 0,
+            "cancelledAttemptCount": 0,
+            "status": "completed",
+            "lastUnusableAttemptNumber": 0,
+            "lastUsableResponseAttemptNumber": 2
+          }
+        ],
+        "providerFailedAttemptCount": 0,
+        "recoveredProviderFailedAttemptCount": 0,
+        "terminalProviderStageCount": 0
+      }
+    }
+  ],
+  "criteriaCensus": [
+    {
+      "scenarioId": "sofia-capability-gap",
+      "armId": "discovery-workflow-live",
+      "criterionId": "finds-capability-gap",
+      "observed": 1,
+      "measured": 1,
+      "met": 1,
+      "unmet": 0,
+      "notApplicable": 0,
+      "notMeasured": 0
+    },
+    {
+      "scenarioId": "sofia-capability-gap",
+      "armId": "discovery-workflow-live",
+      "criterionId": "separates-lanes",
+      "observed": 1,
+      "measured": 1,
+      "met": 1,
+      "unmet": 0,
+      "notApplicable": 0,
+      "notMeasured": 0
+    },
+    {
+      "scenarioId": "sofia-capability-gap",
+      "armId": "discovery-workflow-live",
+      "criterionId": "avoids-owned-durable",
+      "observed": 1,
+      "measured": 1,
+      "met": 1,
+      "unmet": 0,
+      "notApplicable": 0,
+      "notMeasured": 0
+    },
+    {
+      "scenarioId": "sofia-capability-gap",
+      "armId": "discovery-workflow-live",
+      "criterionId": "grounds-advice",
+      "observed": 1,
+      "measured": 1,
+      "met": 1,
+      "unmet": 0,
+      "notApplicable": 0,
+      "notMeasured": 0
+    }
+  ],
+  "usageTotals": {
+    "subject": {
+      "evidenceRows": 1,
+      "statusCensus": {
+        "notReported": 0,
+        "measuredZero": 0,
+        "measured": 1,
+        "lowerBound": 0
+      },
+      "reportedModelCallRows": 1,
+      "reportedModelCalls": 3,
+      "reportedInputTokenRows": 1,
+      "reportedInputTokens": 7219,
+      "reportedOutputTokenRows": 1,
+      "reportedOutputTokens": 6908,
+      "reportedTotalTokenRows": 1,
+      "reportedTotalTokens": 14127,
+      "reportedCostRows": 1,
+      "estimatedCostUsd": 0.174255
+    },
+    "judge": {
+      "evidenceRows": 1,
+      "statusCensus": {
+        "notReported": 0,
+        "measuredZero": 0,
+        "measured": 1,
+        "lowerBound": 0
+      },
+      "reportedModelCallRows": 0,
+      "reportedModelCalls": null,
+      "reportedInputTokenRows": 0,
+      "reportedInputTokens": null,
+      "reportedOutputTokenRows": 0,
+      "reportedOutputTokens": null,
+      "reportedTotalTokenRows": 1,
+      "reportedTotalTokens": 1998,
+      "reportedCostRows": 1,
+      "estimatedCostUsd": 0.022035000000000003
+    }
+  },
+  "failures": [],
+  "safety": null,
+  "publicationBoundary": "Allow-listed aggregates only; raw prompts, queries, expected answers, ground truth, model responses, tool arguments, judge explanations, provider errors, endpoints, credentials, canaries, absolute paths and run directories are not published.",
+  "passThreshold": 1.0
+}

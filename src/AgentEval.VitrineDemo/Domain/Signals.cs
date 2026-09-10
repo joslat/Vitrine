@@ -35,7 +35,7 @@ public enum PurchaseIntent
 /// The human-readable justification, printed on screen — e.g. "gift-wrapped, alternate
 /// address, no review, no follow-on accessory in 9 months". This string is what makes the
 /// guardrail watchable rather than merely asserted, and it is the best twenty seconds of
-/// the demo (§B.3, Marco).
+/// the demo (Marco).
 /// </param>
 public sealed record ClassifiedPurchase(
     Purchase Purchase,
@@ -45,7 +45,7 @@ public sealed record ClassifiedPurchase(
     string Because)
 {
     /// <summary>
-    /// The DERIVED gift verdict. Per §0.5 / A-3 the eval lane's gold set is computed
+    /// The DERIVED gift verdict. Per the derived gift-classification rule, the eval lane's gold set is computed
     /// through this property — never through a labelled field on <see cref="Purchase"/>,
     /// which deliberately has none.
     /// </summary>
@@ -83,7 +83,7 @@ public sealed record InterestSignal(
 /// <summary>
 /// The frozen vocabulary for <see cref="InterestSignal.EvidenceKind"/>. Constants rather
 /// than an enum because the kind is serialised into tool JSON and printed verbatim, and a
-/// silently-renamed enum member is exactly the drift that produced §0.5 / D-1.
+/// silently-renamed enum member is exactly the split-contract drift this shared type prevents.
 /// </summary>
 public static class InterestEvidenceKinds
 {
@@ -101,7 +101,7 @@ public static class InterestEvidenceKinds
 
     /// <summary>
     /// A required companion class is absent from the whole history — "owns whole beans and
-    /// a storage canister but no grinder" (§B.3, Sofia). A collaborative filter cannot
+    /// a storage canister but no grinder" (Sofia). A collaborative filter cannot
     /// express the thing you are MISSING; it only knows what similar users bought.
     /// </summary>
     public const string CapabilityGap = "capability-gap";
@@ -136,7 +136,7 @@ public static class InterestEvidenceKinds
 /// <param name="RoutedToReplenishment"><see cref="Purchase.Id"/> values routed to the replenishment lane.</param>
 /// <param name="PersonalizationEnabled">
 /// False ⇒ the map was built from in-session statements alone, because the history never
-/// reached the state (§F.6). Not "minimised in the prompt" — absent from it.
+/// reached the state. Not "minimised in the prompt" — absent from it.
 /// </param>
 public sealed record InterestMap(
     string UserId,
@@ -154,12 +154,12 @@ public sealed record InterestMap(
 
     /// <summary>
     /// The minimum number of independent signals required before the agent may search at
-    /// all (§F.8). Below it, and with no in-session stated need, the run abstains BEFORE
+    /// all. Below it, and with no in-session stated need, the run abstains BEFORE
     /// the first search — a cheap structural check belongs before the model, not inside it.
     /// </summary>
     public const int MinimumSignalsToProceed = 2;
 
-    /// <summary>Abstention gate input (§F.8). Gift-weighted signals do not count.</summary>
+    /// <summary>Abstention gate input. Gift-weighted signals do not count.</summary>
     public int IndependentSignalCount => Signals.Count(s => s.Strength >= IndependentSignalThreshold);
 
     /// <summary>True when the map alone carries enough evidence to justify searching.</summary>
@@ -173,7 +173,7 @@ public sealed record InterestMap(
 
     /// <summary>
     /// True when <paramref name="label"/> matches a signal actually present in this map.
-    /// The user side of the two-sided evidence check (§F.3): a recommendation may only
+    /// The user side of the two-sided evidence check: a recommendation may only
     /// cite an interest the CODE derived, never one the model invented.
     /// </summary>
     /// <param name="label">The <c>user_signal_label</c> the model wrote.</param>

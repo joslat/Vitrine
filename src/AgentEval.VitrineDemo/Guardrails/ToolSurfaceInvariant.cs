@@ -6,39 +6,39 @@ using Microsoft.Extensions.AI;
 namespace Galaxus.RecommendationAgent.Guardrails;
 
 /// <summary>
-/// The read-only tool surface, asserted at agent construction (§F.1). A positive allow-list of
+/// The read-only tool surface, asserted at agent construction (the read-only tool-surface invariant). A positive allow-list of
 /// the THIRTEEN sanctioned tool names; anything else — and any name missing — throws
 /// <see cref="InvalidOperationException"/> and the application fails to start.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Eleven, and why the count is written down three times.</b> Three semantic tools, seven
+/// <b>Thirteen, and why the count is written down three times.</b> Three semantic tools, nine
 /// structured tools, and <c>PresentRecommendation</c>. The first draft of this design shipped a
 /// TEN-name registration against a NINE-name allow-list and would have thrown on its first run
-/// (§0.5 / A-1). The fix is not to be more careful: the counts are constants, the lists are
+/// (the tool-surface consistency rule). The fix is not to be more careful: the counts are constants, the lists are
 /// built from the same constants, and a static constructor refuses to load the type if they
 /// disagree. Drift becomes a load failure instead of a first-run surprise.
 /// </para>
 /// <para>
-/// <b>Zero of the eleven mutate anything.</b> No <c>AddToCart</c>, no <c>PlaceOrder</c>, no
+/// <b>Zero of the thirteen mutate anything.</b> No <c>AddToCart</c>, no <c>PlaceOrder</c>, no
 /// <c>SaveProfile</c>, no <c>ApplyVoucher</c>. This is not a prompt instruction the model can be
 /// argued out of — it is the absence of a capability. Adding a write tool later cannot be done
 /// accidentally, because the app stops starting.
 /// </para>
 /// <para>
-/// <b>The paradox, and the two factories that resolve it (§0.5 / D-5).</b> An agent that has no
+/// <b>The paradox, and the two factories that resolve it.</b> An agent that has no
 /// <c>PlaceOrder</c> makes <c>NeverCallTool("PlaceOrder")</c> a check with a chance floor of
 /// 1.0 — it proves nothing, because the prohibition was never tempting. So there are two
 /// configurations, and two assertions:
 /// </para>
 /// <list type="bullet">
 ///   <item>
-///     <see cref="AssertReadOnly"/> — the SHIPPED surface. Exactly the eleven names, nothing
+///     <see cref="AssertReadOnly"/> — the SHIPPED surface. Exactly the thirteen names, nothing
 ///     else. Read-only is a property of the configuration the demo runs.
 ///   </item>
 ///   <item>
 ///     <see cref="AssertReadOnlyWithApprovalGatedCommitTools"/> — the TESTED surface, used only
-///     by the two eval cases that exercise the human-confirmation gate. The eleven names plus
+///     by the two eval cases that exercise the human-confirmation gate. The thirteen names plus
 ///     <c>AddToCart</c> and <c>PlaceOrder</c>, and each of those two must be wrapped as an
 ///     <see cref="ApprovalRequiredAIFunction"/> — an unwrapped commit tool is a violation, not
 ///     a permitted extra. The approval gate becomes a property of the tested configuration, and
@@ -48,7 +48,7 @@ namespace Galaxus.RecommendationAgent.Guardrails;
 /// </remarks>
 public static class ToolSurfaceInvariant
 {
-    /// <summary>The one sanctioned recommendation channel (§0.5 / D-1). Prose is not a channel.</summary>
+    /// <summary>The one sanctioned recommendation channel. Prose is not a channel.</summary>
     public const string PresentRecommendationToolName = "PresentRecommendation";
 
     /// <summary>How many semantic tools the surface carries. Recall-oriented; may be wrong by design.</summary>
@@ -89,7 +89,7 @@ public static class ToolSurfaceInvariant
     ];
 
     /// <summary>
-    /// The two tools the §F.6 personalization opt-out forbids: the raw history and the interest map
+    /// The two tools the personalization opt-out forbids: the raw history and the interest map
     /// DERIVED from that history.
     /// </summary>
     /// <remarks>
@@ -106,7 +106,7 @@ public static class ToolSurfaceInvariant
     ];
 
     /// <summary>
-    /// The complete allow-list: the eleven names the shipped agent may register, and no others.
+    /// The complete allow-list: the thirteen names the shipped agent may register, and no others.
     /// </summary>
     public static readonly IReadOnlyList<string> ReadOnlyToolNames =
     [
@@ -128,7 +128,7 @@ public static class ToolSurfaceInvariant
 
     static ToolSurfaceInvariant()
     {
-        // §0.5 / A-1 made concrete: the allow-list and the counts cannot silently disagree.
+        // the tool-surface consistency rule made concrete: the allow-list and the counts cannot silently disagree.
         if (SemanticToolNames.Count != SemanticToolCount)
         {
             throw new InvalidOperationException(
@@ -153,7 +153,7 @@ public static class ToolSurfaceInvariant
         }
     }
 
-    /// <summary>True when <paramref name="name"/> is one of the eleven read-only tools (ordinal).</summary>
+    /// <summary>True when <paramref name="name"/> is one of the thirteen read-only tools (ordinal).</summary>
     /// <param name="name">A registered tool name.</param>
     public static bool IsReadOnlyToolName(string? name) =>
         name is not null && ReadOnlyToolNames.Contains(name, StringComparer.Ordinal);
@@ -172,7 +172,7 @@ public static class ToolSurfaceInvariant
     }
 
     /// <summary>
-    /// Asserts the SHIPPED read-only surface: exactly the eleven allow-listed names, each
+    /// Asserts the SHIPPED read-only surface: exactly the thirteen allow-listed names, each
     /// registered once, and nothing else.
     /// </summary>
     /// <param name="tools">The tools about to be handed to <c>ChatOptions.Tools</c>.</param>
@@ -183,13 +183,13 @@ public static class ToolSurfaceInvariant
         if (violations.Count == 0) return;
 
         throw new InvalidOperationException(
-            "The agent's tool surface violates the read-only invariant (§F.1). The application will not start."
+            "The agent's tool surface violates the read-only allow-list. The application will not start."
             + Environment.NewLine
             + string.Join(Environment.NewLine, violations.Select(v => "  • " + v)));
     }
 
     /// <summary>
-    /// Asserts the TESTED surface used by the human-confirmation eval cases: the eleven
+    /// Asserts the TESTED surface used by the human-confirmation eval cases: the thirteen
     /// read-only names PLUS <c>AddToCart</c> and <c>PlaceOrder</c>, each of the latter wrapped
     /// as an <see cref="ApprovalRequiredAIFunction"/>.
     /// </summary>
@@ -207,7 +207,7 @@ public static class ToolSurfaceInvariant
         if (violations.Count == 0) return;
 
         throw new InvalidOperationException(
-            "The agent's commit-gated tool surface is not what the human-confirmation eval requires (§0.5 / D-5). The application will not start."
+            "The agent's commit-gated tool surface is not what the human-confirmation eval requires. The application will not start."
             + Environment.NewLine
             + string.Join(Environment.NewLine, violations.Select(v => "  • " + v)));
     }
@@ -215,7 +215,7 @@ public static class ToolSurfaceInvariant
     /// <summary>
     /// The mirror-image invariant, and the name the agent factory calls it by: asserts that this
     /// configuration carries BOTH commit tools and that BOTH are approval-gated, alongside the
-    /// eleven read-only names. Identical to
+    /// thirteen read-only names. Identical to
     /// <see cref="AssertReadOnlyWithApprovalGatedCommitTools"/>.
     /// </summary>
     /// <param name="tools">The tools about to be handed to <c>ChatOptions.Tools</c>.</param>

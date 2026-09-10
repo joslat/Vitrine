@@ -23,8 +23,8 @@ namespace Galaxus.RecommendationAgent.Guardrails;
 /// <b>Why the guardrails take this and not the catalogue façade.</b> Depending on a bundle of
 /// plain domain collections keeps this layer compilable and testable on its own, lets the eval
 /// project drive the identical pipeline without constructing a catalogue, and means the
-/// catalogue lane adapts to the guardrails rather than the guardrails to the catalogue. Design
-/// §F writes the signature as <c>Apply(raw, catalogue, user, map)</c>; <see cref="Create"/> is
+/// catalogue lane adapts to the guardrails rather than the guardrails to the catalogue. The
+/// pipeline contract uses <c>Apply(raw, catalogue, user, map)</c>; <see cref="Create"/> is
 /// the two-line adapter for exactly that call.
 /// </para>
 /// </remarks>
@@ -36,7 +36,7 @@ public sealed record GuardrailContext
     /// <summary>The customer this answer is for. Their market gates availability; their opt-out gates history.</summary>
     public required User User { get; init; }
 
-    /// <summary>The CODE-derived interest map. A recommendation may only cite a label present here (§F.3).</summary>
+    /// <summary>The CODE-derived interest map. A recommendation may only cite a label present here.</summary>
     public required InterestMap InterestMap { get; init; }
 
     /// <summary>
@@ -57,7 +57,7 @@ public sealed record GuardrailContext
 
     /// <summary>
     /// SKUs the intent classifier routed to the REPLENISHMENT lane — consumables this customer
-    /// buys on a cadence (§8.1 B-16).
+    /// buys on a cadence (the replenishment-before-ownership rule).
     /// </summary>
     /// <remarks>
     /// A subset of <see cref="OwnedProductIds"/>, checked BEFORE it, so Sofia's cartridges leave a
@@ -69,15 +69,23 @@ public sealed record GuardrailContext
     public IReadOnlySet<string> ReplenishmentProductIds { get; init; } = Empty;
 
     /// <summary>
-    /// The <c>compat:</c> values the customer's own non-gift hardware declares, indexed by family
-    /// (§8.1 B-7). Empty when they own nothing that constrains an accessory, and
+    /// Immediate parent categories in which this customer has a learned replenishment cadence.
+    /// Another consumable in one of these categories may be a substitute, but absent an explicit
+    /// request it is not evidence that the customer is about to run out of that SKU, so it cannot
+    /// leak into unsolicited discovery.
+    /// </summary>
+    public IReadOnlySet<string> ReplenishmentParentCategories { get; init; } = Empty;
+
+    /// <summary>
+    /// The <c>compat:</c> values the customer's own non-gift hardware declares, indexed by family.
+    /// Empty when they own nothing that constrains an accessory, and
     /// <see cref="CompatibilityFilter"/> reports itself inapplicable in that case.
     /// </summary>
     public IReadOnlyDictionary<string, IReadOnlySet<string>> OwnedCompatValuesByFamily { get; init; } = NoFamilies;
 
     /// <summary>
     /// Every product id a retrieval route returned in this turn — the set the model was allowed
-    /// to choose from (§8.1 B-6a).
+    /// to choose from.
     /// </summary>
     /// <remarks>
     /// ⚠ NULL AND EMPTY MEAN DIFFERENT THINGS, and conflating them would turn a wiring fault into
@@ -91,9 +99,18 @@ public sealed record GuardrailContext
     /// <summary>
     /// Leaf categories in which the customer owns a durable that is still inside its typical
     /// service life. Recommending another one is the "similar to your Vitamix ⇒ three more
-    /// blenders" failure (§B.3).
+    /// blenders" failure.
     /// </summary>
     public IReadOnlySet<string> OwnedDurableLeafCategories { get; init; } = Empty;
+
+    /// <summary>
+    /// Immediate parent categories in which the customer owns a durable still inside its service
+    /// horizon and the owned leaf explicitly names that parent product family. This closes the
+    /// sibling-leaf hole (a countertop blender is still a blender) without treating a generic
+    /// container such as <c>Accessories</c> as one substitutable product family. An explicit
+    /// request for that product family opens the replacement lane for the turn.
+    /// </summary>
+    public IReadOnlySet<string> OwnedDurableParentCategories { get; init; } = Empty;
 
     /// <summary>
     /// Category names flagged <see cref="Category.SensitiveInference"/> in the category tree.
@@ -117,7 +134,7 @@ public sealed record GuardrailContext
     /// <summary>
     /// Special-category terms the CUSTOMER used in their own words this session. "I need a
     /// larger cuff for the blood-pressure monitor I already have" puts <c>blood pressure</c>
-    /// here, and that is what turns a blocked inference into a served request (§F.5).
+    /// here, and that is what turns a blocked inference into a served request (the sensitive-category screen).
     /// </summary>
     public IReadOnlySet<string> SensitiveTopicsStatedInSession { get; init; } = Empty;
 
@@ -132,7 +149,7 @@ public sealed record GuardrailContext
 
     /// <summary>
     /// True when the customer stated a need in this session — the second half of the
-    /// abstention gate's condition (§F.8). Derived from the map rather than from the mere
+    /// abstention gate's condition. Derived from the map rather than from the mere
     /// presence of an utterance: "Hi — what do you recommend for me?" is an utterance, not a
     /// need, which is precisely why Luca Ferrari abstains.
     /// </summary>
@@ -169,7 +186,7 @@ public sealed record GuardrailContext
 
     /// <summary>
     /// Builds a context from the pieces the catalogue façade already has. This is the adapter
-    /// for design §F's <c>Apply(raw, catalogue, user, map)</c> call shape.
+    /// for the pipeline's <c>Apply(raw, catalogue, user, map)</c> call shape.
     /// </summary>
     /// <param name="productsBySku">The catalogue, keyed by <see cref="Product.Id"/>.</param>
     /// <param name="user">The customer.</param>
@@ -209,11 +226,13 @@ public sealed record GuardrailContext
         var giftPurchaseIds  = new HashSet<string>(StringComparer.Ordinal);
         var ownedProductIds  = new HashSet<string>(StringComparer.Ordinal);
         var ownedDurableLeaf = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var ownedDurableParent = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var replenishmentIds = new HashSet<string>(StringComparer.Ordinal);
+        var replenishmentParents = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var compatByFamily   = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
 
         // The map routes PURCHASE ids; the guardrails screen PRODUCT ids. Resolving the one into
-        // the other here keeps the lookup out of every stage that needs it (§8.1 B-16).
+        // the other here keeps the lookup out of every stage that needs it (the replenishment-before-ownership rule).
         var routed = new HashSet<string>(interestMap.RoutedToReplenishment, StringComparer.Ordinal);
 
         foreach (var line in lines)
@@ -227,7 +246,12 @@ public sealed record GuardrailContext
             userPurchaseIds.Add(line.PurchaseId);
             ownedProductIds.Add(line.Product.Id);
 
-            if (routed.Contains(line.PurchaseId)) replenishmentIds.Add(line.Product.Id);
+            if (routed.Contains(line.PurchaseId))
+            {
+                replenishmentIds.Add(line.Product.Id);
+                if (ImmediateParentCategoryOf(line.Product) is { } parent)
+                    replenishmentParents.Add(parent);
+            }
 
             // Compatibility constraints come from the customer's own hardware only, and are keyed
             // by FAMILY rather than by bare value — see CompatibilityFilter for the measurement
@@ -247,6 +271,9 @@ public sealed record GuardrailContext
                 line.Purchase.DaysSince(today) < InterestMapBuilder.DurableUpgradeHorizonDays)
             {
                 ownedDurableLeaf.Add(line.Product.LeafCategory);
+                if (ImmediateParentCategoryOf(line.Product) is { } parent &&
+                    LeafNamesParentCategory(line.Product, parent))
+                    ownedDurableParent.Add(parent);
             }
         }
 
@@ -268,19 +295,24 @@ public sealed record GuardrailContext
                 if (!string.IsNullOrWhiteSpace(name))
                     requested.Add(name.Trim());
 
+        // The session utterance is also an input to the ordinary ownership policies: a customer
+        // who asks for decaf beans or a personal blender has opened that category themselves.
+        // Keep only category/product-name evidence and store the derived category, not the raw
+        // utterance, so both screening paths consume the same narrow, privacy-minimised fact.
+        AddCustomerRequestedCategories(customerUtterance, productsBySku.Values, requested);
+
         // ── A customer who names the topic has named the PATH ────────────────────────
         //
         // The suppression arm walks a product's whole CategoryPath, so an exemption that covers
         // only the element whose words match the stated topic exempts nothing: GLX-9002 sits at
         // "Health & Personal Care > Blood pressure > Cuffs" and all three elements are tree-flagged,
-        // while "blood pressure" matches only the middle one. MEASURED before this expansion:
-        // Elena's stated need for a larger cuff still produced kept = 0.
+        // while "blood pressure" matches only the middle one.
         //
         // So a stated topic that matches ANY element of a category's path puts EVERY element of
         // that path in play. It is still narrow — it is the customer's own sentence that opened
         // the subtree, and a turn in which nothing was stated derives nothing here.
         //
-        // ⚠ BLAST RADIUS, stated rather than discovered later. Elena's "I need a larger cuff for
+        // ⚠ BLAST RADIUS. Elena's "I need a larger cuff for
         // the blood-pressure monitor I already have" opens the WHOLE Blood-pressure subtree:
         // "Health & Personal Care", "Blood pressure", "Cuffs" AND "Upper-arm monitors". The
         // monitor becomes presentable too, because she named it. MEASURED over every authored
@@ -306,11 +338,13 @@ public sealed record GuardrailContext
             GiftPurchaseIds = giftPurchaseIds,
             OwnedProductIds = ownedProductIds,
             ReplenishmentProductIds = replenishmentIds,
+            ReplenishmentParentCategories = replenishmentParents,
             OwnedCompatValuesByFamily = compatByFamily.ToDictionary(
                 kv => kv.Key,
                 kv => (IReadOnlySet<string>)kv.Value,
                 StringComparer.Ordinal),
             OwnedDurableLeafCategories = ownedDurableLeaf,
+            OwnedDurableParentCategories = ownedDurableParent,
             SensitiveCategoryNames = sensitive,
             ExplicitlyRequestedCategories = requested,
             SensitiveTopicsStatedInSession = stated,
@@ -319,6 +353,97 @@ public sealed record GuardrailContext
     }
 
     private static readonly IReadOnlySet<string> Empty = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Returns the category directly above a product's leaf. A one-element path has no parent and
+    /// deliberately yields null rather than broadening a policy to an entire root department.
+    /// </summary>
+    internal static string? ImmediateParentCategoryOf(Product product)
+    {
+        ArgumentNullException.ThrowIfNull(product);
+        return product.CategoryPath.Count >= 2 ? product.CategoryPath[^2] : null;
+    }
+
+    /// <summary>
+    /// True when the customer explicitly put this product's category in play for the session.
+    /// Exact owned-SKU and cadence-SKU checks deliberately do not consult this exemption.
+    /// </summary>
+    internal bool ExplicitlyRequests(Product product)
+    {
+        ArgumentNullException.ThrowIfNull(product);
+        return product.CategoryPath.Any(ExplicitlyRequestedCategories.Contains);
+    }
+
+    private static void AddCustomerRequestedCategories(
+        string? customerUtterance,
+        IEnumerable<Product> products,
+        HashSet<string> requested)
+    {
+        var utteranceTokens = RequestTokens(customerUtterance);
+        if (utteranceTokens.Count == 0) return;
+
+        foreach (var product in products.OrderBy(static product => product.Id, StringComparer.Ordinal))
+        {
+            var categoryNamed = false;
+
+            // Skip the root: Sofia's canonical "kitchen setup" must not open every product
+            // family in Kitchen & Small Appliances. A group or leaf must be named instead.
+            foreach (var element in product.CategoryPath.Skip(1))
+            {
+                var categoryTokens = RequestTokens(element);
+                if (categoryTokens.Count == 0 || !categoryTokens.All(utteranceTokens.Contains)) continue;
+
+                requested.Add(element);
+                categoryNamed = true;
+            }
+
+            if (categoryNamed) continue;
+
+            // "Decaf beans" identifies the decaf listing even though the authored leaf is
+            // "Whole beans". Require two meaningful title words, one of them the leaf's head
+            // noun, before projecting that request onto the leaf. This avoids treating a stray
+            // brand or adjective as permission to reopen a suppressed family.
+            var leafTokens = RequestTokens(product.LeafCategory);
+            if (leafTokens.Count == 0 || !leafTokens.Any(utteranceTokens.Contains)) continue;
+
+            var titleOverlap = RequestTokens(product.Name).Count(utteranceTokens.Contains);
+            if (titleOverlap >= 2) requested.Add(product.LeafCategory);
+        }
+    }
+
+    private static HashSet<string> RequestTokens(string? text)
+    {
+        var tokens = new HashSet<string>(StringComparer.Ordinal);
+        var normalized = Product.NormalizeAttributeToken(text);
+        if (normalized.Length == 0) return tokens;
+
+        foreach (var raw in normalized.Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var token = raw.Trim('.', ':', '+', '=');
+            if (token.Length < 3 || RequestStopWords.Contains(token)) continue;
+            if (token.Length > 3 && token.EndsWith('s')) token = token[..^1];
+            if (token.Length < 3 || RequestStopWords.Contains(token)) continue;
+            tokens.Add(token);
+        }
+
+        return tokens;
+    }
+
+    private static readonly IReadOnlySet<string> RequestStopWords = new HashSet<string>(
+        ["and", "are", "but", "for", "from", "have", "into", "like", "need", "that", "the", "this", "want", "with", "would", "you"],
+        StringComparer.Ordinal);
+
+    /// <summary>
+    /// True when the leaf explicitly names its parent product family (for example
+    /// <c>High-performance blenders</c> under <c>Blenders</c>). Generic containers such as
+    /// <c>Accessories</c> do not qualify: owning a portafilter must not suppress a tamper.
+    /// </summary>
+    private static bool LeafNamesParentCategory(Product product, string parent)
+    {
+        var leafToken = Product.NormalizeAttributeToken(product.LeafCategory);
+        var parentToken = Product.NormalizeAttributeToken(parent);
+        return parentToken.Length > 0 && leafToken.Contains(parentToken, StringComparison.Ordinal);
+    }
 
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> NoFamilies =
         new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal);
@@ -329,7 +454,7 @@ public sealed record GuardrailContext
 /// <param name="Ledger">Every drop, demotion and inapplicable arm.</param>
 /// <param name="VerifiedPrices">
 /// Price and stock read from the catalogue at render time, keyed by product id. The RENDERER
-/// prints these; the model never states a price (§F.4).
+/// prints these; the model never states a price.
 /// </param>
 public sealed record GuardrailOutcome(
     RecommendationSet Cleaned,
@@ -364,15 +489,15 @@ public sealed record PresentationVerdict(PresentationDecision Decision, string R
 }
 
 /// <summary>
-/// The ordered composition of every guardrail (§F). Mechanical, not prompted: the system prompt
+/// The ordered composition of every guardrail. Mechanical, not prompted: the system prompt
 /// restates these rules for cooperation, this pipeline enforces them for correctness.
 /// </summary>
 /// <remarks>
 /// <para>Stage order, and why it is this order:</para>
 /// <list type="number">
 ///   <item><see cref="CatalogueGroundingFilter"/> — an id that does not exist cannot be checked for anything else.</item>
-///   <item><see cref="CandidateContainmentFilter"/> — the id exists; did retrieval actually return it? (§8.1 B-6a).</item>
-///   <item><see cref="CompatibilityFilter"/> — does it fit the customer's own hardware? (§8.1 B-7). Both mechanical
+///   <item><see cref="CandidateContainmentFilter"/> — the id exists; did retrieval actually return it?</item>
+///   <item><see cref="CompatibilityFilter"/> — does it fit the customer's own hardware? Both mechanical
 ///         checks run before the semantic ones, because a physical fact is cheaper and more certain than an
 ///         embedding comparison.</item>
 ///   <item><see cref="EvidenceRequiredFilter"/> — the two-sided check needs a resolved product.</item>
@@ -415,13 +540,13 @@ public static class GuardrailPipeline
     }
 
     /// <summary>
-    /// Runs the abstention gate (§F.8) and then, only if it did not fire, the pipeline.
+    /// Runs the abstention gate and then, only if it did not fire, the pipeline.
     /// </summary>
     /// <remarks>
     /// <para>
     /// ⚠ <b>THIS METHOD CANNOT SAVE A TOKEN, AND ITS DOCUMENTATION USED TO CLAIM IT COULD.</b>
     /// It runs on an answer that has ALREADY been assembled, so by the time it is called the
-    /// model has run and the spend is gone. The version of this remark shipped before §8.1 B-1
+    /// model has run and the spend is gone. The version of this remark shipped before the pre-spend abstention gate
     /// read "when it fires, no search has run and no tokens have been spent" — a sentence that
     /// was false at every call site, and the console printed the same claim to the customer.
     /// </para>
@@ -468,7 +593,7 @@ public static class GuardrailPipeline
     }
 
     /// <summary>
-    /// The abstention condition (§F.8): fewer than
+    /// The abstention condition: fewer than
     /// <see cref="InterestMap.MinimumSignalsToProceed"/> independent signals AND no need stated
     /// in this session.
     /// </summary>
@@ -509,7 +634,7 @@ public static class GuardrailPipeline
 
     /// <summary>
     /// Screens ONE <c>PresentRecommendation</c> tool call, at the moment the model makes it.
-    /// Same rules as the pipeline, applied to the single sanctioned channel (§0.5 / D-1), so a
+    /// Same rules as the pipeline, applied to the single sanctioned channel, so a
     /// phantom SKU can be refused inside the tool instead of filtered out afterwards.
     /// </summary>
     /// <param name="presented">The tool call's arguments.</param>
@@ -551,7 +676,7 @@ public static class GuardrailPipeline
               + "returned it. Present only ids you were actually shown — existence is not containment");
         }
 
-        // BEFORE already_owned, and that order is the whole fix (§8.1 B-16): a consumable the
+        // BEFORE already_owned, and that order is the whole fix (the replenishment-before-ownership rule): a consumable the
         // customer buys on a cadence is not "something they own", it is a repeat buy that belongs
         // in the other tray. Dropping it as already_owned was true but useless — it named the
         // wrong mechanism and left the replenishment lane invisible.
@@ -569,6 +694,19 @@ public static class GuardrailPipeline
                 $"the customer already owns {product.Name}. Recommending it back to them is not a recommendation");
         }
 
+        var immediateParent = GuardrailContext.ImmediateParentCategoryOf(product);
+        if (product.IsConsumable &&
+            immediateParent is not null &&
+            context.ReplenishmentParentCategories.Contains(immediateParent) &&
+            !context.ExplicitlyRequests(product))
+        {
+            return Reject(GuardrailStage.CatalogueGrounding, GuardrailReasons.ReplenishmentNotDiscovery,
+                $"{product.Name} is a consumable in the '{immediateParent}' category, where this customer already " +
+                "has a learned replenishment cadence. It may be a substitute, but there is no cadence evidence " +
+                "that this SKU is about to run out; keep it out of discovery and show only cadence-backed items " +
+                "in the repeat-buy tray");
+        }
+
         if (context.OwnedCompatValuesByFamily.Count > 0 &&
             !CompatibilityFilter.IsCompatible(product, context.OwnedCompatValuesByFamily, out var conflictValue, out var conflictFamily))
         {
@@ -578,10 +716,13 @@ public static class GuardrailPipeline
 
         if (context.SuppressDurableUpgrades &&
             !product.IsConsumable &&
-            context.OwnedDurableLeafCategories.Contains(product.LeafCategory))
+            (context.OwnedDurableLeafCategories.Contains(product.LeafCategory) ||
+             (immediateParent is not null && context.OwnedDurableParentCategories.Contains(immediateParent))) &&
+            !context.ExplicitlyRequests(product))
         {
             return Reject(GuardrailStage.CatalogueGrounding, GuardrailReasons.DurableStillInHorizon,
-                $"the customer already owns a {product.LeafCategory} still inside its typical service life");
+                $"the customer already owns a durable in the '{immediateParent ?? product.LeafCategory}' category " +
+                $"still inside its typical service life; {product.Name} is a same-category replacement, not a missing capability");
         }
 
         // Both category arms consult the SAME exemption helper the pipeline stage uses, so the

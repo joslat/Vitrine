@@ -1,25 +1,19 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 José Luis Latorre Millas
 
-using System.ClientModel;
-
-using Azure;
-using Galaxus.RecommendationAgent.Agents;
 using Galaxus.RecommendationAgent.Catalog;
 using Galaxus.RecommendationAgent.Domain;
 using Galaxus.RecommendationAgent.Guardrails;
+using Galaxus.RecommendationAgent.Observability;
 using Galaxus.RecommendationAgent.Rendering;
 using Galaxus.RecommendationAgent.Retrieval;
 using Galaxus.RecommendationAgent.Signals;
 using Galaxus.RecommendationAgent.Tools;
-using Galaxus.RecommendationAgent.Workflows;
-using Microsoft.Agents.AI;
-using Microsoft.Extensions.AI;
 
 namespace Galaxus.RecommendationAgent.Demos;
 
 /// <summary>
-/// Demo 01 — Robin, the single all-in-one recommendation agent (design §E.3).
+/// Demo 01 — Robin, the single all-in-one recommendation agent (the customer-output contract).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -31,16 +25,16 @@ namespace Galaxus.RecommendationAgent.Demos;
 ///         suppression, the replenishment lane and the abstention gate are decided here,
 ///         deterministically, at zero token cost.</item>
 ///   <item><b>The MODEL searches and presents.</b> Its only sanctioned recommendation
-///         channel is the <c>PresentRecommendation</c> tool call (design §0.5 / D-1) — a
+///         channel is the <c>PresentRecommendation</c> tool call — a
 ///         product named only in prose is not shown and does not count.</item>
 ///   <item><b>CODE screens what it presented.</b> <see cref="GuardrailPipeline"/> verifies
 ///         every tool call against the catalogue and writes each drop to the ledger.</item>
-///   <item><b>The ledger is printed.</b> Every §F mechanism, counted and named on screen.</item>
+///   <item><b>The ledger is printed.</b> Every guardrail mechanism, counted and named on screen.</item>
 /// </list>
 /// <para>
 /// ⚠ <b>Two things this file deliberately does NOT do.</b> It does not parse the model's
-/// final text for recommendations — §E.1's "return only this JSON object" contract is
-/// deleted, and re-introducing a prose parser here would resurrect defect D-1. And it does
+/// final text for recommendations — the retired "return only this JSON object" prompt contract is
+/// deleted, and re-introducing a prose parser here would resurrect the former split-contract defect. And it does
 /// not repair a bad tool call before screening it: a repaired argument is a defect that can
 /// never fire, which is a failure in the flattering direction.
 /// </para>
@@ -54,7 +48,7 @@ public static class Demo01_RecommendationAgent
     /// <summary>The persona the demo opens on when <c>--user</c> is not given.</summary>
     public const string DefaultUserId = GalaxusDemoPrompts.NadiaUserId;
 
-    /// <summary>The per-run tool-call cap opened around <c>RunAsync</c> (§F.9).</summary>
+    /// <summary>The per-run tool-call cap opened around <c>RunAsync</c>.</summary>
     public const int ToolCallCap = ToolCallBudget.DefaultMaxCalls;
 
     /// <summary>
@@ -64,31 +58,25 @@ public static class Demo01_RecommendationAgent
     /// </summary>
     /// <remarks>
     /// <para>
-    /// UNCALIBRATED, like every other threshold in this sample. It is set low on purpose: the
-    /// failure it must catch is "the model presented something no derived interest explains",
-    /// not "the model phrased its search differently from the label".
+    /// This is a routing threshold, not a calibrated probability. It is deliberately permissive:
+    /// it must reject products that no derived interest explains without rejecting a valid result
+    /// merely because its search wording differs from the interest label.
     /// </para>
     /// <para>
-    /// <b>What it was observed to do</b>, over twelve product/persona pairs in the offline concept
-    /// space. It rejects cleanly at the far end: the gaming headset scores below 0.20 against every
-    /// signal of all three espresso/hiking personas, including Marco's — which is the product the
-    /// gift trap must never surface. It attributes correctly in the middle: Marco's scale → "owns
-    /// espresso machines but no espresso scale" (0.69), Nadia's ND filter → the 0.86 conjunction
-    /// (0.53). And it is loose at the bottom: espresso cleaning tablets attributed to Nadia's
-    /// "Trekking packs" at 0.26. That last one is caught by the SECOND filter rather than this one
-    /// — its confidence lands at 0.39, under <see cref="ConfidenceBands.SecondaryThreshold"/>, and
-    /// it is dropped. Two loose filters in series, both stated; neither is a measured probability.
+    /// In the offline concept-space sample, the gaming headset scores below 0.20 against every
+    /// espresso/hiking signal, while Marco's scale scores 0.69 against his missing-scale signal and
+    /// Nadia's ND filter scores 0.53 against her 0.86 conjunction. The deliberately loose edge case
+    /// is an espresso-cleaning product at 0.26 against "Trekking packs"; the independent confidence
+    /// band then drops it at 0.39. These are two stated routing filters, not probabilities.
     /// </para>
     /// <para>
-    /// ⚠ <b>SPACE-DEPENDENT, and the paragraph above was measured in ONE space — re-measured
-    /// 2026-09-05 (B-21).</b> Half of <see cref="AttributeSignalAsync"/>'s match is a cosine, and
-    /// B-21 moved that cosine onto whichever space <see cref="EmbeddingSpace"/> resolved. This
-    /// constant did not move with it, and <see cref="ConfidenceBands"/> carries the same warning for
-    /// the same reason — it was added there and not here, which is the omission this paragraph
-    /// closes.
+    /// <b>Space-dependent.</b> Half of <see cref="AttributeSignalAsync"/>'s match is a cosine, so
+    /// the applicable floor must come from <see cref="CalibratedThresholds"/> for the embedding
+    /// space resolved by <see cref="EmbeddingSpace"/>. The fit slice excludes every persona whose
+    /// tray is printed.
     /// </para>
     /// <para>
-    /// <b>The headline rejection above is REFUTED on the real-vector path.</b> The gaming headset
+    /// The concept-space separation does not transfer unchanged to the real-vector path. The gaming headset
     /// <c>GLX-4004</c>, embedded against the fourteen derived signals of the three espresso/hiking
     /// personas: on the concept path every one of the fourteen scores <b>exactly 0.000</b> — the
     /// authored lexicon gives it no shared dimension at all. On <c>--real-vectors</c> the fourteen
@@ -108,17 +96,9 @@ public static class Demo01_RecommendationAgent
     /// The floor sits near the MEDIAN of the real-space distribution.
     /// </para>
     /// <para>
-    /// <b>NOT re-tuned</b>, for the reason <see cref="ConfidenceBands"/> gives: a second number
-    /// chosen so the real path rejects what the concept path rejected is fitting the threshold to
-    /// the output. What is owed is a per-space floor DERIVED from a held-out slice, listed beside
-    /// the confidence bands in <c>docs/Vitrine-Retrieval-Deep-Dive.html</c>.
-    /// </para>
-    /// <para>
-    /// ✅ <b>DERIVED PER SPACE, 2026-09-05.</b> The paragraph above states what was owed and it has
-    /// now been paid: the value comes from <see cref="CalibratedThresholds"/>, one row per embedding
-    /// space, derived on a fit slice that deliberately EXCLUDES every persona whose tray is printed.
-    /// No longer a <c>const</c>, because a compile-time constant cannot depend on which space
-    /// resolved and this number does.
+    /// A floor chosen to reproduce the concept-path output would be outcome-fitting. The value
+    /// therefore comes from a held-out, per-space row in <see cref="CalibratedThresholds"/>, listed
+    /// beside the confidence bands in <c>docs/Vitrine-Retrieval-Deep-Dive.html</c>.
     /// </para>
     /// </remarks>
     public static double AttributionFloor => CalibratedThresholds.Current.AttributionFloor;
@@ -127,13 +107,7 @@ public static class Demo01_RecommendationAgent
     /// A consumable enters the replenishment tray once this fraction of its typical cadence has
     /// elapsed. 0.80 means "inside the last fifth of the cycle, or already overdue".
     /// </summary>
-    public const double ReplenishmentDueFraction = 0.80;
-
-    /// <summary>How many products the offline baseline arm presents per interest signal.</summary>
-    private const int OfflineCandidatesPerSignal = 2;
-
-    /// <summary>How many interest signals the offline baseline arm walks, strongest first.</summary>
-    private const int OfflineSignalsUsed = 3;
+    public const double ReplenishmentDueFraction = ReplenishmentLaneBuilder.DueFraction;
 
     /// <summary>Runs the deterministic no-provider arm. Live execution is never the default API path.</summary>
     public static Task RunAsync() => RunAsync(DefaultUserId, personalizationDisabled: false, offline: true);
@@ -143,7 +117,7 @@ public static class Demo01_RecommendationAgent
     /// </summary>
     /// <param name="userId">One of <see cref="Personas.AllPersonaIds"/>. Null selects <see cref="DefaultUserId"/>.</param>
     /// <param name="personalizationDisabled">
-    /// The <c>--no-personalization</c> toggle (§F.6). Flips <see cref="User.PersonalizationEnabled"/>
+    /// The <c>--no-personalization</c> toggle. Flips <see cref="User.PersonalizationEnabled"/>
     /// to false for this run: <c>GetPurchaseHistory</c> and <c>GetInterestMap</c> then return a typed
     /// refusal, and the turn runs on the customer's stated need alone.
     /// </param>
@@ -151,7 +125,7 @@ public static class Demo01_RecommendationAgent
     /// The <c>--offline</c> toggle. Skips the model entirely and lets the deterministic retrieval +
     /// guardrail path select the products. This is the baseline arm, printed as such — it is what the
     /// system produces with ZERO model calls, and it exists because a claim about what the agent adds
-    /// is worthless without it (design §0.5 / D-4).
+    /// is worthless without it.
     /// </param>
     /// <param name="reportPath">
     /// The <c>--report</c> destination. When set, the turn that just ran is also written as ONE
@@ -164,19 +138,40 @@ public static class Demo01_RecommendationAgent
         bool personalizationDisabled,
         bool offline,
         string? reportPath = null,
+        CancellationToken cancellationToken = default) =>
+        await RunAsync(
+            userId,
+            personalizationDisabled,
+            offline ? RecommendationExecutionArm.ZeroModelBaseline : RecommendationExecutionArm.LiveAzure,
+            reportPath,
+            cancellationToken).ConfigureAwait(false);
+
+    /// <summary>Runs one customer turn through an explicitly selected execution arm.</summary>
+    public static async Task RunAsync(
+        string? userId,
+        bool personalizationDisabled,
+        RecommendationExecutionArm arm,
+        string? reportPath = null,
         CancellationToken cancellationToken = default)
     {
         PrintHeader();
         var id = string.IsNullOrWhiteSpace(userId) ? DefaultUserId : userId.Trim();
 
-        if (!offline && !Config.IsConfigured)
+        if (!Enum.IsDefined(arm))
+        {
+            Console.Error.WriteLine("  Invalid Demo01 execution arm. No provider call was made.");
+            Environment.ExitCode = 2;
+            return;
+        }
+
+        if (arm == RecommendationExecutionArm.LiveAzure && !Config.IsConfigured)
         {
             PrintMissingCredentials();
             Environment.ExitCode = 2;
             return;
         }
 
-        if (!offline)
+        if (arm == RecommendationExecutionArm.LiveAzure)
         {
             Config.PrintAzureTarget();
             Console.WriteLine();
@@ -186,7 +181,7 @@ public static class Demo01_RecommendationAgent
             new RecommendationRunOptions(
                 id,
                 personalizationDisabled,
-                offline ? RecommendationExecutionArm.ZeroModelBaseline : RecommendationExecutionArm.LiveAzure),
+                arm),
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
         if (result.Profile is null)
@@ -200,7 +195,8 @@ public static class Demo01_RecommendationAgent
         Console.ForegroundColor = ConsoleColor.DarkGray;
         Console.WriteLine($"  Retrieval: {result.RetrieverName ?? "NOT MEASURED"}");
         Console.ResetColor();
-        if (offline) PrintOfflineBanner();
+        if (arm == RecommendationExecutionArm.ZeroModelBaseline) PrintOfflineBanner();
+        if (arm == RecommendationExecutionArm.ScriptedAgent) PrintScriptedBanner();
 
         if (result.Outcome is not { } outcome || result.InterestMap is not { } map)
         {
@@ -223,7 +219,7 @@ public static class Demo01_RecommendationAgent
         PrintPresentationAudit(result.Presented, outcome.Cleaned);
         WriteReport(
             reportPath,
-            offline,
+            arm,
             result.Prompt ?? string.Empty,
             result.Profile.User,
             map,
@@ -231,248 +227,10 @@ public static class Demo01_RecommendationAgent
             outcome,
             Catalogue.Default,
             toolCalls,
-            result.ToolCallsUsed.HasValue ? ToolCallCap : RecommendationPrinter.OmitToolCalls);
+            result.ToolCallsUsed.HasValue ? ToolCallCap : RecommendationPrinter.OmitToolCalls,
+            result.ProviderUsage);
         if (result.BudgetSummary is not null) PrintBudgetNote(result.BudgetSummary);
         if (result.AgentText is not null) PrintRobinsProse(result.AgentText);
-        await GuardrailControls.RunAsync().ConfigureAwait(false);
-    }
-
-    // Retained temporarily as a characterization reference while the new engine settles. It is
-    // private and unreachable from CLI/UI; all public execution goes through RecommendationRunEngine.
-    private static async Task LegacyRunAsync(
-        string? userId,
-        bool personalizationDisabled,
-        bool offline,
-        string? reportPath = null,
-        CancellationToken cancellationToken = default)
-    {
-        PrintHeader();
-
-        // ── Resolve the persona ───────────────────────────────────────────────
-        var id = string.IsNullOrWhiteSpace(userId) ? DefaultUserId : userId.Trim();
-        var seeded = UserProfiles.Find(id);
-        if (seeded is null)
-        {
-            PrintUnknownPersona(id);
-            return;
-        }
-
-        var catalogue = Catalogue.Default;
-        var profile   = seeded.WithPersonalization(!personalizationDisabled);
-        var prompt    = Personas.CanonicalPromptFor(profile.Id);
-
-        // The tools read the customer through UserProfiles unless an override is registered.
-        // The seed itself is never mutated, so an opted-in and an opted-out run can happen in
-        // one process without one quietly rewriting the other's ground truth.
-        GalaxusTools.ClearProfileOverrides();
-        if (personalizationDisabled) GalaxusTools.OverrideProfile(profile);
-
-        // ── Phase 1: CODE derives everything the model is not allowed to decide ──
-        var classified = profile.User.PersonalizationEnabled
-            ? PurchaseIntentClassifier.ClassifyAll(profile.Purchases, catalogue.BySku, Personas.DemoToday)
-            : [];
-
-        // Same call the GetInterestMap tool makes, argument for argument. If these two ever
-        // drift, the model is shown one map and graded against another — and the evidence
-        // check would start failing for a reason that has nothing to do with the model.
-        // Under the opt-out the builder does not read history at all (§F.6); the customer's
-        // own sentence is passed as the only stated need, which is what keeps the turn useful
-        // instead of collapsing it into an abstention.
-        var map = InterestMapBuilder.Build(
-            profile.User,
-            profile.Purchases,
-            catalogue.BySku,
-            statedNeeds: profile.User.PersonalizationEnabled ? null : [prompt],
-            asOf: Personas.DemoToday,
-            sensitiveCategoryNames: catalogue.SensitiveCategories);
-
-        var context = GuardrailContext.Create(
-            catalogue.BySku,
-            profile.User,
-            map,
-            classified,
-            categories: catalogue.Categories,
-            customerUtterance: prompt,
-            asOf: Personas.DemoToday);
-
-        var replenishment = BuildReplenishmentLane(map, classified, catalogue);
-
-        PrintRequest(profile, prompt, personalizationDisabled);
-
-        // ── §F.8 — THE ABSTENTION GATE, BEFORE ANY SPEND (§8.1 B-1) ───────────
-        //
-        // This is the whole fix, and it is four lines. The gate used to run inside
-        // ApplyWithAbstentionGate, on an answer that had ALREADY been assembled — so on Luca's
-        // turn the model was constructed, ran, searched and presented, and only then was told
-        // that the turn should never have reached it. The console printed "the gate is structural
-        // and ran BEFORE any model spend" underneath, unconditionally, on every single one of
-        // those runs. The claim was false and the interface made it anyway.
-        //
-        // ⚠ It short-circuits BOTH arms, not only the live one. The offline baseline spends no
-        // tokens but it does spend searches, and the design's claim is "when it fires, no search
-        // has run" — an offline arm that searches anyway would leave that sentence half-true,
-        // which is the state this row exists to end.
-        if (GuardrailPipeline.ShouldAbstain(context, out var abstainReason))
-        {
-            PrintPreSpendAbstention(profile, map, classified, context, abstainReason, offline, prompt, reportPath);
-            await GuardrailControls.RunAsync().ConfigureAwait(false);
-            return;
-        }
-
-        // ── Retrieval seam ────────────────────────────────────────────────────
-        var retriever = await BuildRetrieverAsync(catalogue, cancellationToken).ConfigureAwait(false);
-        GalaxusTools.Bind(retriever, profile.Market);   // §8.1 B-17 — the market is bound, not defaulted
-        GalaxusTools.AssertBound();
-        PrintRetrievalBanner(retriever);
-
-        // ── Phase 2: the model presents (or the offline arm stands in for it) ──
-        IReadOnlyList<PresentedRecommendation> presented;
-        IReadOnlyList<string?> userEvidence;
-        IReadOnlyDictionary<string, IReadOnlyList<string>> provenance;
-        IReadOnlySet<string>? candidateSet;
-        int toolCallsUsed;
-        string? budgetSummary = null;
-        string? robinSaid = null;
-
-        if (offline)
-        {
-            PrintOfflineBanner();
-            (presented, provenance, candidateSet) =
-                await RunOfflineBaselineAsync(map, context, retriever, catalogue, cancellationToken).ConfigureAwait(false);
-
-            // The baseline arm composes its own presentations, so it can and does write the user
-            // side — but it writes it out of the SAME signal the attribution used, which is the
-            // tautology B-5 is about. It is recorded as absent so the ledger's note stays honest.
-            userEvidence  = [.. presented.Select(_ => (string?)null)];
-            toolCallsUsed = RecommendationPrinter.OmitToolCalls;
-        }
-        else
-        {
-            if (!Config.IsConfigured)
-            {
-                PrintMissingCredentials();
-                return;
-            }
-
-            Config.PrintAzureTarget();
-            Console.WriteLine();
-
-            var run = await RunAgentAsync(profile, prompt, context, cancellationToken).ConfigureAwait(false);
-            if (run is null) return;   // the failure was already printed in full
-
-            presented     = run.Presented;
-            userEvidence  = run.UserEvidence;
-            provenance    = run.Provenance;
-            candidateSet  = run.CandidateSet;
-            toolCallsUsed = run.ToolCallsUsed;
-            budgetSummary = run.BudgetSummary;
-            robinSaid     = run.Text;
-        }
-
-        // ── Phase 3: CODE screens what was presented ──────────────────────────
-        var screeningContext = context with { CandidateProductIds = candidateSet };
-
-        var (raw, preLedgerDrops, modelStatedUserSides) = await AssembleAsync(
-            presented, userEvidence, provenance, map, catalogue, replenishment, cancellationToken)
-            .ConfigureAwait(false);
-
-        var outcome = GuardrailPipeline.ApplyWithAbstentionGate(raw, screeningContext);
-        var ledger  = outcome.Ledger;
-
-        // Drops decided before the pipeline (duplicate presentations) are replayed into the
-        // one ledger the panel prints, so a single number tells the whole story.
-        foreach (var drop in preLedgerDrops) ledger.Drop(drop.Stage, drop.Reason, drop.Subject, drop.Detail);
-
-        // The denominator is what the MODEL presented, not what survived assembly. Anything
-        // else would quietly shrink the denominator every time a drop happened, which is the
-        // diluted-denominator failure this project keeps a rule about.
-        ledger.RecordInput(presented.Count);
-        ledger.GiftExcluded  = map.ExcludedBecauseGift.Count;
-        ledger.ToolCallsUsed = Math.Max(0, toolCallsUsed);
-        ledger.ToolCallCap   = toolCallsUsed >= 0 ? ToolCallCap : 0;
-
-        NoteEvidenceArms(ledger, offline, presented.Count, modelStatedUserSides);
-
-        // ── Phase 4: print ────────────────────────────────────────────────────
-        Console.WriteLine();
-        RecommendationPrinter.PrintAnswer(profile.User, map, classified, outcome, toolCallsUsed,
-            toolCallsUsed >= 0 ? ToolCallCap : RecommendationPrinter.OmitToolCalls,
-            gateRanBeforeSpend: false);
-
-        PrintPresentationAudit(presented, outcome.Cleaned);
-
-        // The report is written from the SAME objects the panel above was printed from — the
-        // outcome, its ledger and its verified figures — so the page cannot show a turn the
-        // console did not. It is written before the guardrail controls run, because those are a
-        // separate scripted suite about the pipeline, not part of this customer's turn.
-        WriteReport(reportPath, offline, prompt, profile.User, map, classified, outcome, catalogue,
-                    toolCallsUsed, toolCallsUsed >= 0 ? ToolCallCap : RecommendationPrinter.OmitToolCalls);
-
-        // What the live query path cost, after the banner warned that it would. Silent on the
-        // concept path, where there is nothing to report and a "0 calls" line would only invite
-        // someone to quote it as evidence about a path that never ran.
-        EmbeddingSpace.PrintLiveSpend();
-
-        if (budgetSummary is not null) PrintBudgetNote(budgetSummary);
-        if (robinSaid is not null) PrintRobinsProse(robinSaid);
-
-        await GuardrailControls.RunAsync().ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Prints the turn that never reached a model: the pre-spend abstention (§F.8, §8.1 B-1).
-    /// </summary>
-    /// <remarks>
-    /// The ledger here records ZERO presentations rather than a list of drops, and that is the
-    /// observable difference the fix makes. Under the old ordering Luca's ledger read
-    /// "n in → 0 out, n dropped(abstained)" — n items the model had already been paid to produce.
-    /// It now reads "0 in → 0 out", because there was nothing to drop.
-    /// </remarks>
-    private static void PrintPreSpendAbstention(
-        CustomerProfile profile,
-        InterestMap map,
-        IReadOnlyList<ClassifiedPurchase> classified,
-        GuardrailContext context,
-        string reason,
-        bool offline,
-        string prompt,
-        string? reportPath)
-    {
-        var ledger = new GuardrailLedger();
-        ledger.RecordInput(0);
-        ledger.RecordOutput(0);
-        ledger.GiftExcluded = map.ExcludedBecauseGift.Count;
-        ledger.Note(GuardrailStage.AbstentionGate, GuardrailReasons.Abstained, "—", reason);
-        ledger.Note(GuardrailStage.AbstentionGate, GuardrailReasons.ArmInapplicable, "every downstream arm",
-            "the gate fired BEFORE the retriever was built and before the agent was constructed, so no "
-          + "search ran, no token was spent and NO other guardrail arm was exercised on this turn. A clean "
-          + "ledger here is a statement about the gate alone");
-
-        var abstained = RecommendationSet.Abstain(
-            reason,
-            GuardrailPipeline.ClarifyingQuestions(context),
-            [.. map.Signals.Select(InterestSignalDto.From)]);
-
-        Console.ForegroundColor = ConsoleColor.Yellow;
-        Console.WriteLine("  ⏸  Abstention gate fired BEFORE the model was constructed — this turn cost 0 prompt tokens");
-        Console.WriteLine($"     and made 0 searches{(offline ? " (the offline arm is short-circuited too)" : "")}.");
-        Console.ResetColor();
-        Console.WriteLine();
-
-        var verified = new Dictionary<string, PriceStockSnapshot>(StringComparer.Ordinal);
-
-        RecommendationPrinter.PrintAnswer(
-            profile.User, map, classified, abstained, verified, ledger,
-            RecommendationPrinter.OmitToolCalls, RecommendationPrinter.OmitToolCalls,
-            gateRanBeforeSpend: true);
-
-        // ⚠ The abstention gets a report too, and that is the point of writing one here rather than
-        //   only on the happy path. A turn that recommended nothing must render as NO RECOMMENDATION
-        //   — with the reason and the questions it asked instead — and never as an empty tray, which
-        //   is indistinguishable from a clean result at a glance.
-        WriteReport(reportPath, offline, prompt, profile.User, map, classified,
-                    new GuardrailOutcome(abstained, ledger, verified), Catalogue.Default,
-                    RecommendationPrinter.OmitToolCalls, RecommendationPrinter.OmitToolCalls);
     }
 
     /// <summary>
@@ -492,7 +250,7 @@ public static class Demo01_RecommendationAgent
     /// </remarks>
     private static void WriteReport(
         string? reportPath,
-        bool offline,
+        RecommendationExecutionArm executionArm,
         string prompt,
         User user,
         InterestMap map,
@@ -500,7 +258,8 @@ public static class Demo01_RecommendationAgent
         GuardrailOutcome outcome,
         Catalogue catalogue,
         int toolCallsUsed,
-        int toolCallCap)
+        int toolCallCap,
+        ProviderUsageMeasurement providerUsage)
     {
         if (string.IsNullOrWhiteSpace(reportPath)) return;
 
@@ -508,14 +267,20 @@ public static class Demo01_RecommendationAgent
         {
             // The DEPLOYMENT NAME is the only configuration value that reaches the page. Never the
             // endpoint, which names the Azure resource, and never the key in any form.
-            var arm = offline
-                ? "offline baseline — no model call"
-                : $"live agent · deployment {Config.Model}";
+            var arm = executionArm switch
+            {
+                RecommendationExecutionArm.ZeroModelBaseline => "offline baseline — no model call",
+                RecommendationExecutionArm.ScriptedAgent => "scripted ChatClient — deterministic local chat boundary",
+                RecommendationExecutionArm.LiveAzure =>
+                    $"live agent · subject deployment {Config.Deployments.SubjectLabel} · {Config.Readiness.AuthenticationLabel}",
+                _ => throw new InvalidOperationException("The Demo01 report arm was not recognized."),
+            };
 
             var written = RunReportHtml.Write(
                 reportPath, "Demo 01 — one agent", arm, prompt,
                 user, map, classified, outcome.Cleaned, outcome.VerifiedPrices, outcome.Ledger,
-                catalogue, toolCallsUsed, toolCallCap);
+                catalogue, toolCallsUsed, toolCallCap,
+                liveProviderUsage: executionArm == RecommendationExecutionArm.LiveAzure ? providerUsage : null);
 
             Console.ForegroundColor = ConsoleColor.DarkCyan;
             Console.WriteLine($"\n  📄 Report written: {written}");
@@ -531,228 +296,19 @@ public static class Demo01_RecommendationAgent
         }
     }
 
-    // ── The agent run ─────────────────────────────────────────────────────────
-
-    /// <summary>What one live agent run produced. Null from <see cref="RunAgentAsync"/> means it failed and said so.</summary>
-    /// <param name="Presented">The <c>PresentRecommendation</c> calls, verbatim, in order.</param>
-    /// <param name="UserEvidence">The fifth argument of each of those calls, index-aligned with <paramref name="Presented"/>.</param>
-    /// <param name="Provenance">Product id → the search needs that surfaced it.</param>
-    /// <param name="CandidateSet">Every product id ANY retrieval route returned (§8.1 B-6a). Null means nothing recorded.</param>
-    /// <param name="ToolCallsUsed">Refusable calls spent.</param>
-    /// <param name="BudgetSummary">Every counter against its own cap.</param>
-    /// <param name="Text">Robin's prose. Never parsed.</param>
-    private sealed record AgentRun(
-        IReadOnlyList<PresentedRecommendation> Presented,
-        IReadOnlyList<string?> UserEvidence,
-        IReadOnlyDictionary<string, IReadOnlyList<string>> Provenance,
-        IReadOnlySet<string>? CandidateSet,
-        int ToolCallsUsed,
-        string BudgetSummary,
-        string? Text);
-
     /// <summary>
     /// The session header sent ahead of the customer's own words.
     /// </summary>
     /// <remarks>
-    /// ⚠ Without this the agent does not know WHO it is serving. Observed on the first live run:
-    /// the model guessed <c>GetUserProfile("current")</c>, the tool refused (correctly — there is
-    /// no such customer, and a silent fallback to a real one would produce a plausible, wrong
-    /// demo), and the turn ended after a single call. The customer's utterance is kept BYTE
-    /// IDENTICAL to <see cref="GalaxusDemoPrompts"/> in its own message, because the eval lane
-    /// grades against those exact strings — the identity belongs in a header, not spliced into
-    /// the sentence a person actually typed.
+    /// The header supplies the exact customer id so the model never has to guess an identity or
+    /// rely on a dangerous default. The customer's utterance remains byte-identical to
+    /// <see cref="GalaxusDemoPrompts"/> in a separate message because the eval lane grades those
+    /// exact strings.
     /// </remarks>
     internal static string SessionHeader(CustomerProfile profile) =>
         $"[session] You are serving customer id {profile.Id} — market {profile.Market}, language {profile.Language}. "
       + "Pass that id to GetUserProfile, GetPurchaseHistory and GetInterestMap. Never substitute another customer, "
       + "and never invent an id. The next message is the customer speaking.";
-
-    private static async Task<AgentRun?> RunAgentAsync(
-        CustomerProfile profile,
-        string prompt,
-        GuardrailContext advisoryContext,
-        CancellationToken cancellationToken)
-    {
-        Console.WriteLine($"  Creating {RecommendationAgentFactory.AgentName} — eleven read-only tools, asserted at construction...\n");
-
-        ChatClientAgent agent;
-        try
-        {
-            // Throws if the registered set differs from the eleven-name allow-list in EITHER
-            // direction (§F.1 / A-1). A mutating tool cannot be added by accident: the app
-            // fails to start rather than shipping a surface nobody re-checked.
-            agent = RecommendationAgentFactory.Create();
-        }
-        catch (InvalidOperationException ex)
-        {
-            PrintGenericFailure("Tool-surface invariant", "The registered tool set is not the read-only allow-list. "
-                + "This is the guardrail working, not a bug in it — fix the array in RecommendationAgentFactory.", ex);
-            return null;
-        }
-
-        var session  = await agent.CreateSessionAsync(cancellationToken).ConfigureAwait(false);
-        var messages = new[]
-        {
-            new ChatMessage(ChatRole.User, SessionHeader(profile)),
-            new ChatMessage(ChatRole.User, prompt)
-        };
-
-        RecommendationPrinter.PrintTraceHeader();
-
-        // Both scopes are AsyncLocal and both must wrap the run: the budget bounds the spend
-        // (§F.9), the capture records the PresentRecommendation calls verbatim (§0.5 / D-1).
-        using var budget  = ToolCallBudget.BeginScope(ToolCallCap);
-
-        // The capture is handed the SAME context the pipeline will screen against afterwards, so
-        // the advisory warnings the model receives and the drops the ledger records cannot come
-        // from two different bars (§8.1 B-13).
-        using var capture = GalaxusTools.BeginRunCapture(advisoryContext);
-
-        AgentResponse? response;
-        var startedAt = DateTimeOffset.UtcNow;
-
-        // THE THIRD SPENDING LANE, and it was the last one still silent. Item 8.17 metered the
-        // DISCOVERY loop (Demo 02) and Eval 08's workflow arm and stopped there, because that is
-        // where the item was filed; the row it added is called TheChatLaneSaysWhatItSpent and its
-        // body reached `DiscoveryModelCall` alone. THIS call site is a chat lane too — the same
-        // deployment, the same `AIAgent.RunAsync`, the same `response.Usage` — and it read
-        // `response.Messages` for the tool trace and never the usage, so `agent -- 1` printed a
-        // tool-call COUNT and elapsed seconds and no bill, while printing the EMBEDDING lane's
-        // fraction of a cent a few lines below. That is the shape §55.4 recorded one row earlier:
-        // a row's NAME is not its subject, and the flattering direction is a green tick beside a
-        // sentence that reads more general than the check underneath it.
-        var chatSpend = new ChatSpend();
-        try
-        {
-            response = await agent.RunAsync(messages, session, cancellationToken: cancellationToken).ConfigureAwait(false);
-            chatSpend.Record(response.Usage);
-        }
-        catch (RequestFailedException azureEx)
-        {
-            chatSpend.RecordNoResponse();
-            PrintAzureFailure(azureEx.Status, azureEx.ErrorCode);
-            PrintChatSpend(chatSpend);
-            return null;
-        }
-        catch (ClientResultException clientEx)
-        {
-            chatSpend.RecordNoResponse();
-            PrintAzureFailure(clientEx.Status, errorCode: null);
-            PrintChatSpend(chatSpend);
-            return null;
-        }
-        catch (TaskCanceledException timeoutEx)
-        {
-            chatSpend.RecordNoResponse();
-            PrintGenericFailure("Timeout",
-                "Azure did not answer inside the SDK's HTTP timeout — usually throttling or a long content-filter check.",
-                timeoutEx);
-            PrintChatSpend(chatSpend);
-            return null;
-        }
-        catch (Exception ex)
-        {
-            chatSpend.RecordNoResponse();
-            PrintGenericFailure($"{ex.GetType().Name} (agent run failed)",
-                "Most often a tool method threw, or the model returned a malformed tool call. The inner exception names the tool.",
-                ex);
-            PrintChatSpend(chatSpend);
-            return null;
-        }
-
-        var elapsed = DateTimeOffset.UtcNow - startedAt;
-
-        // Read the run-scoped state BEFORE the scopes are disposed — outside them both
-        // collections read empty, and an empty capture is indistinguishable from a model
-        // that presented nothing.
-        var presented    = GalaxusTools.PresentedInCurrentRun;
-        var userEvidence = GalaxusTools.UserEvidenceInCurrentRun;
-        var provenance   = GalaxusTools.RetrievalProvenanceInCurrentRun;
-        var candidates   = GalaxusTools.CandidateSetInCurrentRun;
-        var used         = ToolCallBudget.Used;        // REFUSABLE calls only — presentations are not in it
-        var summary      = ToolCallBudget.Summary;     // every counter against its own cap, for the footer
-
-        RecommendationPrinter.PrintTraceFooter();
-        PrintToolTrace(response, elapsed, summary);
-        PrintChatSpend(chatSpend);
-
-        return new AgentRun(presented, userEvidence, provenance, candidates, used, summary, response.Text);
-    }
-
-    // ── The offline baseline arm ──────────────────────────────────────────────
-
-    /// <summary>
-    /// Selects products with NO model call: for each derived interest signal, search by meaning
-    /// and take the top candidates the guardrails would accept.
-    /// </summary>
-    /// <remarks>
-    /// This is a baseline, not a simulation of the agent. It is here because "the LLM found the
-    /// cross-category match" is an empty claim until something without an LLM has tried the same
-    /// query — design §0.5 / D-4 names the missing arm, and an absent baseline is not a zero floor.
-    /// Its evidence citations are read straight from the catalogue, so the evidence arm cannot
-    /// fail on this path; the ledger says so rather than banking a clean sheet it did not earn.
-    /// </remarks>
-    private static async Task<(IReadOnlyList<PresentedRecommendation> Presented,
-                               IReadOnlyDictionary<string, IReadOnlyList<string>> Provenance,
-                               IReadOnlySet<string> CandidateSet)>
-        RunOfflineBaselineAsync(
-            InterestMap map,
-            GuardrailContext context,
-            IProductRetriever retriever,
-            Catalogue catalogue,
-            CancellationToken cancellationToken)
-    {
-        var presented  = new List<PresentedRecommendation>();
-        var provenance = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
-        var candidates = new HashSet<string>(StringComparer.Ordinal);
-        var taken      = new HashSet<string>(StringComparer.Ordinal);
-
-        var exclude = new HashSet<string>(context.OwnedProductIds, StringComparer.Ordinal);
-
-        foreach (var signal in map.Signals.OrderByDescending(s => s.Strength).Take(OfflineSignalsUsed))
-        {
-            var query = RetrievalQuery.For(signal.Label) with
-            {
-                TopK = OfflineCandidatesPerSignal + 4,
-                Market = context.User.Market,
-                ExcludeProductIds = exclude
-            };
-
-            var result = await retriever.SearchAsync(query, cancellationToken).ConfigureAwait(false);
-            Console.WriteLine($"   🔎 SearchProductsByMeaning(\"{Clip(signal.Label, 62)}\") → {result.Count} candidate(s)");
-
-            // EVERY hit, not only the kept ones (§8.1 B-6a). The candidate set is what retrieval
-            // put in front of the selector; narrowing it to what the selector chose would make the
-            // containment check compare a set with itself.
-            foreach (var hit in result.Hits) candidates.Add(hit.ProductId);
-
-            var kept = 0;
-            foreach (var hit in result.Hits)
-            {
-                if (kept >= OfflineCandidatesPerSignal) break;
-                if (!taken.Add(hit.ProductId)) continue;
-                if (!catalogue.TryGet(hit.ProductId, out var product) || product is null) continue;
-
-                var citation = catalogue.AttributesOf(product)
-                                        .OrderBy(a => a, StringComparer.Ordinal)
-                                        .FirstOrDefault();
-                if (citation is null) continue;
-
-                presented.Add(new PresentedRecommendation(
-                    product.Id,
-                    $"Retrieved for the derived interest \"{signal.Label}\". Selected by the baseline arm, with no model call.",
-                    EvidenceRef.AttributePrefix + citation,
-                    OutOfStock: product.StockUnits == 0));
-
-                provenance[product.Id] = [signal.Label];
-                kept++;
-                Console.WriteLine($"   ⭐ PresentRecommendation(\"{product.Id}\", evidence=\"attr:{citation}\")");
-            }
-        }
-
-        Console.WriteLine();
-        return (presented, provenance, candidates);
-    }
 
     // ── Assembly: tool calls → RecommendationSet ──────────────────────────────
 
@@ -764,7 +320,7 @@ public static class Demo01_RecommendationAgent
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Two paths for the user side, and the ledger always says which one ran (§8.1 B-5).</b>
+    /// <b>Two paths for the user side, and the ledger always says which one ran.</b>
     /// When the model supplies <c>userEvidence</c>, its label and its purchase ids are carried
     /// through UNCHANGED and verified against the code-derived map: an invented label fails,
     /// somebody else's id fails, a gift fails, and — the arm that only exists on this path — one
@@ -790,9 +346,8 @@ public static class Demo01_RecommendationAgent
     /// <param name="catalogue">The catalogue façade.</param>
     /// <param name="replenishment">The repeat-buy tray, built before the model ran.</param>
     /// <param name="cancellationToken">
-    /// Cancellation. This method became async at B-21: the confidence and attribution arithmetic
-    /// embeds through <see cref="EmbeddingSpace"/>, which on the <c>--real-vectors</c> path reaches
-    /// a live embedding deployment.
+    /// Cancellation for confidence and attribution embeddings. On the <c>--real-vectors</c> path,
+    /// <see cref="EmbeddingSpace"/> can reach a live embedding deployment.
     /// </param>
     /// <returns>The assembled answer, the pre-pipeline drops, and how many items carried a MODEL-stated user side.</returns>
     internal static async Task<(RecommendationSet Raw, IReadOnlyList<PreDrop> Drops, int ModelStatedUserSides)> AssembleAsync(
@@ -855,7 +410,7 @@ public static class Demo01_RecommendationAgent
                 new EvidenceDto(
                     signal?.Label ?? string.Empty,
                     // A stated-in-session interest is evidenced by the sentence, never by history
-                    // (§F.3, and under the §F.6 opt-out there IS no history to cite).
+                    // (the two-sided evidence check, and under the personalization opt-out there IS no history to cite).
                     signal is not null && !IsStatedInSession(signal) ? signal.EvidencePurchaseIds : [],
                     key,
                     value,
@@ -877,7 +432,7 @@ public static class Demo01_RecommendationAgent
     /// Credits a presented SKU to the derived interest signal whose label best matches the search
     /// needs that surfaced it. Returns null when nothing clears <see cref="AttributionFloor"/> —
     /// which drops the item, because a product no derived interest explains is exactly the case
-    /// §F.3 exists to remove.
+    /// the two-sided evidence check is meant to remove.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -887,25 +442,18 @@ public static class Demo01_RecommendationAgent
     /// vocabulary the space does not cover, where the cosine is legitimately 0 for everything.
     /// </para>
     /// <para>
-    /// ⚠ <b>The cosine is taken in whichever space <see cref="EmbeddingSpace"/> resolved</b>, which
-    /// is the same space that did the retrieving — so this is not an independent check on
-    /// retrieval, and never was. That coupling is now uniform across both paths, which it was not
-    /// before B-21: while the real-vector path served queries from a 71-entry table, a
-    /// run-time-composed signal LABEL was Unavailable, every cosine here was 0, and attribution
-    /// silently fell back to token overlap ALONE. Queries are embedded live now, so the cosine is
-    /// a real cosine on both paths and this method measures the same thing on each. The space is
-    /// still printed beside the numbers, because a 24-dimension authored cosine and a
-    /// text-embedding-3-small one are not comparable to each other.
+    /// The cosine is taken in the same resolved <see cref="EmbeddingSpace"/> that performed
+    /// retrieval, so it is a consistency check rather than independent evidence. Both stored
+    /// product documents and runtime signal labels are embedded in that one space, whose name is
+    /// printed because a 24-dimension authored cosine and a <c>text-embedding-3-small</c> cosine are
+    /// not comparable.
     /// </para>
     /// <para>
     /// <b>Ranking</b> among the signals that clear the floor is <c>match × strength</c> — two
-    /// independent pieces of evidence multiplied, not one of them ignored. Ranking on match alone
-    /// (the first cut of this method did) systematically credited products to whichever
-    /// leaf-category signal happened to share the query's nouns: a live run credited trekking
-    /// poles to "Trekking packs" (0.52) rather than to the 0.86 conjunction that is the entire
-    /// point of Nadia's case, and the weak strength then pushed genuinely good items under the
-    /// 0.45 confidence floor. Both numbers now come from the same criterion, which is what they
-    /// should always have done.
+    /// independent pieces of evidence multiplied, not one of them ignored. This prevents a weak
+    /// leaf-category signal that happens to share query nouns from outranking a stronger conjunction;
+    /// for example, Nadia's 0.86 conjunction must outrank the 0.52 "Trekking packs" signal for the
+    /// trekking-pole case.
     /// </para>
     /// </remarks>
     /// <param name="needs">The search needs that surfaced this product. Empty falls back to the product's own document.</param>
@@ -921,14 +469,10 @@ public static class Demo01_RecommendationAgent
     {
         if (map.Signals.Count == 0) return null;
 
-        // Only the three SEMANTIC tools record provenance. A product the model reached through
-        // BrowseCategory — which the system prompt explicitly permits — arrives with none, and
-        // treating "no provenance" as "no attribution" made those a GUARANTEED drop: observed
-        // live, a correctly-reasoned Brewista scale removed with unknown_signal_label because of
-        // how it was found rather than what it was. The fallback measures the PRODUCT's own
-        // embedding document against the labels instead, in the same concept space. It restores
-        // nothing that should fail: a product no derived interest explains still scores below
-        // the floor and is still dropped.
+        // Only semantic tools record search-need provenance. BrowseCategory is also permitted, so
+        // its products fall back to comparing the product's own embedding document with the labels
+        // in the same resolved space. A product no derived interest explains still stays below the
+        // floor and is dropped.
         var probes = needs.Count > 0
             ? needs
             : product is not null ? [EmbeddingDocument.ForProduct(product)] : (IReadOnlyList<string>)[];
@@ -1039,7 +583,7 @@ public static class Demo01_RecommendationAgent
     /// <para>
     /// It is NOT the model's self-reported confidence. The <c>PresentRecommendation</c> tool has
     /// no confidence argument, deliberately: self-reported LLM confidence is uncalibrated until
-    /// somebody measures it, and §F.7 would rather route on something the code can point at.
+    /// somebody measures it, and the confidence-band policy would rather route on something the code can point at.
     /// </para>
     /// <para>
     /// So this is the mean of two code-derived quantities — the strength of the interest signal
@@ -1049,33 +593,20 @@ public static class Demo01_RecommendationAgent
     /// a gold set belongs to the eval lane, and until that runs no claim is made about it.
     /// </para>
     /// <para>
-    /// ⚠ <b>CO-MOVING OPERANDS — still true, and now true in the same way on both paths.</b> The
-    /// fit is computed in the SAME space that retrieved the product, so a product retrieved because
-    /// it is near the label scores well on being near the label. B-21 does not repair that and does
-    /// not claim to; breaking the coupling means finding a second, independent signal, which is an
-    /// eval-lane question.
+    /// <b>Co-moving operands.</b> The fit is computed in the same space that retrieved the product,
+    /// so a product retrieved because it is near the label also scores well on being near the label.
+    /// Breaking that coupling requires a second independent signal and belongs in the eval lane.
     /// </para>
     /// <para>
-    /// What B-21 DID change is that the defect is now one defect rather than two. Before it, the
-    /// <c>--real-vectors</c> path had the product document in the committed asset and the composed
-    /// label absent from it, so the fit collapsed to 0 and this number quietly became
-    /// <c>strength / 2</c> — one operand, not two, every card a band lower, and the coupling
-    /// "looser" only in the sense that one side of it had been deleted. Live query embedding makes
-    /// both operands real on both paths.
+    /// Both operands must exist in the same space. Runtime labels are therefore embedded on demand
+    /// rather than treated as zero when absent from a committed product index; otherwise confidence
+    /// would collapse to <c>strength / 2</c> and shift every card by an implementation artifact.
     /// </para>
     /// <para>
-    /// <b>Why this call site is ASYNC, and what the alternative would have cost.</b> It goes
-    /// through <see cref="EmbeddingSpace"/>, which on the real-vector path reaches the network. The
-    /// alternative was to leave confidence and attribution on the concept space while retrieval
-    /// moved — and that is a change in KIND, not a shortcut: it would put one run's retrieval and
-    /// one run's confidence in two incomparable spaces, so a card stamped
-    /// <c>text-embedding-3-small</c> in the banner would carry a 24-dimension authored number, and
-    /// the co-moving-operands caveat above would silently be replaced by a different, uncalibrated
-    /// one that nobody had measured. Two spaces in one report is the exact failure
-    /// <see cref="EmbeddingSpace.Requested"/> throws to prevent. An async call chain is cheaper
-    /// than that, and the per-run memo makes it cheap in money too: the product documents are all
-    /// cache hits against the committed index, and the only live texts are the handful of distinct
-    /// signal labels, each embedded once.
+    /// The call is asynchronous because the real-vector space can reach the network. Mixing concept
+    /// retrieval with real-vector confidence (or the reverse) would put incomparable cosines in one
+    /// report; <see cref="EmbeddingSpace.Requested"/> prevents that. Per-run memoisation keeps stored
+    /// product documents as cache hits and embeds each distinct runtime label once.
     /// </para>
     /// </remarks>
     private static async Task<double> ConfidenceAsync(
@@ -1129,74 +660,6 @@ public static class Demo01_RecommendationAgent
     public static double ConfidenceFrom(double signalStrength, double fit) =>
         Math.Clamp((signalStrength + Math.Max(0.0, fit)) / 2.0, 0.0, 1.0);
 
-    // ── The replenishment lane ────────────────────────────────────────────────
-
-    /// <summary>
-    /// Builds the repeat-buy tray from the purchases the classifier routed to replenishment.
-    /// </summary>
-    /// <remarks>
-    /// Its own tray, never a discovery (§B.3, Sofia): recommending the cartridges somebody has
-    /// bought five times is not a recommendation. An item appears once it is inside the last
-    /// <see cref="ReplenishmentDueFraction"/> of its cadence, or already overdue.
-    /// </remarks>
-    internal static IReadOnlyList<ReplenishmentDto> BuildReplenishmentLane(
-        InterestMap map,
-        IReadOnlyList<ClassifiedPurchase> classified,
-        Catalogue catalogue)
-    {
-        if (map.RoutedToReplenishment.Count == 0) return [];
-
-        var routed = new HashSet<string>(map.RoutedToReplenishment, StringComparer.Ordinal);
-        var lane   = new List<ReplenishmentDto>();
-
-        var byProduct = classified
-            .Where(c => routed.Contains(c.PurchaseId))
-            .GroupBy(c => c.Product.Id, StringComparer.Ordinal)
-            .OrderBy(g => g.Key, StringComparer.Ordinal);
-
-        foreach (var group in byProduct)
-        {
-            var latest = group.OrderByDescending(c => c.Purchase.PurchasedOn)
-                              .ThenBy(c => c.PurchaseId, StringComparer.Ordinal)
-                              .First();
-
-            if (!catalogue.TryGet(group.Key, out var product) || product is null) continue;
-
-            var cadence = product.TypicalReplenishDays ?? 0;
-            if (cadence <= 0) continue;
-
-            var elapsed = latest.Purchase.DaysSince(Personas.DemoToday);
-            if (elapsed < cadence * ReplenishmentDueFraction) continue;
-
-            lane.Add(new ReplenishmentDto(product.Id, elapsed, cadence, latest.Because));
-        }
-
-        return lane
-            .OrderBy(r => r.DaysUntilDue)
-            .ThenBy(r => r.ProductId, StringComparer.Ordinal)
-            .ToList();
-    }
-
-    // ── Retrieval composition ─────────────────────────────────────────────────
-
-    /// <summary>
-    /// Builds the retriever the three semantic tools search through.
-    /// </summary>
-    /// <remarks>
-    /// <see cref="EmbeddingSpace"/> decides which space this run retrieves in — the authored
-    /// concept vectors (the default, and what <c>--concept-vectors</c> forces) or the committed
-    /// <c>text-embedding-3-small</c> assets (<c>--real-vectors</c>). The decision is printed by
-    /// <see cref="PrintRetrievalBanner"/>, so a reader always knows which space produced the
-    /// numbers on the screen, and the SAME resolved source backs the confidence arithmetic in
-    /// <see cref="ConfidenceAsync"/> — one run is never half in one space and half in another.
-    /// </remarks>
-    private static async Task<IProductRetriever> BuildRetrieverAsync(Catalogue catalogue, CancellationToken cancellationToken)
-        => await HybridRetriever.BuildAsync(
-                     catalogue.All,
-                     EmbeddingSpace.Resolve(catalogue.All).Source,
-                     cancellationToken: cancellationToken)
-                                .ConfigureAwait(false);
-
     // ── Ledger annotations ────────────────────────────────────────────────────
 
     /// <summary>
@@ -1211,16 +674,11 @@ public static class Demo01_RecommendationAgent
     /// <param name="ledger">The turn's ledger.</param>
     /// <param name="offline">True when the baseline arm stood in for the model.</param>
     /// <param name="presentedCount">How many presentations were made in total.</param>
-    /// <param name="modelStatedUserSides">How many of them carried a MODEL-written user side (§8.1 B-5).</param>
+    /// <param name="modelStatedUserSides">How many of them carried a MODEL-written user side.</param>
     internal static void NoteEvidenceArms(GuardrailLedger ledger, bool offline, int presentedCount, int modelStatedUserSides)
     {
-        // ── §8.1 B-5: this note is now CONDITIONAL, and that is the point ───────────────
-        //
-        // It used to be written unconditionally, which made it true — the user side really was
-        // always derived — and useless, because a note that never varies tells a reader nothing
-        // about the run in front of them. Now it fires only for the items whose user side the
-        // model did NOT supply, and its absence is a positive statement: every recommendation on
-        // this turn carried a citation the filter was able to test.
+        // Record the fallback only for presentations whose user side was actually derived. If this
+        // note is absent, every presentation carried model-written evidence the filter could test.
         var derived = Math.Max(0, presentedCount - modelStatedUserSides);
         if (derived > 0)
         {
@@ -1262,87 +720,6 @@ public static class Demo01_RecommendationAgent
     }
 
     // ── Diagnostics ───────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Dumps every tool invocation in call order with its result preview, exactly as
-    /// <c>Demo01_TravelAgent</c> does — the fastest way to see where a run broke.
-    /// </summary>
-    /// <summary>
-    /// What this turn's model call cost, in tokens the PROVIDER reported.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>The gap this closes, and it is the one item 8.17 did not reach.</b> That item metered the
-    /// discovery loop and Eval 08's workflow arm — the two lanes it was filed for — and the row it
-    /// shipped is named <c>TheChatLaneSaysWhatItSpent</c> while its body reached
-    /// <c>DiscoveryModelCall</c> and nothing else. This lane is the OTHER chat lane, and the one a
-    /// customer actually meets: a live <c>AIAgent.RunAsync</c> against the same deployment, whose
-    /// response was read for its tool calls and never for <c>response.Usage</c>. The turn printed a
-    /// tool-call COUNT, elapsed seconds, and — a few lines further down — the EMBEDDING lane's
-    /// fraction of a cent. <b>A count is not a bill, and the lane that spends most on this demo was
-    /// the one reporting nothing.</b>
-    /// </para>
-    /// <para>
-    /// <b>Why there is no currency figure.</b> Same reason as Demo 02's: this project has no
-    /// AgentEval dependency by design, so it reaches no rate table, and a meter may not invent one.
-    /// Tokens are the measurement. <see cref="ChatSpend.Describe"/> owns the UNKNOWN-is-not-zero
-    /// distinction, so a call that came back without a usage block — or did not come back at all —
-    /// cannot render as a free one.
-    /// </para>
-    /// </remarks>
-    /// <param name="spend">This turn's meter.</param>
-    private static void PrintChatSpend(ChatSpend spend)
-    {
-        var lines = spend.Describe();
-        if (lines.Count == 0) return;
-
-        Console.ForegroundColor = ConsoleColor.DarkGray;
-        Console.WriteLine($"  💸 Chat: {lines[0]}");
-        foreach (var extra in lines.Skip(1)) Console.WriteLine($"     {extra}");
-        Console.WriteLine($"     model: {Config.Model}");
-        Console.WriteLine("     cost : UNKNOWN IN THIS PROCESS — no rate table here (no AgentEval dependency, by");
-        Console.WriteLine("            design), and a meter may not invent a rate. The tokens above are the measurement.");
-        Console.ResetColor();
-        Console.WriteLine();
-    }
-
-    private static void PrintToolTrace(AgentResponse response, TimeSpan elapsed, string budgetSummary)
-    {
-        var calls = response.Messages.SelectMany(m => m.Contents).OfType<FunctionCallContent>().ToList();
-
-        var resultsByCallId = response.Messages
-            .SelectMany(m => m.Contents)
-            .OfType<FunctionResultContent>()
-            .GroupBy(r => r.CallId)
-            .ToDictionary(g => g.Key, g => g.First());
-
-        // Every counter against ITS OWN cap. The first version printed one "budget N of 24" and
-        // that number counted presentations as searches — see ToolCallBudget's remarks.
-        Console.ForegroundColor = ConsoleColor.DarkCyan;
-        Console.WriteLine($"  📊 Tool trace — {calls.Count} call(s) in {elapsed.TotalSeconds:0.0}s · {budgetSummary}");
-        Console.ResetColor();
-
-        if (calls.Count == 0)
-        {
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("     ⚠  No tools invoked — the model answered from prompt context only. It therefore");
-            Console.WriteLine("        presented nothing, since PresentRecommendation is the only channel. Usually the");
-            Console.WriteLine("        deployment does not support function calling, or the run was cut short.");
-            Console.ResetColor();
-            return;
-        }
-
-        Console.ForegroundColor = ConsoleColor.DarkGray;
-        for (var i = 0; i < calls.Count; i++)
-        {
-            var preview = resultsByCallId.TryGetValue(calls[i].CallId, out var r)
-                ? Clip(Flatten(r.Result?.ToString()), 110)
-                : "(no result returned — tool may have errored)";
-            Console.WriteLine($"     [{i + 1,2}] {calls[i].Name}  →  {preview}");
-        }
-        Console.ResetColor();
-        Console.WriteLine();
-    }
 
     /// <summary>
     /// Reconciles what the model presented against what the customer will see, item by item.
@@ -1392,21 +769,20 @@ public static class Demo01_RecommendationAgent
     /// Explains the accounting behind the ledger's "tool calls N of 24" line, every run.
     /// </summary>
     /// <remarks>
-    /// The ledger's figure is REFUSABLE calls only: the three semantic and seven structured tools.
+    /// The ledger's figure is REFUSABLE calls only: the three semantic and nine structured tools.
     /// <c>PresentRecommendation</c> is the answer channel — counted separately, never refused and
-    /// never charged to a cap (§F.9), because a spent budget must bound the spend, not silence the
+    /// never charged to a cap, because a spent budget must bound the spend, not silence the
     /// answer. Identical repeats within the turn are replayed from memory and charged to nothing.
-    /// Printed on every live run because the 2026-09-04 run's "24 of 24 — stopped on its own" was
-    /// a saturated counter that had been charging presentations against the search cap, and a
-    /// reader had no way to see that from the one number.
+    /// Printing the counters separately prevents a saturated aggregate from making presentations
+    /// look like search spend or a cap-triggered stop.
     /// </remarks>
     private static void PrintBudgetNote(string budgetSummary)
     {
         Console.ForegroundColor = ConsoleColor.DarkGray;
         Console.WriteLine($"  ℹ  budget accounting: {budgetSummary}");
-        Console.WriteLine("     'refusable' is the ledger's tool-call figure: the ten retrieval and lookup tools, capped.");
+        Console.WriteLine("     'refusable' is the ledger's tool-call figure: the twelve retrieval and lookup tools, capped.");
         Console.WriteLine("     Presentations are the answer channel — counted, never refused, never charged to a cap.");
-        Console.WriteLine("     'replays' are identical repeats answered from this turn's memory at no cost (§F.9).");
+        Console.WriteLine("     'replays' are identical repeats answered from this turn's memory at no cost.");
         Console.ResetColor();
         Console.WriteLine();
     }
@@ -1433,7 +809,7 @@ public static class Demo01_RecommendationAgent
         Console.ForegroundColor = ConsoleColor.Cyan;
         Console.WriteLine(@"
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║   Demo 01 — Robin, the Galaxus recommendation agent (single agent)           ║
+║   Demo 01 — Robin, the VITRINE recommendation agent (single agent)           ║
 ║   Code derives the interests · the model searches · code screens the answer  ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 ");
@@ -1452,31 +828,13 @@ public static class Demo01_RecommendationAgent
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine("  🔒 personalization OFF — GetPurchaseHistory and GetInterestMap will REFUSE. The");
             Console.WriteLine("     history is not filtered or summarised; it is not read. The turn runs on what");
-            Console.WriteLine("     the customer says in this conversation (§F.6).");
+            Console.WriteLine("     the customer says in this conversation.");
             Console.ResetColor();
         }
 
         Console.ForegroundColor = ConsoleColor.White;
         Console.WriteLine($"\n  Request  : \"{prompt}\"\n");
         Console.ResetColor();
-    }
-
-    private static void PrintRetrievalBanner(IProductRetriever retriever)
-    {
-        Console.ForegroundColor = ConsoleColor.DarkGray;
-        Console.WriteLine($"  Retrieval: {retriever.Name} over {retriever.ProductCount} products · "
-                        + $"dense leg {(retriever.DenseAvailable ? "available" : "UNAVAILABLE")}");
-        Console.ResetColor();
-
-        // Which SPACE produced everything below. A reader who cannot see this cannot tell an
-        // authored 24-dimension cosine from a text-embedding-3-small one, and the two are not
-        // comparable — see EmbeddingSpace.
-        EmbeddingSpace.Current?.PrintBanner();
-
-        if (retriever is HybridRetriever { DenseAvailable: false } hybrid)
-            RecommendationPrinter.PrintDegradedRetrievalNotice(hybrid.DenseUnavailableReason);
-
-        Console.WriteLine();
     }
 
     private static void PrintOfflineBanner()
@@ -1488,6 +846,19 @@ public static class Demo01_RecommendationAgent
   │  interest map, one search per signal, and the guardrail pipeline. This is │
   │  the BASELINE arm, not the agent. Compare it with a live run before       │
   │  believing any claim about what the model adds.                          │
+  └──────────────────────────────────────────────────────────────────────────┘");
+        Console.ResetColor();
+        Console.WriteLine();
+    }
+
+    private static void PrintScriptedBanner()
+    {
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine(@"  ┌──────────────────────────────────────────────────────────────────────────┐
+  │  SCRIPTED AGENT — deterministic local chat boundary.                    │
+  │  The real ChatClientAgent and registered read-only tools execute, while │
+  │  no remote chat model is called. This is a reproducible mechanism run,  │
+  │  not evidence of provider-model quality.                                │
   └──────────────────────────────────────────────────────────────────────────┘");
         Console.ResetColor();
         Console.WriteLine();
@@ -1513,50 +884,11 @@ public static class Demo01_RecommendationAgent
     private static void PrintMissingCredentials()
     {
         Console.ForegroundColor = ConsoleColor.Yellow;
-        Console.WriteLine(@"
-  ⚠️  Skipping the live run — Azure OpenAI credentials required.
-
-     Set the following environment variables and try again:
-       AZURE_OPENAI_ENDPOINT
-       AZURE_OPENAI_API_KEY
-       AZURE_OPENAI_DEPLOYMENT          (optional, defaults to gpt-5-mini)
-
-     Or run the deterministic half with no key at all:
-       dotnet run --project src/AgentEval.VitrineDemo -- 1 --offline
-");
-        Console.ResetColor();
-    }
-
-    private static void PrintAzureFailure(int status, string? errorCode)
-    {
-        Console.ForegroundColor = ConsoleColor.Red;
-        Console.WriteLine($"\n  ❌ Azure OpenAI request failed (HTTP {status})");
-        if (!string.IsNullOrEmpty(errorCode)) Console.WriteLine($"     ErrorCode: {errorCode}");
-        Console.WriteLine("     Message:   withheld to prevent configuration disclosure");
-
-        var hint = status switch
-        {
-            400        => "Bad request. A 'response cut off / content filter' message means Azure's content-safety policy trimmed the output mid-tool-call.",
-            401 or 403 => "Auth / quota. Re-check AZURE_OPENAI_API_KEY and that the deployment has function calling enabled.",
-            404        => "Deployment not found. Verify AZURE_OPENAI_DEPLOYMENT names a deployment in this resource.",
-            408        => "Azure timed out reading the request.",
-            429        => "Rate-limited. The run succeeds on retry once the bucket refills.",
-            >= 500     => "Azure-side server error. Usually transient — retry.",
-            _          => null,
-        };
-        if (hint is not null) Console.WriteLine($"     Hint:      {hint}");
-        Console.ResetColor();
-    }
-
-    private static void PrintGenericFailure(string kind, string hint, Exception ex)
-    {
-        Console.ForegroundColor = ConsoleColor.Red;
-        Console.WriteLine($"\n  ❌ Run failed — {kind}");
-        Console.WriteLine("     Message:  withheld to prevent configuration disclosure");
-        Console.WriteLine($"     Hint:     {hint}");
-        if (ex.InnerException is not null)
-            Console.WriteLine($"     Inner:    {ex.InnerException.GetType().Name}; message withheld");
-        Console.WriteLine("\n     Stack trace: withheld to prevent configuration disclosure");
+        Console.WriteLine("\n  ⚠️  Skipping the live run — Azure OpenAI is not locally ready.");
+        Console.WriteLine($"     {Config.Readiness.BlockingReason}");
+        Console.WriteLine("     Configure API-key, local Entra, or managed-identity authentication as documented in");
+        Console.WriteLine("     docs/Vitrine-Live-Run-Setup.html, or run the deterministic path:");
+        Console.WriteLine("       dotnet run --project src/AgentEval.VitrineDemo -- 1 --offline\n");
         Console.ResetColor();
     }
 
@@ -1597,9 +929,6 @@ public static class Demo01_RecommendationAgent
         var shared = left.Count(right.Contains);
         return (double)shared / left.Count;
     }
-
-    private static string Flatten(string? text) =>
-        (text ?? string.Empty).Replace('\n', ' ').Replace('\r', ' ').Trim();
 
     private static string Clip(string? text, int max)
     {

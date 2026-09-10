@@ -11,7 +11,7 @@ using Galaxus.RecommendationAgent.Domain;
 namespace Galaxus.RecommendationAgent.Retrieval;
 
 /// <summary>
-/// The committed-asset embedding path (design §D.4): loads the real PRODUCT vectors generated once
+/// The committed-asset embedding path: loads the real PRODUCT vectors generated once
 /// by <c>--rebuild-embeddings</c>, validates the stamp on them, and embeds everything else — every
 /// QUERY — through a live source at search time.
 /// </summary>
@@ -23,23 +23,16 @@ namespace Galaxus.RecommendationAgent.Retrieval;
 /// plumbing while quietly breaking the one claim the demo exists to make.
 /// </para>
 /// <para>
-/// <b>This class is an index with a live query path, NOT a lookup table.</b> That distinction is
-/// the whole of B-21, and it was learned the expensive way. Until 2026-09-05 the committed assets
-/// were TWO files — 99 product vectors and 71 <i>pre-guessed query texts</i> — and this class was
-/// a <c>Dictionary&lt;string, float[]&gt;</c> lookup over both, with no live path attached. A
-/// query composed at run time is not among 71 guesses, so it resolved to <c>Unavailable</c>, the
-/// dense leg ranked nothing, and <c>--real-vectors</c> produced <c>0 in → 0 out</c> for every
-/// persona. The product vectors were never the problem: measured 2026-09-05, queries embedded
-/// LIVE against those same committed vectors give <c>"camera"</c> → Sony α7 IV at 0.372,
-/// <c>"a warm jacket for hiking"</c> → Arc'teryx shell at 0.458, and Nadia's own composed label
-/// <c>"multi-day trips, starts before sunrise, carried"</c> → Osprey trekking pack 0.381, Peak
-/// Design travel tripod 0.365, Katadyn water filter 0.327, Petzl headlamp 0.325 — with no shared
-/// keyword anywhere. One architectural mistake, not a model problem and not a corpus problem.
+/// <b>This is an index with a live query path, not a query lookup table.</b> The committed asset
+/// contains product documents only; open-ended query text is embedded when searched. A measured
+/// smoke check against the shipped index returns Sony α7 IV for <c>"camera"</c> at 0.372 and the
+/// Arc'teryx shell for <c>"a warm jacket for hiking"</c> at 0.458. Nadia's composed label
+/// <c>"multi-day trips, starts before sunrise, carried"</c> retrieves the Osprey pack (0.381),
+/// Peak Design tripod (0.365), Katadyn filter (0.327), and Petzl headlamp (0.325).
 /// </para>
 /// <para>
-/// The query table and its asset are DELETED. Caching a query is caching an ANSWER to a question
-/// nobody has asked yet; caching a product is caching a description of a thing that exists. Only
-/// the second is a legitimate build artifact, and only the second is committed.
+/// A product vector is a reusable description of a catalogue item. A pre-guessed query vector is
+/// an incomplete answer to a question not yet asked, so query vectors are never committed.
 /// </para>
 /// <para>
 /// <b>The stamp is checked, not trusted.</b> Model, dimensions and
@@ -61,23 +54,21 @@ namespace Galaxus.RecommendationAgent.Retrieval;
 /// grows to include things this process happened to look up.
 /// </para>
 /// <para>
-/// ⚠ <b>"Once" means once per BYTE-IDENTICAL text, and the two keys in this class disagree about
-/// that.</b> The committed lookup keys on <see cref="EmbeddingDocument.HashQuery"/>, which trims,
+/// <b>"Once" means once per byte-identical query text.</b> The committed lookup keys on
+/// <see cref="EmbeddingDocument.HashQuery"/>, which trims,
 /// lower-cases and collapses whitespace; the memo keys on the exact ordinal string. So two texts
-/// this class's own key function calls identical are embedded TWICE. Measured 2026-09-05: a query
-/// and its upper-cased self have the same <c>HashQuery</c> key, cost two live calls, and come back
+/// that share a committed-lookup key can still be embedded twice. A measured query and its
+/// upper-cased form cost two live calls and came back
 /// at cosine <b>0.856</b> to each other — a real difference in the answer, not just in the bill.
-/// The asymmetry is safe in the direction that matters (nothing is served a vector computed from
-/// different text) and it is the cheap way round; it is written down because "one text, one call"
-/// is otherwise read as stronger than it is. Callers that compose a query should not rely on case
-/// or spacing being normalised away for them.
+/// Exact memo keys ensure no query is served a vector computed from different text. Callers must
+/// not assume case or spacing is normalised for live embeddings.
 /// </para>
 /// <para>
 /// <b>Still not the key-free default.</b> This path needs credentials, so
 /// <see cref="ConceptEmbeddingSource"/> remains what <see cref="EmbeddingSpace"/> resolves to when
 /// none are present — and, per <see cref="EmbeddingSpace.AutoPrefers"/>, what it prefers even when
-/// they are. That is now a reproducibility argument rather than a retrieval one; the retrieval
-/// argument is gone, because this path works.
+/// they are. That default keeps credential-free evaluation deterministic; callers opt into this
+/// higher-fidelity, paid path explicitly.
 /// </para>
 /// </remarks>
 public sealed class PrecomputedEmbeddingSource : IEmbeddingSource
@@ -128,10 +119,9 @@ public sealed class PrecomputedEmbeddingSource : IEmbeddingSource
 
     /// <inheritdoc />
     /// <remarks>
-    /// ✅ <b>DERIVED for the real space</b> — see <see cref="CalibratedThresholds.RealVectors"/>. It
-    /// no longer defers to the live fallback and then to a shared constant: the committed index IS
-    /// the real space, with or without a live query path attached, so the floor is the same either
-    /// way and reading it from one place removes a branch that could have disagreed with itself.
+    /// Derived for the committed real-vector space; see
+    /// <see cref="CalibratedThresholds.RealVectors"/>. The same floor applies with or without a
+    /// live query source attached because both search the same index space.
     /// </remarks>
     public float SuggestedDenseScoreFloor => CalibratedThresholds.RealVectors.DenseScoreFloor;
 
@@ -159,8 +149,8 @@ public sealed class PrecomputedEmbeddingSource : IEmbeddingSource
     public int CacheHits => Volatile.Read(ref _cacheHits);
 
     /// <summary>
-    /// Lookups the committed asset could not answer. Since B-21 a QUERY is expected to miss —
-    /// the asset holds product documents only — so this counts the live path's workload rather
+    /// Lookups the committed asset could not answer. Queries are expected to miss because the
+    /// asset holds product documents only, so this counts the live path's workload rather
     /// than staleness. A miss on a PRODUCT document is the staleness signal, and it shows up as
     /// a template-version rejection at load instead.
     /// </summary>
@@ -328,9 +318,7 @@ public sealed class PrecomputedEmbeddingSource : IEmbeddingSource
     /// <summary>
     /// Finds an asset by file name: embedded resource first, then <c>Data/</c> beside the binary,
     /// then <c>Data/</c> in each parent directory up to the repository root, then the working
-    /// directory. Returns null when the asset does not exist anywhere — which since B-6
-    /// (2026-09-05) means the assets were deleted or the resource was not embedded, not that they
-    /// were never generated.
+    /// directory. Returns null when no embedded or on-disk asset exists.
     /// </summary>
     /// <param name="fileName">e.g. <c>"catalogue.embeddings.json"</c>.</param>
     public static string? ResolveAssetPath(string fileName)
@@ -361,7 +349,7 @@ public sealed class PrecomputedEmbeddingSource : IEmbeddingSource
 
     /// <summary>
     /// Opens an asset as a stream, preferring an embedded resource so there is no output-path
-    /// resolution to get wrong once the two <c>EmbeddedResource</c> entries are restored to the csproj.
+    /// resolution to get wrong when the asset is packaged as an <c>EmbeddedResource</c>.
     /// </summary>
     /// <param name="fileName">e.g. <c>"catalogue.embeddings.json"</c>.</param>
     /// <param name="stream">The opened stream; the caller disposes it.</param>
@@ -412,9 +400,7 @@ public sealed class PrecomputedEmbeddingSource : IEmbeddingSource
         int    dimensions = liveFallback?.Dimensions ?? 0;
         bool   stampSeen  = false;
 
-        // ONE asset: the product vectors. The query asset that used to sit beside it was deleted
-        // at B-21 — see the remarks on this class for why a pre-guessed query table is a bug
-        // rather than an asset.
+        // The only accepted artifact is the product-vector index. Queries are embedded live.
         var names = assetPaths?.ToArray() ?? [EmbeddingCacheBuilder.CatalogueAssetFileName];
 
         foreach (var name in names)
@@ -478,11 +464,9 @@ public sealed class PrecomputedEmbeddingSource : IEmbeddingSource
                 dimensions = file.Dimensions;
                 stampSeen  = true;
 
-                // Since B-21 the ONLY legitimate keying is by product id. A query-keyed asset is
-                // the deleted pre-guessed query table, and loading one would silently re-create
-                // the bug B-21 removed: run-time-composed queries would still miss it, but the
-                // handful that happened to hit would be answered from a stale snapshot instead of
-                // from the live embedder. Refused, loudly, rather than partially honoured.
+                // Product id is the only accepted keying. A query-keyed asset is incomplete by
+                // construction: composed queries would miss while coincidental hits would come
+                // from a stale snapshot. Refuse it rather than partially honouring it.
                 if (!string.Equals(file.Keying, EmbeddingCacheFile.KeyingProductId, StringComparison.Ordinal))
                 {
                     var message =
@@ -598,7 +582,7 @@ public sealed class PrecomputedEmbeddingSource : IEmbeddingSource
 }
 
 /// <summary>
-/// The on-disk shape of a committed embedding asset (design §D.4). Base64 float32 little-endian,
+/// The on-disk shape of a committed embedding asset. Base64 float32 little-endian,
 /// which is exact — there is no quantisation and therefore no "did the cache change recall?" question.
 /// </summary>
 /// <remarks>

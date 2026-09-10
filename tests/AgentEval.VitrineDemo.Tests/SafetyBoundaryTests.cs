@@ -6,6 +6,7 @@ using System.Text.Json;
 using Galaxus.RecommendationAgent.Catalog;
 using Galaxus.RecommendationAgent.Demos;
 using Galaxus.RecommendationAgent.Guardrails;
+using Galaxus.RecommendationAgent.Observability;
 using Galaxus.RecommendationAgent.Rendering;
 using Galaxus.RecommendationAgent.Tools;
 using Galaxus.RecommendationAgent.Workflows;
@@ -136,5 +137,114 @@ public sealed class SafetyBoundaryTests
         Assert.NotNull(workflow.State.CustomerAnswerSafety);
         Assert.True(workflow.State.CustomerAnswerSafety!.IsSafe);
         Assert.Equal(workflow.State.CustomerAnswerSafety.Answer, workflow.State.FinalAnswer);
+    }
+
+    [Fact]
+    public async Task RunReportLabelsConfidenceAndScopesTheOfflineEvalCommandPrecisely()
+    {
+        var result = await RecommendationRunEngine.RunAsync(new(
+            Personas.NadiaUserId,
+            Arm: RecommendationExecutionArm.ZeroModelBaseline));
+        Assert.NotNull(result.Profile);
+        Assert.NotNull(result.Prompt);
+        Assert.NotNull(result.InterestMap);
+        Assert.NotNull(result.Outcome);
+
+        var reportPath = Path.Combine(
+            Path.GetTempPath(),
+            $"vitrine-run-report-{Guid.NewGuid():N}.html");
+        try
+        {
+            RunReportHtml.Write(
+                reportPath,
+                "Demo 01",
+                "zero-model baseline",
+                result.Prompt!,
+                result.Profile!.User,
+                result.InterestMap!,
+                result.ClassifiedPurchases,
+                result.Outcome!.Cleaned,
+                result.Outcome.VerifiedPrices,
+                result.Outcome.Ledger,
+                Catalogue.Default);
+
+            var html = await File.ReadAllTextAsync(reportPath);
+
+            Assert.Contains("code-derived routing heuristic; uncalibrated", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("self-reported by the selector", html, StringComparison.Ordinal);
+            Assert.Contains("2 synthetic cases/personas × 3 deterministic arms × 2 repetitions", html, StringComparison.Ordinal);
+            Assert.Contains("registered mutation controls", html, StringComparison.Ordinal);
+            Assert.Contains("chance floor <span class=\"mono\">NotDerivable</span>", html, StringComparison.Ordinal);
+            Assert.Contains("no defensible random-answer chance floor is derivable", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("registered negative controls", html, StringComparison.Ordinal);
+            Assert.Contains("does not run the paid multi-scenario or repeated-model plans", html, StringComparison.Ordinal);
+            Assert.Contains("--confirm-paid", html, StringComparison.Ordinal);
+            Assert.Contains("do not manufacture a per-arm chance floor", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("over the whole persona set", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("chance floor per arm", html, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (File.Exists(reportPath)) File.Delete(reportPath);
+        }
+    }
+
+    [Fact]
+    public async Task RunReportSeparatesLiveMissingUsageFromProviderFreeDeterministicOutput()
+    {
+        var result = await RecommendationRunEngine.RunAsync(new(
+            Personas.NadiaUserId,
+            Arm: RecommendationExecutionArm.ZeroModelBaseline));
+        Assert.NotNull(result.Profile);
+        Assert.NotNull(result.Prompt);
+        Assert.NotNull(result.InterestMap);
+        Assert.NotNull(result.Outcome);
+
+        var suffix = Guid.NewGuid().ToString("N");
+        var offlinePath = Path.Combine(Path.GetTempPath(), $"vitrine-offline-report-{suffix}.html");
+        var scriptedPath = Path.Combine(Path.GetTempPath(), $"vitrine-scripted-report-{suffix}.html");
+        var livePath = Path.Combine(Path.GetTempPath(), $"vitrine-live-report-{suffix}.html");
+
+        try
+        {
+            foreach (var (path, arm) in new[]
+                     {
+                         (offlinePath, "offline baseline — no model call"),
+                         (scriptedPath, "scripted ChatClient — deterministic local chat boundary"),
+                     })
+            {
+                RunReportHtml.Write(
+                    path, "Demo 01", arm, result.Prompt!, result.Profile!.User,
+                    result.InterestMap!, result.ClassifiedPurchases, result.Outcome!.Cleaned,
+                    result.Outcome.VerifiedPrices, result.Outcome.Ledger, Catalogue.Default);
+
+                var providerFreeHtml = await File.ReadAllTextAsync(path);
+                Assert.Contains("two offline runs of the same customer produce byte-identical files",
+                    providerFreeHtml, StringComparison.Ordinal);
+                Assert.DoesNotContain("<td>Provider usage</td>", providerFreeHtml, StringComparison.Ordinal);
+            }
+
+            RunReportHtml.Write(
+                livePath, "Demo 01", "live agent · deployment test-deployment", result.Prompt!,
+                result.Profile!.User, result.InterestMap!, result.ClassifiedPurchases,
+                result.Outcome!.Cleaned, result.Outcome.VerifiedPrices, result.Outcome.Ledger,
+                Catalogue.Default, liveProviderUsage: ProviderUsageMeasurement.FromDemo01(2, null));
+
+            var liveHtml = await File.ReadAllTextAsync(livePath);
+            Assert.Contains("<tr><td>Model calls</td><td class=\"num\">2</td></tr>", liveHtml,
+                StringComparison.Ordinal);
+            Assert.Contains("<tr><td>Provider usage</td><td class=\"num absent\">NOT MEASURED</td></tr>",
+                liveHtml, StringComparison.Ordinal);
+            Assert.DoesNotContain("<td>Provider usage</td><td class=\"num\">0 tokens", liveHtml,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("two offline runs", liveHtml, StringComparison.Ordinal);
+            Assert.Contains("This live page records the selected deployment and the provider-usage state above",
+                liveHtml, StringComparison.Ordinal);
+        }
+        finally
+        {
+            foreach (var path in new[] { offlinePath, scriptedPath, livePath })
+                if (File.Exists(path)) File.Delete(path);
+        }
     }
 }

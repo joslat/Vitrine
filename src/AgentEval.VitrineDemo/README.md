@@ -18,10 +18,15 @@ The companion `AgentEval.VitrineDemo.Evals` project owns expectations and verdic
 emits facts and observations; it does not grade itself.
 
 For the recruiter-facing intent, read the
-[Digitec Galaxus value proposal](../../docs/Vitrine-Digitec-Galaxus-Value-Proposal.html).
+[Digitec Galaxus value proposal](https://azuresamurai.blog/Vitrine/Vitrine-Digitec-Galaxus-Value-Proposal.html).
 For the current end-to-end operating path, read the
-[walkthrough](../../docs/Vitrine-Walkthrough.html) and repository-root
+[walkthrough](https://azuresamurai.blog/Vitrine/Vitrine-Walkthrough.html) and repository-root
 [README](../../README.md).
+For the optional provider-backed path, use the canonical
+[Microsoft Foundry live-run setup](https://azuresamurai.blog/Vitrine/Vitrine-Live-Run-Setup.html);
+the current client requires an Azure OpenAI resource endpoint—not a Foundry project endpoint—and
+explicitly supports API-key compatibility, a local `DefaultAzureCredential`, or a deterministic
+hosted `ManagedIdentityCredential`.
 
 ## Run the subject
 
@@ -34,17 +39,21 @@ From the repository root:
 # Workflow Demo02 with the real five-executor graph
 .\start.ps1 -Mode Demo02 -NoRestore
 
-# Open the visual control room and choose an arm/persona before running
+# Optional: open the visual control room and choose an arm/persona before running
 .\start.ps1 -Mode App
 
-# Direct subject selector 1; selectors 1-6 are offline by default
+# Direct subject selector 1; the zero-model baseline remains the default
 dotnet run --project src/AgentEval.VitrineDemo -- 1
+
+# Real Demo01 agent and tools with the deterministic local chat client
+dotnet run --project src/AgentEval.VitrineDemo -- 1 --scripted
 
 # Model-backed subject execution requires both flags
 dotnet run --project src/AgentEval.VitrineDemo -- 1 --live --confirm-paid
 ```
 
-Credentials never change that default. The standalone CLI rejects a provider-capable request
+Credentials never change that default. `--offline`, `--scripted`, and `--live` are mutually
+exclusive subject-arm selectors, and `--scripted` is valid only for Demo01. The standalone CLI rejects a provider-capable request
 before execution unless it is explicitly confirmed: `--live`, `--real-vectors`, and
 `--rebuild-embeddings` each require `--confirm-paid`. `--real-vectors` may embed queries live even
 when the subject itself is offline.
@@ -86,6 +95,9 @@ criteria, and tool expectations remain in the eval project so they cannot leak i
 The main source areas are:
 
 - `Agents/` — Demo01 execution and its zero-model/scripted/live arm selection.
+- `Demos/` — Demo01 and Demo02 orchestration and run options. The former Demo01 post-run guardrail matrix now lives as twelve named credential-free regression tests; the canonical 43-control evaluation panel is unchanged.
+- `Domain/` — shared product, customer, signal, and recommendation contracts.
+- `Evaluation/` — subject-side observation policy; expectations and verdicts stay in the eval project.
 - `Workflows/` — Demo02 state, executors, routes, loop conditions, and typed workflow events.
 - `Catalogue/` — synthetic products, personas, histories, reviews, and validation.
 - `Retrieval/` — deterministic concept and lexical retrieval plus optional provider-backed paths.
@@ -93,10 +105,13 @@ The main source areas are:
 - `Tools/` — the observed, read-only agent function surface.
 - `Guardrails/` — mechanical catalogue/evidence screening and final customer-answer screening.
 - `Observability/` — correlated model/tool lifecycle events and usage states.
-- `Presentation/` — bounded customer-facing recommendation composition.
+- `Rendering/` — bounded customer-facing composition, console output, and run reports.
+
+The optional visual control room lives in the sibling `AgentEval.VitrineDemo.App` project; the
+subject remains runnable directly without it.
 
 The normative ownership and data flow are documented in
-[`docs/Vitrine-Architecture.html`](../../docs/Vitrine-Architecture.html).
+[`docs/Vitrine-Architecture.html`](https://azuresamurai.blog/Vitrine/Vitrine-Architecture.html).
 
 ## Safety and privacy boundaries
 
@@ -121,8 +136,8 @@ The sibling eval project adds:
 - Wilson reliability, native paired comparisons, honest missing measurements, and durable local
   evidence.
 
-See the [evaluation protocol](../../docs/Vitrine-Evaluation-Protocol.html) for exact semantics and the
-[offline report](../../docs/reports/evals-offline.html) for one checked-in evidence artifact.
+See the [evaluation protocol](https://azuresamurai.blog/Vitrine/Vitrine-Evaluation-Protocol.html) for exact semantics and the
+[offline report](https://azuresamurai.blog/Vitrine/reports/evals-offline.html) for one checked-in evidence artifact.
 
 ## Honest limits
 
@@ -137,4 +152,4 @@ See the [evaluation protocol](../../docs/Vitrine-Evaluation-Protocol.html) for e
 
 Historical predecessor design material is deliberately omitted from the public snapshot; its
 commands, counts, and measurements are not the current VITRINE contract. Use the
-[VITRINE retrieval deep dive](../../docs/Vitrine-Retrieval-Deep-Dive.html) as the current reference.
+[VITRINE retrieval deep dive](https://azuresamurai.blog/Vitrine/Vitrine-Retrieval-Deep-Dive.html) as the current reference.

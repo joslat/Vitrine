@@ -6,7 +6,7 @@ using Galaxus.RecommendationAgent.Domain;
 namespace Galaxus.RecommendationAgent.Guardrails;
 
 /// <summary>
-/// Candidate-set containment (§8.1 B-6a): the model may only present a product that a retrieval
+/// Candidate-set containment: the model may only present a product that a retrieval
 /// route in THIS turn actually returned. Demo 2 has had this check since it was built; Demo 1 —
 /// the arm an interviewer runs first — did not.
 /// </summary>

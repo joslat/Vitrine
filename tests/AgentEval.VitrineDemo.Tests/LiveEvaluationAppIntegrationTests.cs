@@ -2,6 +2,7 @@
 
 using AgentEval.Evals.Meta;
 using AgentEval.VitrineDemo.App;
+using AgentEval.VitrineDemo.App.Models;
 using AgentEval.VitrineDemo.App.Runtime;
 using AgentEval.VitrineDemo.App.ViewModels;
 using AgentEval.VitrineDemo.Evals.Live;
@@ -22,6 +23,7 @@ public sealed class LiveEvaluationAppIntegrationTests
         window.Show();
         var viewModel = Assert.IsType<MainWindowViewModel>(window.DataContext);
         viewModel.SelectedMode = VitrineRunMode.Evals;
+        viewModel.Setup.ShowAdvancedEvaluationPlans = true;
         viewModel.Setup.SelectedEvaluationPlan = viewModel.Setup.EvaluationPlans.Single(item =>
             item.Plan == VitrineEvaluationPlan.LiveEval03AgentVsWorkflow);
         var tab = window.GetVisualDescendants().OfType<TabItem>()
@@ -51,8 +53,12 @@ public sealed class LiveEvaluationAppIntegrationTests
 
         Assert.Equal(VitrineEvaluationPlan.OfflineSuite, setup.SelectedEvaluationPlan.Plan);
         Assert.False(setup.SelectedEvaluationPlan.IsLive);
-        Assert.Equal(7, setup.EvaluationPlans.Count);
+        Assert.Equal(3, setup.EvaluationPlans.Count);
+        Assert.DoesNotContain(setup.EvaluationPlans,
+            static item => item.Plan == VitrineEvaluationPlan.LiveEval03AgentVsWorkflow);
 
+        setup.ShowAdvancedEvaluationPlans = true;
+        Assert.Equal(7, setup.EvaluationPlans.Count);
         setup.SelectedEvaluationPlan = setup.EvaluationPlans.Single(item =>
             item.Plan == VitrineEvaluationPlan.LiveEval03AgentVsWorkflow);
         setup.SelectedLiveScenario = setup.LiveScenarios.Single(item => item.Id is null);
@@ -66,6 +72,10 @@ public sealed class LiveEvaluationAppIntegrationTests
         });
         Assert.Equal(LiveUseCaseScenarios.All.Count * 2, setup.PlannedLiveSubjectRuns);
         Assert.Equal(setup.PlannedLiveSubjectRuns, setup.PlannedLiveJudgeCalls);
+
+        setup.ShowAdvancedEvaluationPlans = false;
+        Assert.Equal(VitrineEvaluationPlan.OfflineSuite, setup.SelectedEvaluationPlan.Plan);
+        Assert.Equal(3, setup.EvaluationPlans.Count);
     }
 
     [Fact]
@@ -76,15 +86,19 @@ public sealed class LiveEvaluationAppIntegrationTests
             SelectedEvaluationPlan = VitrineEvaluationPlans.Require(
                 VitrineEvaluationPlan.LiveEval04StochasticAgent),
         };
-        setup.PaidEvaluationAcknowledged = true;
-        Assert.True(setup.PaidEvaluationAcknowledged);
+        setup.PaidExecutionAcknowledged = true;
+        Assert.True(setup.PaidExecutionAcknowledged);
+        Assert.Equal(4, setup.MinimumEvaluationRepetitions);
+        setup.EvaluationRepetitions = 1;
+        Assert.Equal(4, setup.EvaluationRepetitions);
+        setup.PaidExecutionAcknowledged = true;
 
         setup.EvaluationRepetitions++;
-        Assert.False(setup.PaidEvaluationAcknowledged);
+        Assert.False(setup.PaidExecutionAcknowledged);
 
-        setup.PaidEvaluationAcknowledged = true;
+        setup.PaidExecutionAcknowledged = true;
         setup.SelectedLiveScenario = setup.LiveScenarios.Single(item => item.Id is null);
-        Assert.False(setup.PaidEvaluationAcknowledged);
+        Assert.False(setup.PaidExecutionAcknowledged);
     }
 
     [Fact]
@@ -93,9 +107,10 @@ public sealed class LiveEvaluationAppIntegrationTests
         var calls = 0;
         await using var coordinator = new VitrineRunCoordinator(
             (request, _) => VitrineGraphFactory.ForRunningLiveEvaluation(request.EvaluationPlan),
-            (plan, options, progress, _) =>
+            (plan, paidExecutionConfirmed, options, progress, _) =>
             {
                 calls++;
+                Assert.True(paidExecutionConfirmed);
                 Assert.Equal(VitrineEvaluationPlan.LiveEval01Agent, plan);
                 Assert.Equal(1, options.Repetitions);
                 Assert.Equal(["nadia-cross-category"], options.ScenarioIds);
@@ -125,7 +140,7 @@ public sealed class LiveEvaluationAppIntegrationTests
             EvaluationPlan: VitrineEvaluationPlan.LiveEval01Agent,
             LiveScenarioId: "nadia-cross-category",
             EvaluationRepetitions: 1,
-            PaidEvaluationConfirmed: true));
+            PaidExecutionConfirmed: true));
 
         Assert.Equal(1, calls);
         Assert.Null(outcome.Evaluation);
@@ -210,7 +225,7 @@ public sealed class LiveEvaluationAppIntegrationTests
         var calls = 0;
         await using var coordinator = new VitrineRunCoordinator(
             (request, _) => VitrineGraphFactory.ForRunningLiveEvaluation(request.EvaluationPlan),
-            (_, _, _, _) =>
+            (_, _, _, _, _) =>
             {
                 calls++;
                 return Task.FromResult(Result(VitrineEvaluationPlan.LiveEval01Agent));
@@ -223,7 +238,13 @@ public sealed class LiveEvaluationAppIntegrationTests
 
         Assert.Equal(0, calls);
         Assert.Null(outcome.LiveEvaluation);
-        Assert.Equal(nameof(InvalidOperationException), outcome.FailureKind);
+        Assert.Equal(VitrineRunCoordinator.PaidExecutionConfirmationRequiredFailureKind,
+            outcome.FailureKind);
+        var rejection = Assert.Single(outcome.Events);
+        Assert.Equal("PaidExecutionRejected", rejection.Kind);
+        Assert.Equal(VitrineEventDisposition.Blocked, rejection.Disposition);
+        Assert.Contains("No provider request was made", rejection.Detail,
+            StringComparison.Ordinal);
     }
 
     private static LiveEvalProgress Progress(

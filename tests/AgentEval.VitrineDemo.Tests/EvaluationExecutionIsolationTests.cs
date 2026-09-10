@@ -58,7 +58,7 @@ public sealed class EvaluationExecutionIsolationTests
         var request = new VitrineRunRequest(VitrineRunMode.Evals, Personas.NadiaUserId);
 
         Assert.Equal(VitrineEvaluationPlan.OfflineSuite, request.EvaluationPlan);
-        Assert.False(request.PaidEvaluationConfirmed);
+        Assert.False(request.PaidExecutionConfirmed);
     }
 
     [Fact]

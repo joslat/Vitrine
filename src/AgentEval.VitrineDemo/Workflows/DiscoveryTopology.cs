@@ -139,7 +139,7 @@ public static class DiscoveryTopology
             new(DiscoveryRouteIds.ReviewToMoreDiscovery, DiscoveryExecutorIds.CoverageReviewer,
                 DiscoveryExecutorIds.Discovery, "gaps remain", IsConditional: true, IsLoopBack: true),
             new(DiscoveryRouteIds.ReviewToRanker, DiscoveryExecutorIds.CoverageReviewer,
-                DiscoveryExecutorIds.Ranker, "coverage sufficient", IsConditional: true),
+                DiscoveryExecutorIds.Ranker, "approved / bounded partial", IsConditional: true),
             new(DiscoveryRouteIds.RankerToPresenter, DiscoveryExecutorIds.Ranker,
                 DiscoveryExecutorIds.Presenter, "ranked"),
         ]);

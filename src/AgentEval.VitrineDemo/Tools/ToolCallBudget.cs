@@ -7,7 +7,7 @@ using System.Text;
 namespace Galaxus.RecommendationAgent.Tools;
 
 /// <summary>
-/// The per-turn tool ledger (§F.9): the refusable-call cap, the distinct-search cap, the
+/// The per-turn tool ledger: the refusable-call cap, the distinct-search cap, the
 /// answer-channel count, and the memo that stops identical work being re-run. An
 /// <see cref="AsyncLocal{T}"/> scope opened by the demo immediately before <c>RunAsync</c>.
 /// </summary>
@@ -19,17 +19,12 @@ namespace Galaxus.RecommendationAgent.Tools;
 /// enforceable: inside the tools. A tool that cannot run cannot cost anything.
 /// </para>
 /// <para>
-/// <b>Three counters, kept apart — and the reason they used to be one.</b> The first version of
-/// this class kept ONE list: <c>TryConsume</c> appended to it and so did <c>Record</c>, and
-/// <c>Used</c> was the list's length. So the four <c>PresentRecommendation</c> calls of an
-/// answer counted against the same cap as the searches, and the 2026-09-04 live run printed
-/// "24 of 24 — the model stopped on its own". It had not stopped on its own: 20 refusable calls
-/// plus 4 presentations had saturated a counter that was measuring two different things, which
-/// is the n/n extreme this repository's rules flag as a wiring fault. The counters are now:
+/// <b>Three counters, kept apart.</b> Refusable calls, distinct semantic searches, and answer
+/// presentations have different meanings and must not share a cap. The counters are:
 /// </para>
 /// <list type="bullet">
 ///   <item><description><see cref="Used"/> / <see cref="Cap"/> — REFUSABLE calls: the three
-///   semantic and seven structured tools. Past the cap they return
+///   semantic and nine structured tools. Past the cap they return
 ///   <see cref="ToolJson.BudgetExhausted"/>. Default <see cref="DefaultMaxCalls"/>, unchanged
 ///   from the first version so the agent may do exactly what it could do before.</description></item>
 ///   <item><description><see cref="DistinctSearches"/> / <see cref="DistinctSearchCap"/> — how
@@ -41,9 +36,7 @@ namespace Galaxus.RecommendationAgent.Tools;
 ///   pass is a broken instrument rather than a cautious agent).</description></item>
 /// </list>
 /// <para>
-/// <b>The memo.</b> C-09 of the 2026-09-04 live run issued four byte-identical
-/// <c>SearchProductsByMeaning</c> calls and then four more, burning 12 of 24 refusable slots on
-/// about three distinct queries — and roughly half of a 148-second turn. Within one scope an
+/// <b>The memo.</b> Within one scope an
 /// identical (tool, arguments) call is now answered from the memo with
 /// <see cref="ToolJson.AlreadyReturned"/> and consumes nothing. Nothing the agent MAY do has
 /// changed: the same arguments produce the same answer within a turn, because the catalogue does
@@ -66,11 +59,9 @@ public static class ToolCallBudget
     /// The distinct-search cap the demo opens by default.
     /// </summary>
     /// <remarks>
-    /// CHOSEN, not measured. The only live per-turn distinct-search count on record is C-09's:
-    /// about three distinct queries behind twelve calls. Eight leaves room for one search per
+    /// CHOSEN, not measured. Eight leaves room for one search per
     /// interest signal plus a complement search per owned anchor, which is what the system
-    /// prompt's steps 4 and 5 ask for; it is well above anything a live turn has been observed to
-    /// need, and it is one constant to change.
+    /// prompt asks for, and it is one constant to change.
     /// </remarks>
     public const int DefaultMaxDistinctSearches = 8;
 

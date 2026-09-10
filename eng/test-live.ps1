@@ -17,9 +17,50 @@ if ($env:VITRINE_RUN_LIVE_MODEL_TESTS -cne "1") {
     throw "Live model tests are disabled. Set VITRINE_RUN_LIVE_MODEL_TESTS=1 to acknowledge model calls and possible charges."
 }
 
-if ([string]::IsNullOrWhiteSpace($env:AZURE_OPENAI_ENDPOINT) -or
-    [string]::IsNullOrWhiteSpace($env:AZURE_OPENAI_API_KEY)) {
-    throw "Live tests were opted in, but AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY are required. Values are never reported."
+if ([string]::IsNullOrWhiteSpace($env:AZURE_OPENAI_ENDPOINT)) {
+    throw "Live tests were opted in, but AZURE_OPENAI_ENDPOINT is required. Its value is never reported."
+}
+
+$endpointUri = $null
+if (-not [Uri]::TryCreate($env:AZURE_OPENAI_ENDPOINT.Trim(), [UriKind]::Absolute, [ref] $endpointUri) -or
+    $endpointUri.Scheme -ne "https") {
+    throw "AZURE_OPENAI_ENDPOINT must be an absolute HTTPS Azure OpenAI resource endpoint. Its value is never reported."
+}
+$endpointPath = [Uri]::UnescapeDataString($endpointUri.AbsolutePath).TrimEnd('/')
+if ($endpointPath -ieq '/api/projects' -or $endpointPath -imatch '/api/projects/') {
+    throw "AZURE_OPENAI_ENDPOINT must be an Azure OpenAI resource/inference endpoint, not a Microsoft Foundry project endpoint. Its value is never reported."
+}
+if ($endpointUri.AbsolutePath -ne '/' -or -not [string]::IsNullOrEmpty($endpointUri.Query) -or
+    -not [string]::IsNullOrEmpty($endpointUri.Fragment) -or -not [string]::IsNullOrEmpty($endpointUri.UserInfo)) {
+    throw "AZURE_OPENAI_ENDPOINT must be the base Azure OpenAI resource/inference endpoint without a path, query, fragment, or user information. Its value is never reported."
+}
+
+$authMode = if ([string]::IsNullOrWhiteSpace($env:AZURE_OPENAI_AUTH_MODE)) {
+    "api-key"
+} else {
+    $env:AZURE_OPENAI_AUTH_MODE.Trim().ToLowerInvariant()
+}
+
+switch ($authMode) {
+    "api-key" {
+        if ([string]::IsNullOrWhiteSpace($env:AZURE_OPENAI_API_KEY)) {
+            throw "AZURE_OPENAI_API_KEY is required for api-key authentication. Its value is never reported."
+        }
+    }
+    "default-credential" { }
+    "managed-identity" {
+        if (-not [string]::IsNullOrWhiteSpace($env:AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID)) {
+            $managedIdentityClientId = [Guid]::Empty
+            if (-not [Guid]::TryParse(
+                $env:AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID.Trim(),
+                [ref] $managedIdentityClientId)) {
+                throw "AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID must be a user-assigned identity client GUID. Its value is never reported."
+            }
+        }
+    }
+    default {
+        throw "AZURE_OPENAI_AUTH_MODE must be api-key, default-credential, or managed-identity."
+    }
 }
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot

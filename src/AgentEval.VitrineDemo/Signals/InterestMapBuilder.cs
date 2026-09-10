@@ -20,11 +20,11 @@ namespace Galaxus.RecommendationAgent.Signals;
 /// <param name="Classified">Every resolvable order line with its derived intent and justification.</param>
 /// <param name="SuppressedDurablePurchaseIds">
 /// Lines that produced no interest of their own because they are a single, unreviewed durable
-/// still inside its typical horizon (§B.3, Sofia's Vitamix and Luca's cable). They still feed
+/// still inside its typical horizon (Sofia's Vitamix and Luca's cable). They still feed
 /// the cross-category conjunction — that is the whole point of Nadia's power bank.
 /// </param>
 /// <param name="BlockedSensitiveLabels">
-/// Candidate labels the inbound special-category screen refused to emit (§F.5, §0.5 / D-6).
+/// Candidate labels the inbound special-category screen refused to emit.
 /// </param>
 /// <param name="UnresolvedProductIds">
 /// Order lines whose SKU is not in the catalogue. Non-empty means the persona seed and the
@@ -69,12 +69,12 @@ public sealed record InterestMapBuildResult(
 ///   </item>
 ///   <item>
 ///     <b>Stated in session</b> (<see cref="InterestEvidenceKinds.StatedInSession"/>) — the
-///     customer said it. The ONLY kind available when personalization is off (§F.6), and a
+///     customer said it. The ONLY kind available when personalization is off, and a
 ///     conversational agent is unusually good at working from it.
 ///   </item>
 /// </list>
 /// <para>
-/// <b>Be honest about the mechanism (§B.2).</b> The cross-category link is not emergent magic.
+/// <b>Be honest about the mechanism.</b> The cross-category link is not emergent magic.
 /// It is engineered in one place: every product carries <c>context:</c> / <c>trip:</c> /
 /// <c>weight:</c> / <c>skill:</c> tags, this class finds the tags that bridge two or more
 /// ROOT categories over two or more purchases, and the embedding document composes the same
@@ -117,7 +117,7 @@ public static class InterestMapBuilder
     /// <summary>
     /// Ceiling of a cross-category conjunction signal — reached only when the conjunction
     /// covers the whole history, spans three or more root categories, and rests on four or
-    /// more bridging tags. Nadia Brunner's five purchases saturate all three (§B.3).
+    /// more bridging tags. Nadia Brunner's five purchases saturate all three.
     /// </summary>
     public const double BridgingSignalMaximum = 0.86;
 
@@ -145,13 +145,13 @@ public static class InterestMapBuilder
     /// </summary>
     public const double StatedNeedStrength = 0.80;
 
-    /// <summary>Longest stated-need label kept. Longer needs are truncated so the label stays citable (§F.3).</summary>
+    /// <summary>Longest stated-need label kept. Longer needs are truncated so the label stays citable.</summary>
     public const int StatedNeedLabelMaxLength = 140;
 
     /// <summary>
     /// How long a durable is presumed to remain in service. A single, unreviewed purchase
     /// inside this horizon does not by itself constitute an interest — otherwise a 30-month-old
-    /// blender becomes "interested in blenders" and the answer is three more blenders (§B.3).
+    /// blender becomes "interested in blenders" and the answer is three more blenders.
     /// </summary>
     public const int DurableUpgradeHorizonDays = 1825;
 
@@ -310,7 +310,7 @@ public static class InterestMapBuilder
     /// <param name="user">The customer.</param>
     /// <param name="history">
     /// Every order line. <b>Never read at all when <see cref="User.PersonalizationEnabled"/> is
-    /// false</b> — data minimisation as a control-flow property, not a promise (§F.6).
+    /// false</b> — data minimisation as a control-flow property, not a promise.
     /// </param>
     /// <param name="productsBySku">The catalogue, keyed by <see cref="Product.Id"/>.</param>
     /// <param name="statedNeeds">What the customer said in this session, if anything.</param>
@@ -332,7 +332,7 @@ public static class InterestMapBuilder
         var sensitive = sensitiveCategoryNames ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var blocked   = new List<string>();
 
-        // ── §F.6 — the opt-out path. History is not filtered, minimised or summarised: it
+        // ── Personalization opt-out. History is not filtered, minimised or summarised: it
         //    is not read. The only signals available are the ones the customer just gave us.
         if (!user.PersonalizationEnabled)
         {
@@ -368,7 +368,7 @@ public static class InterestMapBuilder
         candidates.AddRange(BuildConjunctionSignals(interestBearing, [.. productsBySku.Values]));
         candidates.AddRange(BuildCapabilityGapSignals(nonGift));
 
-        // ── inbound special-category screen (§F.5 first direction, §0.5 / D-6) ──────
+        // ── inbound special-category screen (inbound direction) ──────
         var emitted = new List<InterestSignal>(candidates.Count);
         foreach (var signal in candidates)
         {
@@ -432,7 +432,7 @@ public static class InterestMapBuilder
                              .ThenBy(c => c.PurchaseId, StringComparer.Ordinal)
                              .ToList();
 
-            // The durable-churn rule (§B.3). One unreviewed, non-consumable purchase still
+            // The durable-churn rule. One unreviewed, non-consumable purchase still
             // inside its service life is not an interest in that leaf — it is a thing she
             // already owns. It still feeds the conjunction below, which is exactly how
             // Nadia's power bank contributes without becoming "interested in power banks".
@@ -797,7 +797,7 @@ public static class InterestMapBuilder
             // The ONE signal kind with no purchase evidence, and necessarily so: the evidence
             // is the sentence the customer just typed. EvidenceRequiredFilter knows this and
             // requires such a recommendation to cite NO purchase ids — citing history for a
-            // stated need would be a fabrication, and under §F.6 there is no history to cite.
+            // stated need would be a fabrication, and under the personalization opt-out there is no history to cite.
             signals.Add(new InterestSignal(label, StatedNeedStrength, [], InterestEvidenceKinds.StatedInSession));
         }
 

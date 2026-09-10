@@ -11,20 +11,20 @@ namespace Galaxus.RecommendationAgent.Rendering;
 /// <summary>
 /// Renders one customer turn: the code-derived interest map, the recommendation cards with
 /// two-sided evidence, the VERIFIED price and stock line, the guardrail ledger, and the
-/// "AI assists — you verify and decide" footer (design §E.3).
+/// "AI assists — you verify and decide" footer (the customer-output contract).
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>The renderer is the price authority's mouthpiece, and the model never is.</b> Every figure
 /// on a card comes from a <see cref="PriceStockSnapshot"/> produced by
-/// <see cref="PriceStockRefresher"/> at render time (§F.4). If a snapshot is missing for a
+/// <see cref="PriceStockRefresher"/> at render time. If a snapshot is missing for a
 /// surviving item this prints an explicit red "not verified" line and no number at all. It never
 /// falls back to a figure from the model's text, and never to one from a search result: an
 /// unverified price printed as if it were verified is the most expensive lie this interface
 /// could tell.
 /// </para>
 /// <para>
-/// <b>The guardrail ledger is the punchline.</b> It makes every mechanism in §F visible and
+/// <b>The guardrail ledger is the punchline.</b> It makes every guardrail mechanism visible and
 /// countable on screen — the drops, the demotions, the gift exclusions, the tool-call spend. On
 /// Marco it prints the two gift exclusions by name, which is the moment the demo stops being a
 /// chat window. Inapplicable-arm notes are printed LOUDEST, because an arm that could not run is
@@ -48,7 +48,7 @@ public static class RecommendationPrinter
     // ── The whole turn, in one call ───────────────────────────────────────────
 
     /// <summary>
-    /// Prints the complete answer in the order §E.3 specifies: customer, interest map,
+    /// Prints the complete answer in the order the customer-output contract specifies: customer, interest map,
     /// recommendations (or the abstention), replenishment, ledger, footer.
     /// </summary>
     /// <param name="user">The customer this turn is for.</param>
@@ -59,7 +59,7 @@ public static class RecommendationPrinter
     /// <param name="toolCallCap">The tool-call cap, or <see cref="OmitToolCalls"/>.</param>
     /// <param name="gateRanBeforeSpend">
     /// True only when the caller ran <c>GuardrailPipeline.ShouldAbstain</c> BEFORE constructing the
-    /// agent (§8.1 B-1). The abstention panel prints the "no tokens were spent" sentence only under
+    /// agent. The abstention panel prints the "no tokens were spent" sentence only under
     /// this flag; see <see cref="PrintAbstention"/>.
     /// </param>
     public static void PrintAnswer(
@@ -90,7 +90,7 @@ public static class RecommendationPrinter
     /// <param name="toolCallCap">The tool-call cap, or <see cref="OmitToolCalls"/>.</param>
     /// <param name="gateRanBeforeSpend">
     /// True only when the caller ran <c>GuardrailPipeline.ShouldAbstain</c> BEFORE constructing the
-    /// agent (§8.1 B-1). Gates the abstention panel's "no tokens were spent" sentence.
+    /// agent. Gates the abstention panel's "no tokens were spent" sentence.
     /// </param>
     public static void PrintAnswer(
         User user,
@@ -140,7 +140,7 @@ public static class RecommendationPrinter
         {
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine($"{Indent}   Behavioural history is REFUSED by the tool layer, not merely omitted from the prompt.");
-            Console.WriteLine($"{Indent}   The agent runs on what the customer says in this conversation (§F.6).");
+            Console.WriteLine($"{Indent}   The agent runs only on what the customer says in this conversation.");
             Console.ResetColor();
         }
 
@@ -149,7 +149,7 @@ public static class RecommendationPrinter
 
     /// <summary>
     /// Prints the interest map — the panel that says out loud that the reasoning about WHO the
-    /// customer is was done by code, not by the model.
+    /// customer is derived by code, not by the model.
     /// </summary>
     /// <param name="map">The derived map.</param>
     /// <param name="classified">Classified purchases, so an excluded id can be printed as a product name.</param>
@@ -233,7 +233,7 @@ public static class RecommendationPrinter
     }
 
     /// <summary>
-    /// Prints the degraded-retrieval banner (§D.4). Degraded mode does not substitute a hash
+    /// Prints the degraded-retrieval banner. Degraded mode does not substitute a hash
     /// embedder and carry on — it disables the dense leg and says so.
     /// </summary>
     /// <param name="reason">Why dense retrieval is unavailable; null prints the generic reason.</param>
@@ -305,7 +305,7 @@ public static class RecommendationPrinter
     }
 
     /// <summary>
-    /// Prints the abstention panel (§F.8): no recommendations, a stated reason, and the two
+    /// Prints the abstention panel: no recommendations, a stated reason, and the two
     /// questions asked instead of a guess.
     /// </summary>
     /// <param name="set">The abstaining set.</param>
@@ -313,13 +313,9 @@ public static class RecommendationPrinter
     /// True only when the caller decided to abstain BEFORE constructing the agent.
     /// </param>
     /// <remarks>
-    /// ⚠ <b>The claim on the last line is gated on a flag, and it has to be (§8.1 B-1).</b> This
-    /// panel printed "The gate is structural and ran BEFORE any model spend" unconditionally, on
-    /// every abstention, while the only caller in the codebase ran the gate AFTER the model had
-    /// answered. The sentence was false on every live thin-signal run and the customer read it
-    /// anyway. The flag is now supplied by the caller that actually did the short-circuiting, so
-    /// the interface is structurally unable to make the claim on a turn where it is not true — the
-    /// same discipline as the price line, which prints a figure only from a snapshot.
+    /// The final line is conditional on <paramref name="gateRanBeforeSpend"/> so the renderer can
+    /// claim zero model spend only when the caller actually short-circuited before construction.
+    /// This mirrors the price line, which prints a figure only when a verified snapshot exists.
     /// </remarks>
     public static void PrintAbstention(RecommendationSet set, bool gateRanBeforeSpend = false)
     {
@@ -352,7 +348,7 @@ public static class RecommendationPrinter
     }
 
     /// <summary>
-    /// Prints the guardrail ledger — every §F mechanism, counted and named. The panel body comes
+    /// Prints the guardrail ledger — every guardrail mechanism, counted and named. The panel body comes
     /// from <see cref="GuardrailLedger.ToPanelLines"/> so the ledger owns its own wording and the
     /// renderer owns only the frame.
     /// </summary>
@@ -454,23 +450,12 @@ public static class RecommendationPrinter
     /// Renders the PRODUCT side of an evidence line: the catalogue's own fact about the product.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// <b>Plan item 8.15.</b> This line used to be built as <c>$"{key}: {value}"</c>, and the
-    /// catalogue's tag-style attributes make key and value the SAME STRING —
-    /// <see cref="Domain.Product.TryGetAttributeValue"/> returns the tag itself when the whole tag
-    /// matches the cited key. So a card rendered <c>Catalogue · compat:backpack-strap:
-    /// compat:backpack-strap</c>. <b>The line exists to carry the catalogue's own fact; when key
-    /// equals value it carries none</b>, and it carries none in the most confident-looking form
-    /// available — a colon-separated pair, which reads like a measurement.
-    /// </para>
-    /// <para>
-    /// A tag is a real fact — the catalogue asserts the product HAS it — so the fix is to say that,
-    /// not to drop the line. A spec pair keeps its <c>key: value</c> shape, which is what carries
-    /// the fact there.
-    /// </para>
+    /// A tag-style attribute resolves with identical key and value and is rendered as a stated
+    /// catalogue tag, avoiding a duplicated <c>key: key</c> pair that looks like a measurement.
+    /// A genuine specification keeps its <c>key: value</c> form.
     /// <para>
     /// ⚠ Public so a control can EXECUTE it. A source-text check on the interpolation above would
-    /// be satisfied by this comment (§34.4, §55.5).
+    /// be satisfied by this comment (the executable verification requirements).
     /// </para>
     /// </remarks>
     /// <param name="attributeKey">The cited attribute key, as the model wrote it.</param>
@@ -540,8 +525,8 @@ public static class RecommendationPrinter
     }
 
     /// <summary>
-    /// Ten-cell confidence bar. A routing heuristic made visible — NOT a calibrated probability
-    /// (§F.7). Nobody has measured whether a 0.88 is right 88% of the time.
+    /// Ten-cell confidence bar. A routing heuristic made visible — NOT a calibrated probability.
+    /// Nobody has measured whether a 0.88 is right 88% of the time.
     /// </summary>
     private static string Bar(double confidence)
     {

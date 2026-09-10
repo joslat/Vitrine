@@ -141,7 +141,7 @@ public sealed class CatalogueDiscoverySearch(
                 newIdsForThisQuery.Add(candidate.ProductId);
                 discovered.Add($"{candidate.ProductId}  {candidate.Title}   ({candidate.CategoryPathText})");
 
-                // The mid-run interest-discovery channel — and, per §0.5 / D-3, the attack
+                // The mid-run interest-discovery channel — and, per the structural query-vocabulary control, the attack
                 // channel. Recorded as DATA here; nothing acts on it until the reviewer has
                 // proposed something and QueryVocabulary has filtered it.
                 foreach (var snippet in candidate.ReviewSnippets)

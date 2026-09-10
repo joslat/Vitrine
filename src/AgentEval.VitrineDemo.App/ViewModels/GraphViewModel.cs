@@ -287,6 +287,14 @@ public sealed class GraphViewModel : BindableBase
                 VitrineEventDisposition.NotApplicable => GraphNodeState.NotApplicable,
                 VitrineEventDisposition.ExpectedDefectDetected => GraphNodeState.ExpectedDefectDetected,
                 VitrineEventDisposition.SelfTestSucceeded => GraphNodeState.SelfTestSucceeded,
+                // Schema 7-9 artifacts may retain the earlier neutral diagnostic disposition.
+                // Preserve their observed PASS/FINDING distinction from the sanitized title.
+                VitrineEventDisposition.Neutral when item.Kind == "GateCompleted"
+                    && node.Kind == "evaluation-diagnostic"
+                    && item.Title.StartsWith("DIAGNOSTIC FINDING", StringComparison.Ordinal)
+                    => GraphNodeState.Warning,
+                VitrineEventDisposition.Neutral when item.Kind == "GateCompleted"
+                    && node.Kind == "evaluation-diagnostic" => GraphNodeState.Succeeded,
                 _ => node.State,
             };
             if (item.Kind is "LiveCheckCompleted" or "LiveTrialCompleted")

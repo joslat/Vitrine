@@ -7,7 +7,9 @@ namespace AgentEval.VitrineDemo.Evals.Live;
 
 internal static class LiveSessionStore
 {
-    private const string SchemaVersion = "1.2";
+    // 1.4 adds typed, sanitized workflow provider-stage attempt/recovery evidence. The public
+    // exporter continues to accept historical 1.3 receipts under their original strict shape.
+    private const string SchemaVersion = "1.4";
     private static readonly SemaphoreSlim IndexGate = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -45,6 +47,7 @@ internal static class LiveSessionStore
             result.Runs,
             result.Trials,
             result.Arms,
+            result.ScenarioAcceptances,
             result.Comparisons,
             result.Failures,
             result.Safety);
@@ -160,6 +163,7 @@ internal static class LiveSessionStore
         IReadOnlyList<LiveEvalRunReference> Runs,
         IReadOnlyList<LiveTrialEvidence> Trials,
         IReadOnlyList<LiveArmSummary> Arms,
+        IReadOnlyList<LiveScenarioAcceptanceDecision> ScenarioAcceptances,
         IReadOnlyList<LiveCheckComparison> Comparisons,
         IReadOnlyList<LiveEvalFailure> Failures,
         LiveSafetySummary? Safety);

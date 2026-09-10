@@ -1,10 +1,12 @@
 <!-- SPDX-License-Identifier: MIT -->
 # Data provenance
 
-VITRINE uses synthetic data only:
+VITRINE uses authored/synthetic commerce records:
 
 - fictitious personas and shopping histories;
-- invented catalogue products, identifiers, prices, stock states, reviews, and departments;
+- authored catalogue identifiers, prices, stock states, reviews, departments, and relationships;
+- recognizable third-party product, brand, and model names used illustratively; their associated
+  catalogue records are synthetic and are not copied from a retailer's production catalogue;
 - authored shopping queries, expected behavior, evaluation criteria, attacks, and ablations;
 - locally generated deterministic and model-backed observations of the synthetic subject.
 
