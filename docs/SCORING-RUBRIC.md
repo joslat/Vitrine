@@ -206,3 +206,7 @@ auditable.
 The first completed review is the
 [2026-09-10 VITRINE scorecard](Vitrine-Scorecard-2026-09-10.md), bound to implementation commit
 `67ab737`.
+
+The next immutable review is the
+[2026-09-10 narrow-iteration scorecard](Vitrine-Scorecard-2026-09-10-narrow-iteration.md), scored
+with the same version 1.0 procedure and bound to evidence revision `f58a747`.

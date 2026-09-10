@@ -214,5 +214,6 @@ See the [dated verification page](https://azuresamurai.blog/Vitrine/Vitrine-Veri
 incidents, and [MIGRATION.md](MIGRATION.md) for every admitted check, native floor, ablation, and
 deliberately retained diagnostic/collector boundary.
 
-For repeatable portfolio assessment, use the stable [scoring rubric](docs/SCORING-RUBRIC.md) and
-the immutable [2026-09-10 scorecard for implementation commit 67ab737](docs/Vitrine-Scorecard-2026-09-10.md).
+For repeatable portfolio assessment, use the stable [scoring rubric](docs/SCORING-RUBRIC.md), the
+immutable [baseline scorecard for implementation commit 67ab737](docs/Vitrine-Scorecard-2026-09-10.md),
+and the [narrow-iteration scorecard for evidence revision f58a747](docs/Vitrine-Scorecard-2026-09-10-narrow-iteration.md).

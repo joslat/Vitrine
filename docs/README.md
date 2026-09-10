@@ -27,6 +27,7 @@ Generated artifacts under `reports` retain the run identity embedded in each rec
 Use the repository-native [portfolio scoring rubric](SCORING-RUBRIC.md) for repeatable review of
 technical accuracy, AI engineering, e-commerce relevance, recruiter first impression, pragmatic
 architecture, and documentation credibility. It defines weights, evidence ceilings, uncertainty,
-and the dated review template; it is an assessment method, not a product claim. The first immutable
-baseline produced with that method is the
-[2026-09-10 scorecard for implementation commit 67ab737](Vitrine-Scorecard-2026-09-10.md).
+and the dated review template; it is an assessment method, not a product claim. The immutable
+[baseline scorecard for implementation commit 67ab737](Vitrine-Scorecard-2026-09-10.md) and the
+[narrow-iteration scorecard for evidence revision f58a747](Vitrine-Scorecard-2026-09-10-narrow-iteration.md)
+use that same version 1.0 procedure.
