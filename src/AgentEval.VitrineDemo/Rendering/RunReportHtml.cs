@@ -7,6 +7,7 @@ using System.Text;
 using Galaxus.RecommendationAgent.Catalog;
 using Galaxus.RecommendationAgent.Domain;
 using Galaxus.RecommendationAgent.Guardrails;
+using Galaxus.RecommendationAgent.Observability;
 using Galaxus.RecommendationAgent.Workflows;
 
 namespace Galaxus.RecommendationAgent.Rendering;
@@ -90,6 +91,7 @@ public static class RunReportHtml
     /// <param name="toolCallsUsed">Tool calls spent, or <see cref="RecommendationPrinter.OmitToolCalls"/>.</param>
     /// <param name="toolCallCap">The per-turn cap, or <see cref="RecommendationPrinter.OmitToolCalls"/>.</param>
     /// <param name="loop">The discovery loop's result, when Demo 02 produced this turn. Null for Demo 01.</param>
+    /// <param name="liveProviderUsage">Typed provider usage for a live report; null for provider-free reports.</param>
     /// <returns>The full path of the file written.</returns>
     /// <exception cref="InvalidOperationException">The rendered page contained a credential. Nothing is written.</exception>
     public static string Write(
@@ -106,7 +108,8 @@ public static class RunReportHtml
         Catalogue catalogue,
         int toolCallsUsed = RecommendationPrinter.OmitToolCalls,
         int toolCallCap = RecommendationPrinter.OmitToolCalls,
-        DiscoveryRunResult? loop = null)
+        DiscoveryRunResult? loop = null,
+        ProviderUsageMeasurement? liveProviderUsage = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(user);
@@ -116,9 +119,11 @@ public static class RunReportHtml
         ArgumentNullException.ThrowIfNull(verified);
         ArgumentNullException.ThrowIfNull(ledger);
         ArgumentNullException.ThrowIfNull(catalogue);
+        if (liveProviderUsage is not null && !liveProviderUsage.IsConsistent())
+            throw new InvalidOperationException("The live provider-usage measurement is inconsistent.");
 
         var html = Render(demoTitle, arm, utterance, user, map, classified, set, verified,
-                          ledger, catalogue, toolCallsUsed, toolCallCap, loop);
+                          ledger, catalogue, toolCallsUsed, toolCallCap, loop, liveProviderUsage);
 
         RefuseIfSecretsLeaked(html);
 
@@ -184,7 +189,8 @@ public static class RunReportHtml
         Catalogue catalogue,
         int toolCallsUsed,
         int toolCallCap,
-        DiscoveryRunResult? loop)
+        DiscoveryRunResult? loop,
+        ProviderUsageMeasurement? liveProviderUsage)
     {
         var sb = new StringBuilder(64 * 1024);
 
@@ -200,10 +206,10 @@ public static class RunReportHtml
         AppendTray(sb, set, verified, catalogue, ledger);
         if (loop is not null) AppendLoop(sb, loop);
         sb.Append("</div>\n<div class=\"col-side\">\n");
-        AppendMeasurement(sb, ledger, set, toolCallsUsed, toolCallCap, loop);
+        AppendMeasurement(sb, ledger, set, toolCallsUsed, toolCallCap, loop, liveProviderUsage);
         sb.Append("</div>\n</div>\n");
 
-        AppendFooter(sb);
+        AppendFooter(sb, liveProviderUsage is not null);
         sb.Append("</body>\n</html>\n");
         return sb.ToString();
     }
@@ -560,7 +566,8 @@ public static class RunReportHtml
 
     private static void AppendMeasurement(
         StringBuilder sb, GuardrailLedger ledger, RecommendationSet set,
-        int toolCallsUsed, int toolCallCap, DiscoveryRunResult? loop)
+        int toolCallsUsed, int toolCallCap, DiscoveryRunResult? loop,
+        ProviderUsageMeasurement? liveProviderUsage)
     {
         var rows = Checks
             .Select(c => (c.Name, c.Checks, Entries: ledger.EntriesFor(c.Stage)))
@@ -620,14 +627,15 @@ public static class RunReportHtml
         }
 
         sb.Append("  </ul>\n");
-        AppendCounters(sb, ledger, set, toolCallsUsed, toolCallCap, loop);
+        AppendCounters(sb, ledger, set, toolCallsUsed, toolCallCap, loop, liveProviderUsage);
         AppendNotMeasuredHere(sb);
         sb.Append("</section>\n");
     }
 
     private static void AppendCounters(
         StringBuilder sb, GuardrailLedger ledger, RecommendationSet set,
-        int toolCallsUsed, int toolCallCap, DiscoveryRunResult? loop)
+        int toolCallsUsed, int toolCallCap, DiscoveryRunResult? loop,
+        ProviderUsageMeasurement? liveProviderUsage)
     {
         sb.Append("  <p class=\"lbl\">This turn, counted</p>\n  <table class=\"nums\">\n");
 
@@ -658,9 +666,19 @@ public static class RunReportHtml
                 : "n/a — this arm makes no refusable tool calls",
             toolCallsUsed < 0);
 
+        if (liveProviderUsage is not null)
+        {
+            Num(sb, "Model calls",
+                liveProviderUsage.ModelCalls?.ToString(CultureInfo.InvariantCulture) ?? "NOT MEASURED",
+                liveProviderUsage.ModelCalls is null);
+            Num(sb, "Provider usage", liveProviderUsage.ToDisplayString(),
+                liveProviderUsage.Status == ProviderUsageStatus.Missing);
+        }
+
         if (loop is not null)
         {
-            Num(sb, "Model calls", loop.State.ModelCalls.ToString(CultureInfo.InvariantCulture), false);
+            if (liveProviderUsage is null)
+                Num(sb, "Model calls", loop.State.ModelCalls.ToString(CultureInfo.InvariantCulture), false);
             Num(sb, "Searches run", loop.State.SearchesRun.ToString(CultureInfo.InvariantCulture), false);
 
             if (loop.Failed)
@@ -694,16 +712,30 @@ public static class RunReportHtml
                 + "<span class=\"mono\">--confirm-paid</span>. Live plans declare their actual scenario and repetition "
                 + "scope and do not manufacture a per-arm chance floor where none is derivable.</p>\n");
 
-    private static void AppendFooter(StringBuilder sb) =>
+    private static void AppendFooter(StringBuilder sb, bool liveProviderReport)
+    {
         sb.Append("<footer class=\"foot\">\n")
           .Append("  <p><b>These are suggestions.</b> Prices and availability were re-read from the catalogue at render "
                 + "time and never taken from model context; the decision is the customer's. Nothing was added to a "
-                + "basket or ordered — this agent has no tool that can.</p>\n")
-          .Append("  <p class=\"dim small\">Generated by the run itself, not from a fixture. Self-contained: no external "
-                + "stylesheet, script, font or image, so it opens with no network. It carries no endpoint, no key and no "
-                + "file path. It also carries no timestamp and no run id — deliberately, so two offline runs of the same "
-                + "customer produce byte-identical files and this page can be regenerated in front of you.</p>\n")
-          .Append("</footer>\n");
+                + "basket or ordered — this agent has no tool that can.</p>\n");
+
+        if (liveProviderReport)
+        {
+            sb.Append("  <p class=\"dim small\">Generated by the run itself, not from a fixture. Self-contained: no external "
+                    + "stylesheet, script, font or image, so it opens with no network. It carries no endpoint, no key and no "
+                    + "file path. It also carries no timestamp and no run id. This live page records the selected deployment "
+                    + "and the provider-usage state above; it remains one observation, not reliability evidence.</p>\n");
+        }
+        else
+        {
+            sb.Append("  <p class=\"dim small\">Generated by the run itself, not from a fixture. Self-contained: no external "
+                    + "stylesheet, script, font or image, so it opens with no network. It carries no endpoint, no key and no "
+                    + "file path. It also carries no timestamp and no run id — deliberately, so two offline runs of the same "
+                    + "customer produce byte-identical files and this page can be regenerated in front of you.</p>\n");
+        }
+
+        sb.Append("</footer>\n");
+    }
 
     // ── Plumbing ──────────────────────────────────────────────────────────────
 

@@ -6,6 +6,7 @@ using System.Text.Json;
 using Galaxus.RecommendationAgent.Catalog;
 using Galaxus.RecommendationAgent.Demos;
 using Galaxus.RecommendationAgent.Guardrails;
+using Galaxus.RecommendationAgent.Observability;
 using Galaxus.RecommendationAgent.Rendering;
 using Galaxus.RecommendationAgent.Tools;
 using Galaxus.RecommendationAgent.Workflows;
@@ -185,6 +186,65 @@ public sealed class SafetyBoundaryTests
         finally
         {
             if (File.Exists(reportPath)) File.Delete(reportPath);
+        }
+    }
+
+    [Fact]
+    public async Task RunReportSeparatesLiveMissingUsageFromProviderFreeDeterministicOutput()
+    {
+        var result = await RecommendationRunEngine.RunAsync(new(
+            Personas.NadiaUserId,
+            Arm: RecommendationExecutionArm.ZeroModelBaseline));
+        Assert.NotNull(result.Profile);
+        Assert.NotNull(result.Prompt);
+        Assert.NotNull(result.InterestMap);
+        Assert.NotNull(result.Outcome);
+
+        var suffix = Guid.NewGuid().ToString("N");
+        var offlinePath = Path.Combine(Path.GetTempPath(), $"vitrine-offline-report-{suffix}.html");
+        var scriptedPath = Path.Combine(Path.GetTempPath(), $"vitrine-scripted-report-{suffix}.html");
+        var livePath = Path.Combine(Path.GetTempPath(), $"vitrine-live-report-{suffix}.html");
+
+        try
+        {
+            foreach (var (path, arm) in new[]
+                     {
+                         (offlinePath, "offline baseline — no model call"),
+                         (scriptedPath, "scripted ChatClient — deterministic local chat boundary"),
+                     })
+            {
+                RunReportHtml.Write(
+                    path, "Demo 01", arm, result.Prompt!, result.Profile!.User,
+                    result.InterestMap!, result.ClassifiedPurchases, result.Outcome!.Cleaned,
+                    result.Outcome.VerifiedPrices, result.Outcome.Ledger, Catalogue.Default);
+
+                var providerFreeHtml = await File.ReadAllTextAsync(path);
+                Assert.Contains("two offline runs of the same customer produce byte-identical files",
+                    providerFreeHtml, StringComparison.Ordinal);
+                Assert.DoesNotContain("<td>Provider usage</td>", providerFreeHtml, StringComparison.Ordinal);
+            }
+
+            RunReportHtml.Write(
+                livePath, "Demo 01", "live agent · deployment test-deployment", result.Prompt!,
+                result.Profile!.User, result.InterestMap!, result.ClassifiedPurchases,
+                result.Outcome!.Cleaned, result.Outcome.VerifiedPrices, result.Outcome.Ledger,
+                Catalogue.Default, liveProviderUsage: ProviderUsageMeasurement.FromDemo01(2, null));
+
+            var liveHtml = await File.ReadAllTextAsync(livePath);
+            Assert.Contains("<tr><td>Model calls</td><td class=\"num\">2</td></tr>", liveHtml,
+                StringComparison.Ordinal);
+            Assert.Contains("<tr><td>Provider usage</td><td class=\"num absent\">NOT MEASURED</td></tr>",
+                liveHtml, StringComparison.Ordinal);
+            Assert.DoesNotContain("<td>Provider usage</td><td class=\"num\">0 tokens", liveHtml,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("two offline runs", liveHtml, StringComparison.Ordinal);
+            Assert.Contains("This live page records the selected deployment and the provider-usage state above",
+                liveHtml, StringComparison.Ordinal);
+        }
+        finally
+        {
+            foreach (var path in new[] { offlinePath, scriptedPath, livePath })
+                if (File.Exists(path)) File.Delete(path);
         }
     }
 }

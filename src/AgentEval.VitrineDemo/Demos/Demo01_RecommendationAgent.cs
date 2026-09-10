@@ -4,6 +4,7 @@
 using Galaxus.RecommendationAgent.Catalog;
 using Galaxus.RecommendationAgent.Domain;
 using Galaxus.RecommendationAgent.Guardrails;
+using Galaxus.RecommendationAgent.Observability;
 using Galaxus.RecommendationAgent.Rendering;
 using Galaxus.RecommendationAgent.Retrieval;
 using Galaxus.RecommendationAgent.Signals;
@@ -226,7 +227,8 @@ public static class Demo01_RecommendationAgent
             outcome,
             Catalogue.Default,
             toolCalls,
-            result.ToolCallsUsed.HasValue ? ToolCallCap : RecommendationPrinter.OmitToolCalls);
+            result.ToolCallsUsed.HasValue ? ToolCallCap : RecommendationPrinter.OmitToolCalls,
+            result.ProviderUsage);
         if (result.BudgetSummary is not null) PrintBudgetNote(result.BudgetSummary);
         if (result.AgentText is not null) PrintRobinsProse(result.AgentText);
         await GuardrailControls.RunAsync().ConfigureAwait(false);
@@ -257,7 +259,8 @@ public static class Demo01_RecommendationAgent
         GuardrailOutcome outcome,
         Catalogue catalogue,
         int toolCallsUsed,
-        int toolCallCap)
+        int toolCallCap,
+        ProviderUsageMeasurement providerUsage)
     {
         if (string.IsNullOrWhiteSpace(reportPath)) return;
 
@@ -276,7 +279,8 @@ public static class Demo01_RecommendationAgent
             var written = RunReportHtml.Write(
                 reportPath, "Demo 01 — one agent", arm, prompt,
                 user, map, classified, outcome.Cleaned, outcome.VerifiedPrices, outcome.Ledger,
-                catalogue, toolCallsUsed, toolCallCap);
+                catalogue, toolCallsUsed, toolCallCap,
+                liveProviderUsage: executionArm == RecommendationExecutionArm.LiveAzure ? providerUsage : null);
 
             Console.ForegroundColor = ConsoleColor.DarkCyan;
             Console.WriteLine($"\n  📄 Report written: {written}");

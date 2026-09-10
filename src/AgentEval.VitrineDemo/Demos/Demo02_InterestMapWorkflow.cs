@@ -198,7 +198,8 @@ public static class Demo02_InterestMapWorkflow
                 screened.Outcome.Cleaned, screened.Outcome.VerifiedPrices, screened.Outcome.Ledger,
                 Catalogue.Default,
                 RecommendationPrinter.OmitToolCalls, RecommendationPrinter.OmitToolCalls,
-                result);
+                result,
+                liveProviderUsage: offline ? null : result.State.ProviderUsage);
 
             Console.ForegroundColor = ConsoleColor.DarkCyan;
             Console.WriteLine($"\n  📄 Report written: {written}");
