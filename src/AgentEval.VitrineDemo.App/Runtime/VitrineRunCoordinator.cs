@@ -20,7 +20,7 @@ public sealed record VitrineRunRequest(
     VitrineEvaluationPlan EvaluationPlan = VitrineEvaluationPlan.OfflineSuite,
     string? LiveScenarioId = null,
     int EvaluationRepetitions = 5,
-    bool PaidEvaluationConfirmed = false)
+    bool PaidExecutionConfirmed = false)
 {
     public const string MultiplePersonasScope = "multiple-personas";
     public const string NotApplicablePersonaScope = "not-applicable";
@@ -145,6 +145,13 @@ public sealed class VitrineRunCoordinator : IAsyncDisposable
 
         try
         {
+            var isPaidSubject = (request.Mode is VitrineRunMode.Demo01 or VitrineRunMode.Demo02)
+                && request.Demo01Arm == RecommendationExecutionArm.LiveAzure;
+            var isPaidEvaluation = request.Mode == VitrineRunMode.Evals
+                && request.EvaluationPlan != VitrineEvaluationPlan.OfflineSuite;
+            if ((isPaidSubject || isPaidEvaluation) && !request.PaidExecutionConfirmed)
+                throw new InvalidOperationException("Paid live execution requires explicit one-shot confirmation.");
+
             if (request.Mode == VitrineRunMode.Demo01)
             {
                 recommendationSink = new CallbackRecommendationRuntimeEventSink(item =>
@@ -201,8 +208,6 @@ public sealed class VitrineRunCoordinator : IAsyncDisposable
                     if (request.Mode == VitrineRunMode.Evals
                         && request.EvaluationPlan != VitrineEvaluationPlan.OfflineSuite)
                     {
-                        if (!request.PaidEvaluationConfirmed)
-                            throw new InvalidOperationException("A paid live evaluation requires explicit confirmation.");
                         VitrineEventDraft? deferredTerminal = null;
                         var liveProgress = new CallbackProgress<LiveEvalProgress>(item =>
                         {
@@ -222,7 +227,7 @@ public sealed class VitrineRunCoordinator : IAsyncDisposable
                                 ? null
                                 : [request.LiveScenarioId]);
                         var liveResult = await _liveEvaluationRunner(
-                            request.EvaluationPlan, request.PaidEvaluationConfirmed, options, liveProgress,
+                            request.EvaluationPlan, request.PaidExecutionConfirmed, options, liveProgress,
                             cancellationToken).ConfigureAwait(false);
                         foreach (var observation in VitrineEventAdapters.FromLiveSafetyResult(liveResult))
                             store.Append(observation);

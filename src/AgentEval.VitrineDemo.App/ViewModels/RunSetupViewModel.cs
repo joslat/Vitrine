@@ -40,7 +40,8 @@ public sealed class RunSetupViewModel : BindableBase
     private VitrineEvaluationPlanDescriptor _selectedEvaluationPlan;
     private LiveScenarioOption _selectedLiveScenario;
     private int _evaluationRepetitions = 5;
-    private bool _paidEvaluationAcknowledged;
+    private bool _showAdvancedEvaluationPlans;
+    private bool _paidExecutionAcknowledged;
     private bool _personalizationEnabled = true;
     private int _maxRounds = 3;
     private int _audiencePacingMilliseconds = 90;
@@ -67,7 +68,6 @@ public sealed class RunSetupViewModel : BindableBase
             new(RecommendationExecutionArm.LiveAzure, "Live Azure", "Optional paid model execution; deployment name only is disclosed."),
         ];
         _selectedArm = Arms[0];
-        EvaluationPlans = VitrineEvaluationPlans.All;
         _selectedEvaluationPlan = EvaluationPlans[0];
         LiveScenarios =
         [
@@ -90,7 +90,16 @@ public sealed class RunSetupViewModel : BindableBase
 
     public IReadOnlyList<ExecutionArmOption> Arms { get; }
 
-    public IReadOnlyList<VitrineEvaluationPlanDescriptor> EvaluationPlans { get; }
+    private static IReadOnlyList<VitrineEvaluationPlanDescriptor> CoreEvaluationPlans { get; } =
+        VitrineEvaluationPlans.All.Where(static item => !VitrineEvaluationPlans.IsAdvanced(item.Plan)).ToArray();
+
+    /// <summary>
+    /// The first view deliberately contains only the offline suite and the two direct quality
+    /// plans. Paired, stochastic and safety investigations remain available on demand and keep
+    /// their stable CLI/artifact identities.
+    /// </summary>
+    public IReadOnlyList<VitrineEvaluationPlanDescriptor> EvaluationPlans =>
+        ShowAdvancedEvaluationPlans ? VitrineEvaluationPlans.All : CoreEvaluationPlans;
 
     public IReadOnlyList<LiveScenarioOption> LiveScenarios { get; }
 
@@ -101,6 +110,7 @@ public sealed class RunSetupViewModel : BindableBase
         {
             ArgumentNullException.ThrowIfNull(value);
             if (!SetProperty(ref _selectedPersona, value)) return;
+            PaidExecutionAcknowledged = false;
             RaisePropertyChanged(nameof(ScenarioTitle));
             RaisePropertyChanged(nameof(ScenarioDescription));
             RaisePropertyChanged(nameof(ScenarioQuery));
@@ -112,7 +122,10 @@ public sealed class RunSetupViewModel : BindableBase
         get => _selectedArm;
         set
         {
-            if (SetProperty(ref _selectedArm, value)) RaisePropertyChanged(nameof(ArmDescription));
+            ArgumentNullException.ThrowIfNull(value);
+            if (!SetProperty(ref _selectedArm, value)) return;
+            PaidExecutionAcknowledged = false;
+            RaisePropertyChanged(nameof(ArmDescription));
         }
     }
 
@@ -122,12 +135,34 @@ public sealed class RunSetupViewModel : BindableBase
         set
         {
             ArgumentNullException.ThrowIfNull(value);
+            if (VitrineEvaluationPlans.IsAdvanced(value.Plan) && !ShowAdvancedEvaluationPlans)
+                ShowAdvancedEvaluationPlans = true;
             if (!SetProperty(ref _selectedEvaluationPlan, value)) return;
             EvaluationRepetitions = value.DefaultRepetitions;
-            PaidEvaluationAcknowledged = false;
+            PaidExecutionAcknowledged = false;
             RaiseEvaluationPlanProperties();
         }
     }
+
+    public bool ShowAdvancedEvaluationPlans
+    {
+        get => _showAdvancedEvaluationPlans;
+        set
+        {
+            if (!SetProperty(ref _showAdvancedEvaluationPlans, value)) return;
+
+            if (!value && VitrineEvaluationPlans.IsAdvanced(SelectedEvaluationPlan.Plan))
+                SelectedEvaluationPlan = CoreEvaluationPlans[0];
+
+            PaidExecutionAcknowledged = false;
+            RaisePropertyChanged(nameof(EvaluationPlans));
+            RaisePropertyChanged(nameof(AdvancedEvaluationPlanSummary));
+        }
+    }
+
+    public string AdvancedEvaluationPlanSummary => ShowAdvancedEvaluationPlans
+        ? "Advanced paired, stochastic, and safety plans are shown."
+        : "Core view: offline evidence plus direct Agent or Workflow quality.";
 
     public LiveScenarioOption SelectedLiveScenario
     {
@@ -136,7 +171,7 @@ public sealed class RunSetupViewModel : BindableBase
         {
             ArgumentNullException.ThrowIfNull(value);
             if (!SetProperty(ref _selectedLiveScenario, value)) return;
-            PaidEvaluationAcknowledged = false;
+            PaidExecutionAcknowledged = false;
             RaiseEvaluationPlanProperties();
         }
     }
@@ -150,17 +185,17 @@ public sealed class RunSetupViewModel : BindableBase
                 ? VitrineEvaluationPlans.MinimumStochasticRepetitions
                 : 1;
             if (!SetProperty(ref _evaluationRepetitions, Math.Clamp(value, minimum, 30))) return;
-            PaidEvaluationAcknowledged = false;
+            PaidExecutionAcknowledged = false;
             RaiseEvaluationPlanProperties();
         }
     }
 
-    public bool PaidEvaluationAcknowledged
+    public bool PaidExecutionAcknowledged
     {
-        get => _paidEvaluationAcknowledged;
+        get => _paidExecutionAcknowledged;
         set
         {
-            if (!SetProperty(ref _paidEvaluationAcknowledged, value)) return;
+            if (!SetProperty(ref _paidExecutionAcknowledged, value)) return;
             RaisePropertyChanged(nameof(CanRunSelectedEvaluationPlan));
         }
     }
@@ -169,13 +204,21 @@ public sealed class RunSetupViewModel : BindableBase
     public bool PersonalizationEnabled
     {
         get => _personalizationEnabled;
-        set => SetProperty(ref _personalizationEnabled, value);
+        set
+        {
+            if (!SetProperty(ref _personalizationEnabled, value)) return;
+            PaidExecutionAcknowledged = false;
+        }
     }
 
     public int MaxRounds
     {
         get => _maxRounds;
-        set => SetProperty(ref _maxRounds, Math.Clamp(value, 1, 6));
+        set
+        {
+            if (!SetProperty(ref _maxRounds, Math.Clamp(value, 1, 6))) return;
+            PaidExecutionAcknowledged = false;
+        }
     }
 
     public int AudiencePacingMilliseconds
@@ -223,7 +266,7 @@ public sealed class RunSetupViewModel : BindableBase
         || LiveEvalServices.Default.CheckReadiness().IsReady;
 
     public bool CanRunSelectedEvaluationPlan => !IsLiveEvaluationPlan ||
-        IsSelectedLivePlanConfigured && PaidEvaluationAcknowledged;
+        IsSelectedLivePlanConfigured && PaidExecutionAcknowledged;
 
     public string EvaluationPlanDescription => IsLiveEvaluationPlan
         ? IsSafetyEvaluationPlan

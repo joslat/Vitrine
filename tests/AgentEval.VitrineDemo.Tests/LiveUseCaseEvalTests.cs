@@ -10,6 +10,7 @@ using Galaxus.RecommendationAgent.Guardrails;
 using Galaxus.RecommendationAgent.Observability;
 using Galaxus.RecommendationAgent.Tools;
 using Galaxus.RecommendationAgent.Workflows;
+using Microsoft.Extensions.AI;
 
 namespace AgentEval.VitrineDemo.Tests;
 
@@ -38,12 +39,81 @@ public sealed class LiveUseCaseEvalTests
             Assert.Equal(4, scenario.Criteria.Count);
             Assert.Equal($"{scenario.Title} · {scenario.PersonaId}", scenario.ToString());
         });
+        Assert.Equal(1.0, new LiveEvalOptions().PassThreshold);
         Assert.Equal("Eval 01 · Agent", VitrineEvaluationPlans.Require(
             VitrineEvaluationPlan.LiveEval01Agent).ToString());
         Assert.DoesNotContain(typeof(LiveSubjectRequest).GetProperties(), property =>
             property.PropertyType == typeof(LiveUseCaseScenario));
         Assert.DoesNotContain(typeof(LiveSubjectRequest).GetProperties(), property =>
             property.Name is "ExpectedBehavior" or "GroundTruthFacts" or "Criteria");
+    }
+
+    [Fact]
+    public async Task ShippedQualityBarRejectsThreeOfFourEvenWhenTheMissingCriterionDefinesTheScenario()
+    {
+        var workspace = TemporaryWorkspace();
+        try
+        {
+            var scenario = LiveUseCaseScenarios.Require("sofia-capability-gap");
+            var missingCriterion = scenario.Criteria.Single(static criterion =>
+                criterion.Id == "finds-capability-gap");
+            var judge = new RoutedScoreJudge(request => new EvaluationResult
+            {
+                OverallScore = 100,
+                Summary = "Three criteria met, but the defining capability-gap contract was missed.",
+                CriteriaResults = request.Criteria.Select(criterion => new CriterionResult
+                {
+                    Criterion = criterion,
+                    Met = !string.Equals(criterion, missingCriterion.Text, StringComparison.Ordinal),
+                    Explanation = string.Equals(criterion, missingCriterion.Text, StringComparison.Ordinal)
+                        ? "The answer did not identify the missing grinder capability."
+                        : "The criterion was met.",
+                }).ToArray(),
+            });
+
+            var result = await Eval02_Workflow.RunAsync(true,
+                new LiveEvalOptions(workspace, ScenarioIds: [scenario.Id]),
+                new(FakeSubject.Agent(MeasuredAgent("unused")),
+                    FakeSubject.Workflow(MeasuredWorkflow("workflow answer")), judge));
+
+            Assert.Equal(LiveEvalTerminalStatus.QualityFailed, result.TerminalStatus);
+            Assert.Equal(EvaluationExitCodes.GateFailed, result.ExitCode);
+            var trial = Assert.Single(result.Trials);
+            Assert.Equal(MeasurementState.Measured, trial.Measurement);
+            Assert.False(trial.Passed);
+            var quality = trial.Checks.Single(static check =>
+                check.Key == LiveUseCaseBenchmark.UseCaseQualityCheckKey);
+            Assert.Equal(0.75, quality.Score);
+            Assert.False(quality.Passed);
+            var criterion = trial.Criteria.Single(static item => item.Id == "finds-capability-gap");
+            Assert.False(criterion.Met);
+        }
+        finally
+        {
+            DeleteTemporaryWorkspace(workspace);
+        }
+    }
+
+    [Fact]
+    public void SofiaLaneCriterionPinsExactConsumablesAndParticipatesInDefinitionIdentity()
+    {
+        const string expected =
+            "Places Sofia's repeated GLX-3008 beans and GLX-5002 filter cartridges in a clearly labeled replenishment or repeat-buy lane, not as discovery recommendations; unrelated non-owned products may remain in discovery.";
+        var scenario = LiveUseCaseScenarios.Require("sofia-capability-gap");
+        var criterion = scenario.Criteria.Single(static item => item.Id == "separates-lanes");
+        Assert.Equal(expected, criterion.Text);
+
+        var changedScenario = scenario with
+        {
+            Criteria = Array.AsReadOnly(scenario.Criteria.Select(item =>
+                item.Id == criterion.Id ? item with { Text = item.Text + " changed" } : item).ToArray()),
+        };
+        Assert.NotEqual(
+            LiveUseCaseBenchmark.RubricHashFor([scenario]),
+            LiveUseCaseBenchmark.RubricHashFor([changedScenario]));
+        Assert.NotEqual(
+            LiveUseCaseBenchmark.DefinitionVersionFor([scenario], 1.0, "judge", 800),
+            LiveUseCaseBenchmark.DefinitionVersionFor([changedScenario], 1.0, "judge", 800));
     }
 
     [Fact]
@@ -122,6 +192,39 @@ public sealed class LiveUseCaseEvalTests
             DiscoveryEvent.ModelRequestCancelled(
                 DiscoveryExecutorIds.Presenter, "presenter", "operation-3"),
         ]));
+    }
+
+    [Fact]
+    public async Task RecoveredRankerProviderFailureProjectsOnlyExecutorAttributedDegradations()
+    {
+        var progress = new RecordingDiscoveryProgressSink();
+        using var client = new FailOnceChatClient("{\"selections\":[]}");
+        var model = new DiscoveryModelCall(client, progress);
+
+        var envelope = await model.InvokeAsync<RankerEnvelope>(
+            DiscoveryExecutorIds.Ranker,
+            "GalaxusRanker",
+            "Return JSON.",
+            "Rank these candidates.",
+            new DiscoveryState
+            {
+                CustomerId = "projection-fixture",
+                Market = "CH",
+                Language = "en",
+            },
+            CancellationToken.None);
+
+        Assert.NotNull(envelope);
+        var projected = progress.Events
+            .Where(static item => item.Kind is DiscoveryEventKind.Degraded
+                or DiscoveryEventKind.ModelRequestFailed or DiscoveryEventKind.ModelRequestCancelled)
+            .Select(LiveEvalServices.ProjectWorkflowDegradationKind)
+            .ToArray();
+        Assert.Equal(3, projected.Length);
+        Assert.All(projected, static item => Assert.StartsWith("Ranker:", item, StringComparison.Ordinal));
+        Assert.DoesNotContain("unknown:fallback", projected, StringComparer.Ordinal);
+        Assert.Contains("Ranker:model-failure", projected, StringComparer.Ordinal);
+        Assert.Contains("Ranker:fallback", projected, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -1098,6 +1201,38 @@ public sealed class LiveUseCaseEvalTests
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(evaluate(request));
         }
+    }
+
+    private sealed class FailOnceChatClient(string recoveredJson) : IChatClient
+    {
+        private int _calls;
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Interlocked.Increment(ref _calls) == 1)
+                throw new InvalidOperationException("fixture provider failure");
+
+            return Task.FromResult(new ChatResponse(
+                new ChatMessage(ChatRole.Assistant, recoveredJson)));
+        }
+
+        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            var response = await GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
+            foreach (var message in response.Messages)
+                yield return new ChatResponseUpdate(message.Role, message.Contents);
+        }
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        public void Dispose() { }
     }
 
     private sealed class FakeSafetyEvaluator(LiveSafetySummary result) : ILiveSafetyEvaluator

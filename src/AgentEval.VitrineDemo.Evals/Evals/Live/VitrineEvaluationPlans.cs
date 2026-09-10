@@ -46,7 +46,7 @@ public static class VitrineEvaluationPlans
         new(VitrineEvaluationPlan.LiveEval02Workflow, "Eval 02 · Workflow",
             "Judge one fresh discovery-workflow run for each selected use case.", true, true, false, true, false, 1),
         new(VitrineEvaluationPlan.LiveEval03AgentVsWorkflow, "Eval 03 · Agent vs workflow",
-            "Run matched fresh agent and workflow arms and compare them case by case.", true, true, true, true, true, 1),
+            "Advanced paired diagnostic: run matched fresh agent and workflow arms case by case. The comparison does not choose a winner or control terminal success; absolute trial quality does.", true, true, true, true, true, 1),
         new(VitrineEvaluationPlan.LiveEval04StochasticAgent, "Eval 04 · Stochastic agent",
             "Repeat the agent arm; all planned trials must be measured and each scenario's whole-trial (quality + response + tool journal) 95% Wilson lower bound must be at least 0.50.", true, true, true, true, false, 5),
         new(VitrineEvaluationPlan.LiveEval05StochasticWorkflow, "Eval 05 · Stochastic workflow",
@@ -63,4 +63,14 @@ public static class VitrineEvaluationPlans
     public static bool IsStochastic(VitrineEvaluationPlan plan) =>
         plan is VitrineEvaluationPlan.LiveEval04StochasticAgent
             or VitrineEvaluationPlan.LiveEval05StochasticWorkflow;
+
+    /// <summary>
+    /// Plans retained for deliberate investigation but hidden from the App's first-view picker.
+    /// The CLI and persisted plan identities remain unchanged.
+    /// </summary>
+    public static bool IsAdvanced(VitrineEvaluationPlan plan) =>
+        plan is VitrineEvaluationPlan.LiveEval03AgentVsWorkflow
+            or VitrineEvaluationPlan.LiveEval04StochasticAgent
+            or VitrineEvaluationPlan.LiveEval05StochasticWorkflow
+            or VitrineEvaluationPlan.LiveEval06SafetyProbes;
 }

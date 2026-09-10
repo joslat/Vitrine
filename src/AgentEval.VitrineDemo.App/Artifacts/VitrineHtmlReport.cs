@@ -8,6 +8,7 @@ using AgentEval.VitrineDemo.App.Models;
 using AgentEval.VitrineDemo.App.Runtime;
 using AgentEval.VitrineDemo.App.ViewModels;
 using AgentEval.VitrineDemo.Evals.Live;
+using Avalonia;
 
 namespace AgentEval.VitrineDemo.App.Artifacts;
 
@@ -21,7 +22,7 @@ public static class VitrineHtmlReport
         var html = new StringBuilder();
         html.Append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">")
             .Append("<title>VITRINE evidence report</title><style>")
-            .Append("body{margin:0;background:#08111f;color:#eaf1fb;font:14px Inter,Segoe UI,sans-serif}main{max-width:1280px;margin:auto;padding:32px}h1{margin:.2rem 0;font-size:30px}.muted{color:#91a0b8}.card{background:#111827;border:1px solid #25324a;border-radius:12px;padding:16px;margin:14px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}.pill{display:inline-block;padding:5px 8px;border:1px solid #327d73;border-radius:6px;color:#5ae4d2}.metric{font-size:22px;font-weight:700}.floor{color:#f6c55c}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px;border-bottom:1px solid #263650;vertical-align:top}th{color:#7f91ae;font-size:11px}code{color:#9fc5ff}pre{white-space:pre-wrap;overflow-wrap:anywhere}details{margin-top:8px}summary{cursor:pointer;color:#9fc5ff}.payload{max-height:360px;overflow:auto;padding:10px;background:#08111f;border:1px solid #263650;border-radius:7px}svg{width:100%;min-height:210px;background:#091321;border-radius:9px}.node{fill:#101d30;stroke:#5ae4d2;stroke-width:1.5}.edge{stroke:#405675;stroke-width:1.5}.loop{stroke:#b77cff}.label{fill:#eef4fd;font-size:11px}.trace{fill:#91a0b8;font-size:9px}.event{border-left:3px solid #47709e;padding:8px 12px;margin:6px 0;background:#0d1828}.not{color:#f6c55c}.error{color:#f07076}</style></head><body><main>");
+            .Append("body{margin:0;background:#08111f;color:#eaf1fb;font:14px Inter,Segoe UI,sans-serif}main{max-width:1280px;margin:auto;padding:32px}h1{margin:.2rem 0;font-size:30px}.muted{color:#91a0b8}.card{background:#111827;border:1px solid #25324a;border-radius:12px;padding:16px;margin:14px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}.pill{display:inline-block;padding:5px 8px;border:1px solid #327d73;border-radius:6px;color:#5ae4d2}.metric{font-size:22px;font-weight:700}.floor{color:#f6c55c}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px;border-bottom:1px solid #263650;vertical-align:top}th{color:#7f91ae;font-size:11px}code{color:#9fc5ff}pre{white-space:pre-wrap;overflow-wrap:anywhere}details{margin-top:8px}summary{cursor:pointer;color:#9fc5ff}.payload{max-height:360px;overflow:auto;padding:10px;background:#08111f;border:1px solid #263650;border-radius:7px}svg{width:100%;min-height:210px;background:#091321;border-radius:9px}.agentic-rag-boundary{fill:none;stroke:#8f72d8;stroke-width:1.25;stroke-dasharray:8 6}.agentic-rag-title-bg{fill:#091321}.agentic-rag-title{fill:#cbb8ff;font-size:9px;font-weight:700;letter-spacing:.7px}.node{fill:#101d30;stroke:#5ae4d2;stroke-width:1.5}.edge{stroke:#405675;stroke-width:1.5}.loop{stroke:#b77cff}.label{fill:#eef4fd;font-size:11px}.trace{fill:#91a0b8;font-size:9px}.event{border-left:3px solid #47709e;padding:8px 12px;margin:6px 0;background:#0d1828}.not{color:#f6c55c}.error{color:#f07076}</style></head><body><main>");
         var executionLabel = artifact.Result.LiveEvaluation is not null
             ? "PAID LIVE EVAL"
             : artifact.ExecutionArm switch
@@ -231,7 +232,9 @@ public static class VitrineHtmlReport
         html.Append(isSafety
                 ? "<section class=\"card\"><h2>Paid live safety evaluation</h2>"
                 : "<section class=\"card\"><h2>Paid live use-case evaluation</h2>")
-            .Append("<p class=\"muted\">These are evaluator-owned LiveEvalResult facts. This report does not average checks, re-score trials, or derive a winner. Provider failure cannot count as measured; bounded internal fallbacks are disclosed.</p>")
+            .Append(isSafety
+                ? "<p class=\"muted\">These are evaluator-owned LiveEvalResult facts. This report presents the safety compromise/resistance census without deriving a use-case quality score or winner; provider failure cannot count as measured, and bounded internal fallbacks are disclosed.</p>"
+                : "<p class=\"muted\">These are evaluator-owned LiveEvalResult facts. This report does not average checks, re-score trials, or derive a winner. The shipped 1.000 quality bar requires all four authored criteria; provider failure cannot count as measured, and bounded internal fallbacks are disclosed.</p>")
             .Append("<div class=\"grid\">")
             .Append(Metric("Plan", $"{live.PlanLabel} · {live.Plan}"))
             .Append(Metric("Terminal status", $"{live.TerminalStatus} · exit {live.ExitCode}"))
@@ -376,7 +379,7 @@ public static class VitrineHtmlReport
         if (live.ScenarioAcceptances is { Count: > 0 } acceptances)
         {
             html.Append("<h3>Terminal per-scenario Wilson decisions</h3>")
-                .Append("<p class=\"muted\">These per-arm, per-scenario decisions are the exact stochastic acceptance facts used for the terminal verdict. Every planned trial must be fully measured. A whole-trial success means its three required checks passed: use-case quality, response observed, and the arm-specific agent tool journal or workflow trace. Each scenario independently requires its 95% Wilson lower bound to clear 0.500. Pooled per-check summaries below are diagnostic and do not replace this policy.</p>")
+                .Append("<p class=\"muted\">These per-arm, per-scenario decisions are the exact stochastic acceptance facts used for the terminal verdict. Every planned trial must be fully measured. With the shipped 1.000 bar, whole-trial success requires all four authored criteria, response observation, and the arm-specific agent tool journal or workflow trace. Each scenario independently requires its 95% Wilson lower bound to clear 0.500. Pooled per-check summaries below are diagnostic and do not replace this policy.</p>")
                 .Append("<table><thead><tr><th>Scenario · arm</th><th>Architecture</th><th>Measurement census</th><th>Whole-trial successes</th><th>Wilson interval</th><th>Policy</th><th>Decision</th></tr></thead><tbody>");
             foreach (var decision in acceptances)
                 html.Append("<tr><td><code>").Append(H(decision.ScenarioId)).Append("</code><br>")
@@ -739,19 +742,45 @@ public static class VitrineHtmlReport
         const double width = 1100;
         var height = RuntimeGraphControl.RequiredHeightForLayout(replay, width);
         var positions = RuntimeGraphControl.Layout(replay, width, height);
+        var agenticRagGroup = AgenticRagGroupLayout.TryCreate(replay, positions, width);
         var svg = new StringBuilder("<svg viewBox=\"0 0 1100 ").Append(D(height))
             .Append("\" role=\"img\" aria-label=\"Runtime graph\"><defs><marker id=\"arrow\" viewBox=\"0 0 10 10\" refX=\"8\" refY=\"5\" markerWidth=\"5\" markerHeight=\"5\" orient=\"auto-start-reverse\"><path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"#405675\"/></marker></defs>");
+        if (agenticRagGroup is { } group)
+        {
+            svg.Append("<g class=\"agentic-rag-group\" role=\"group\" aria-label=\"")
+                .Append(H(AgenticRagGroupLayout.AccessibleDescription)).Append("\"><title>")
+                .Append(H(AgenticRagGroupLayout.AccessibleDescription)).Append("</title>")
+                .Append("<rect class=\"agentic-rag-boundary\" data-agentic-rag-group=\"bounded\" x=\"")
+                .Append(D(group.Bounds.X)).Append("\" y=\"").Append(D(group.Bounds.Y))
+                .Append("\" width=\"").Append(D(group.Bounds.Width)).Append("\" height=\"")
+                .Append(D(group.Bounds.Height)).Append("\" rx=\"12\"/>")
+                .Append("<rect class=\"agentic-rag-title-bg\" x=\"").Append(D(group.Bounds.X + 11))
+                .Append("\" y=\"").Append(D(group.Bounds.Y - 1)).Append("\" width=\"")
+                .Append(D(Math.Min(282, group.Bounds.Width - 22))).Append("\" height=\"16\"/>")
+                .Append("<text class=\"agentic-rag-title\" x=\"").Append(D(group.LabelOrigin.X))
+                .Append("\" y=\"").Append(D(group.LabelOrigin.Y + 8)).Append("\">")
+                .Append(H(AgenticRagGroupLayout.Label)).Append("</text></g>");
+        }
         foreach (var edge in artifact.Graph.Edges)
             if (positions.TryGetValue(edge.SourceId, out var source) && positions.TryGetValue(edge.TargetId, out var target))
             {
                 if (edge.IsLoopBack)
                 {
-                    var controlY = Math.Max(20, Math.Min(source.Y, target.Y) - 65);
+                    var controlY = agenticRagGroup?.LoopY
+                        ?? Math.Max(20, Math.Min(source.Y, target.Y) - 65);
+                    IReadOnlyList<Point> route = agenticRagGroup?.FeedbackRoute
+                        ??
+                        [
+                            new Point(source.X, source.Y - 30),
+                            new Point(source.X, controlY),
+                            new Point(target.X, controlY),
+                            new Point(target.X, target.Y - 30),
+                        ];
                     svg.Append("<path class=\"edge loop\" fill=\"none\" marker-end=\"url(#arrow)\" d=\"M ")
-                        .Append(D(source.X)).Append(' ').Append(D(source.Y - 30)).Append(" L ")
-                        .Append(D(source.X)).Append(' ').Append(D(controlY)).Append(" L ")
-                        .Append(D(target.X)).Append(' ').Append(D(controlY)).Append(" L ")
-                        .Append(D(target.X)).Append(' ').Append(D(target.Y - 30)).Append("\"/>");
+                        .Append(D(route[0].X)).Append(' ').Append(D(route[0].Y));
+                    foreach (var point in route.Skip(1))
+                        svg.Append(" L ").Append(D(point.X)).Append(' ').Append(D(point.Y));
+                    svg.Append("\"/>");
                 }
                 else if (RuntimeGraphControl.IsDemo01Surface(replay)
                          && replay.Nodes.Single(node => node.Id == edge.SourceId).Kind == "agent"
@@ -771,8 +800,15 @@ public static class VitrineHtmlReport
                         .Append("\" x2=\"").Append(D(segment.End.X)).Append("\" y2=\"").Append(D(segment.End.Y)).Append("\"/>");
                 }
                 var observed = replay.Edges.Single(item => item.Id == edge.Id).TraversalCount;
-                svg.Append("<text class=\"trace\" x=\"").Append(D((source.X + target.X) / 2)).Append("\" y=\"")
-                    .Append(D((source.Y + target.Y) / 2 - 9)).Append("\" text-anchor=\"middle\">")
+                var traceX = edge.IsLoopBack && agenticRagGroup is { } loopGroup
+                    ? loopGroup.LoopLabelOrigin.X
+                    : (source.X + target.X) / 2;
+                var traceY = edge.IsLoopBack && agenticRagGroup is { } labelledLoopGroup
+                    ? labelledLoopGroup.LoopLabelOrigin.Y + 8
+                    : (source.Y + target.Y) / 2 - 9;
+                var traceAnchor = edge.IsLoopBack && agenticRagGroup is not null ? "start" : "middle";
+                svg.Append("<text class=\"trace\" x=\"").Append(D(traceX)).Append("\" y=\"")
+                    .Append(D(traceY)).Append("\" text-anchor=\"").Append(traceAnchor).Append("\">")
                     .Append(H(edge.IsLoopBack ? $"BACK · {edge.Label} · ×{observed}" : $"×{observed}"))
                     .Append("</text>");
             }

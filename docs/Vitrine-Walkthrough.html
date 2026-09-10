@@ -138,6 +138,10 @@
           Buttons and sections expose delayed tooltips explaining their action and prerequisites.
           Disabled export/replay controls become available only after a completed artifact exists.</p></article>
       </div>
+      <div class="callout warn"><strong>First live run?</strong> Configure the current Azure OpenAI
+        endpoint/API-key client, deployment names, session-scoped environment variables, and one-case
+        smoke from the <a href="Vitrine-Live-Run-Setup.html">Microsoft Foundry live-run setup</a>.
+        A local readiness badge is not a provider connectivity test.</div>
     </div>
   </section>
 
@@ -206,7 +210,7 @@
             <tr><td>Offline Evals</td><td>Five mandatory evaluation gates plus one matched-quality diagnostic; persisted Nadia/Sofia benchmark across Demo01, Demo02, and degraded arms; five predicates; 43 registered mutation diagnostics</td><td>None</td><td>Authority-labelled gate/diagnostic evidence, benchmark census/floor/reference facts, and three-phase controls</td></tr>
             <tr><td>Eval 01 · Agent</td><td>One fresh Robin agent trial for each selected use case</td><td>Paid; confirmation required</td><td>Response preview, read-only tool journal, LLM criterion verdicts, and local run receipt</td></tr>
             <tr><td>Eval 02 · Workflow</td><td>One fresh five-executor discovery-workflow trial for each selected use case</td><td>Paid; confirmation required</td><td>Response preview, executor/route facts, LLM criterion verdicts, and local run receipt</td></tr>
-            <tr><td>Eval 03 · Agent vs workflow</td><td>Matched agent-reference and workflow-challenger arms; repetitions are configurable</td><td>Paid; confirmation required</td><td>Per-arm checks plus paired-case observation unit, <code>RepCollapse.All</code>, repetition counts, wins/losses/ties, effective n, p-value, minimum attainable p, mean delta, and power warning</td></tr>
+            <tr><td>Eval 03 · Agent vs workflow</td><td>Advanced matched-arm diagnostic; it does not choose a winner or control terminal success</td><td>Paid; confirmation required</td><td>Per-arm absolute quality plus paired-case observation unit, <code>RepCollapse.All</code>, repetition counts, wins/losses/ties, effective n, p-value, minimum attainable p, mean delta, and power warning</td></tr>
             <tr><td>Eval 04 · Stochastic agent</td><td>Repeated agent trials; five repetitions by default and at least four</td><td>Paid; confirmation required</td><td>Per-scenario terminal acceptance from the whole-trial 95% Wilson lower bound ≥ 0.50, plus separate per-check census and intervals</td></tr>
             <tr><td>Eval 05 · Stochastic workflow</td><td>Repeated workflow trials; five repetitions by default and at least four</td><td>Paid; confirmation required</td><td>The same persisted per-arm/per-scenario acceptance decision, plus per-check diagnostic reliability</td></tr>
             <tr><td>Eval 06 · Safety probes</td><td>Fixed Robin-only AgentEval jailbreak and hidden-instruction-extraction campaign</td><td>Paid; confirmation required; 104-model-call ceiling by default</td><td>Redacted per-attack/per-probe resisted, compromised, inconclusive, error, fidelity, and usage facts; no scenario, repetition, or benchmark run</td></tr>
@@ -221,7 +225,9 @@
           In <strong>Evals</strong>, open <strong>Evaluation plan</strong>. Offline suite remains selected
           by default. Choose Eval 01–06 only when you intend to create new paid measurements.</p></article>
         <article class="card"><span class="tag info">2 · Case</span><h3>Read what will be asked</h3><p>
-          For Eval 01–05, choose one use case or <strong>All four canonical use cases</strong>.
+          The first-view picker contains Offline, Eval 01 Agent, and Eval 02 Workflow. Turn on
+          <strong>Advanced plans</strong> only when you deliberately need the paired diagnostic,
+          stochastic reliability, or safety investigation. For Eval 01–05, choose one use case or <strong>All four canonical use cases</strong>.
           Before any model call, the panel shows the selected scenario title, description, exact
           query, and expected behavior. The completed board expands the independent
           ground-truth/tool contract and criteria. Eval 06 instead shows
@@ -238,7 +244,8 @@
         href="Vitrine-Evaluation-Protocol.html#cost-persistence-and-paid-execution">evaluation protocol</a>.</div>
       <div class="callout"><strong>The decision rule is visible:</strong> the board identifies the
         applicable quality bar, census, and evaluator-owned verdict. It distinguishes a quality threshold
-        from a chance floor, preserves bounded judge explanations, and marks a rule as not applicable when
+        from a chance floor; the shipped <code>1.000</code> bar makes all four authored use-case criteria
+        mandatory. It preserves bounded judge explanations and marks a rule as not applicable when
         the plan—such as Eval 06—uses a different safety classification.</div>
       <div class="callout warn"><strong>Workflow degradation is visible:</strong> after two
         unusable structured-output attempts, the mapper, reviewer, ranker, or presenter may use its
@@ -267,7 +274,7 @@
           The graph increments only after a row reaches <code>ControlCompleted</code>. It does not mean
           that the full suite ran 43 times. Expand timeline evidence to see baseline, planted defect,
           recovery, and cause for each NC-01…NC-43 row.</p></article>
-        <article class="card"><span class="tag info">Safety</span><h3>Read the census, not 0.750</h3><p>
+        <article class="card"><span class="tag info">Safety</span><h3>Read the census, not 1.000</h3><p>
           Eval 06 shows planned probes and the 104-call ceiling, then resisted,
           <strong>COMPROMISED</strong>, inconclusive, error, truncation, and skipped counts with
           per-attack/probe facts and usage. Its quality threshold is explicitly not applicable and
@@ -278,7 +285,8 @@
         offline production/recommendation checks and the live use-case checks do not have a defensible
         random-answer population, so no 0.500 floor is invented. A 0.500 chance fact is meaningful
         only for a separately registered uniform binary-choice fixture; it is not the passing score,
-        the live 0.75 quality pass bar, or proof that a result is useful.</div>
+        the live 1.00 quality pass bar, or proof that a result is useful. For Eval 01–05,
+        that shipped bar requires all four authored criteria; three of four is a measured failure.</div>
       <div class="callout warn"><strong>“The probes ran” is not the same as “the campaign was
         measurable.”</strong> Eval 06 records every completed probe attempt. <em>Errored</em> is a
         subset of <em>inconclusive</em>, not an additional probe: one inconclusive / one error means
@@ -388,8 +396,11 @@
 .\start.ps1 -Mode Controls -NoRestore
 .\start.ps1 -Mode Ablation -NoRestore
 
-# Standalone subject selectors 1–6 stay offline unless both paid flags are present
+# Standalone subject selector 1 defaults to the zero-model baseline
 dotnet run --project src/AgentEval.VitrineDemo -- 1
+# Real Demo01 agent/tools with a deterministic local ChatClient; no remote chat model
+dotnet run --project src/AgentEval.VitrineDemo -- 1 --scripted
+# Provider-backed subject requires both paid flags
 dotnet run --project src/AgentEval.VitrineDemo -- 1 --live --confirm-paid
 
 # Explicit paid paths; secure Azure configuration and --confirm-paid are required
@@ -406,14 +417,17 @@ dotnet run --project src/AgentEval.VitrineDemo.Evals -- --live-subjects-and-judg
         <code>1</code>. The default four-probe campaign may consume up to 104 model calls; inspect
         that ceiling before confirming paid execution.</div>
       <div class="callout warn"><strong>Standalone subject cost boundary:</strong> credentials do
-        not opt selectors 1–6 into a live model. That requires both <code>--live</code> and
-        <code>--confirm-paid</code>. Because <code>--real-vectors</code> embeds queries live and
+        not opt selectors 1–6 into a live model. Demo01's <code>--scripted</code> arm explicitly
+        selects the local deterministic ChatClient while preserving the real agent/tool runtime;
+        <code>--offline</code>, <code>--scripted</code>, and <code>--live</code> are mutually exclusive.
+        A provider-backed subject requires <code>--live --confirm-paid</code>. Because <code>--real-vectors</code> embeds queries live and
         <code>--rebuild-embeddings</code> regenerates the live index, both vector options also
         require <code>--confirm-paid</code>.</div>
       <div class="callout ok"><strong>Verification safety:</strong> the implementation build,
         normal tests, self-test, and committed offline report refresh use no live subject or LLM
         judge. A paid plan is a separate operator action and produces a new local session receipt.</div>
-      <p><a href="Vitrine-Evaluation-Protocol.html">Continue to the normative evaluation protocol →</a></p>
+      <p><a href="Vitrine-Live-Run-Setup.html">Configure and smoke the explicit live lane →</a> ·
+        <a href="Vitrine-Evaluation-Protocol.html">Continue to the normative evaluation protocol →</a></p>
     </div>
   </section>
 </main>

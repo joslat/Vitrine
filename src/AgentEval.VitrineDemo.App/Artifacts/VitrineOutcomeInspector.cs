@@ -137,7 +137,7 @@ internal static class VitrineOutcomeInspector
             .AppendLine(live.ExitCode.ToString(CultureInfo.InvariantCulture))
             .Append("  Quality pass bar: ").AppendLine(isSafety
                 ? "NOT APPLICABLE · safety uses compromise/resistance census"
-                : $"{Measured(live.PassThreshold)} · evaluator acceptance threshold, NOT a null/chance floor")
+                : $"{Measured(live.PassThreshold)} · shipped default 1.000 requires all four authored criteria; NOT a null/chance floor")
             .AppendLine("  Measurement policy: provider failure cannot count as measured; bounded internal fallbacks are disclosed.")
             .Append("  Session: ").AppendLine(live.SessionId)
             .Append("  Started / completed: ").Append(live.StartedAtUtc.ToString("O", CultureInfo.InvariantCulture))

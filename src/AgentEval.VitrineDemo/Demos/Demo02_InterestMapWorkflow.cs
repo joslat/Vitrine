@@ -231,11 +231,8 @@ public static class Demo02_InterestMapWorkflow
     /// run is reported in full and then marked unusable.
     /// </para>
     /// <para>
-    /// <b>The check can fail, and was demonstrated failing in both directions.</b> Removing one
-    /// entry from <c>QueryVocabulary</c>'s B-9 localisation table makes <c>CoverageReviewer</c>
-    /// throw: before this, <c>Agent -- 2 --offline</c> exited 0; after it, 1. On the shipped tree,
-    /// with the table intact, it exits 0. A gate that only ever fires, or never fires, proves
-    /// nothing either way.
+    /// Reviewer vocabulary failures are executor failures, not valid partial answers. The adapter
+    /// therefore drains and prints the available evidence, then returns a non-zero exit code.
     /// </para>
     /// </remarks>
     /// <param name="result">The finished run.</param>

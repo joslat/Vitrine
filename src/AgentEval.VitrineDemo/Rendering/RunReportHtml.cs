@@ -685,8 +685,10 @@ public static class RunReportHtml
                 + "does the loop cover more of a customer's interests than the single agent, does a hostile product "
                 + "review change what gets recommended, is the answer stable when the same turn is repeated — cannot be "
                 + "read off this page in either direction. The credential-free <span class=\"mono\">--all</span> command "
-                + "runs the deterministic offline gates, benchmark and registered negative controls; it does not run "
-                + "the paid multi-scenario or repeated-model plans:</p>\n")
+                + "runs deterministic offline gates, a benchmark scoped to exactly <b>2 synthetic cases/personas × "
+                + "3 deterministic arms × 2 repetitions</b>, and registered mutation controls. That benchmark's admitted checks "
+                + "record chance floor <span class=\"mono\">NotDerivable</span> because no defensible random-answer "
+                + "chance floor is derivable; it does not run the paid multi-scenario or repeated-model plans:</p>\n")
           .Append("  <pre class=\"cmd\">dotnet run --project src/AgentEval.VitrineDemo.Evals -- --all</pre>\n")
           .Append("  <p class=\"note\">For those claims, select the corresponding live eval plan and pass "
                 + "<span class=\"mono\">--confirm-paid</span>. Live plans declare their actual scenario and repetition "

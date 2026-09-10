@@ -108,6 +108,17 @@ public sealed class LiveEvalServices
             or RecommendationRuntimeEventKind.ModelRequestCancelled);
     }
 
+    internal static string ProjectWorkflowDegradationKind(DiscoveryEvent item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        var node = DiscoveryExecutorIds.All.Contains(item.NodeId, StringComparer.Ordinal)
+            ? item.NodeId
+            : "unknown";
+        var kind = item.Kind is DiscoveryEventKind.ModelRequestFailed
+            or DiscoveryEventKind.ModelRequestCancelled ? "model-failure" : "fallback";
+        return $"{node}:{kind}";
+    }
+
     internal static LiveToolEvidence ProjectTools(IReadOnlyList<RecommendationRuntimeEvent> events)
     {
         ArgumentNullException.ThrowIfNull(events);
@@ -360,13 +371,8 @@ public sealed class LiveEvalServices
             var safeRoutes = run.RoutesTaken.Where(routeSet.Contains).ToArray();
             var degradationEvents = events.Where(item => item.Kind is DiscoveryEventKind.Degraded
                 or DiscoveryEventKind.ModelRequestFailed or DiscoveryEventKind.ModelRequestCancelled).ToArray();
-            var degradationKinds = degradationEvents.Select(item =>
-            {
-                var node = executorSet.Contains(item.NodeId) ? item.NodeId : "unknown";
-                var kind = item.Kind is DiscoveryEventKind.ModelRequestFailed
-                    or DiscoveryEventKind.ModelRequestCancelled ? "model-failure" : "fallback";
-                return $"{node}:{kind}";
-            }).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+            var degradationKinds = degradationEvents.Select(ProjectWorkflowDegradationKind)
+                .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
             return new(
                 Array.AsReadOnly(executors),
                 Array.AsReadOnly(safeRoutes),

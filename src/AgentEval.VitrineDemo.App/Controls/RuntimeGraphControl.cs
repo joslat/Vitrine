@@ -58,6 +58,8 @@ public sealed class RuntimeGraphControl : Control
         }
 
         var positions = Layout(model);
+        var agenticRagGroup = AgenticRagGroupLayout.TryCreate(model, positions, Bounds.Width);
+        if (agenticRagGroup is { } group) DrawAgenticRagGroup(context, group);
         foreach (var edge in model.Edges)
         {
             if (!positions.TryGetValue(edge.SourceId, out var source) || !positions.TryGetValue(edge.TargetId, out var target)) continue;
@@ -67,22 +69,31 @@ public sealed class RuntimeGraphControl : Control
             var pen = new Pen(brush, active ? 3 : 1.5);
             if (edge.IsLoopBack)
             {
-                var sourceTop = new Point(source.X, source.Y - 29);
-                var targetTop = new Point(target.X, target.Y - 29);
-                var loopY = Math.Max(34, Math.Min(source.Y, target.Y) - 66);
+                var loopY = agenticRagGroup?.LoopY
+                    ?? Math.Max(34, Math.Min(source.Y, target.Y) - 66);
+                IReadOnlyList<Point> route = agenticRagGroup?.FeedbackRoute
+                    ??
+                    [
+                        new Point(source.X, source.Y - 29),
+                        new Point(source.X, loopY),
+                        new Point(target.X, loopY),
+                        new Point(target.X, target.Y - 29),
+                    ];
                 var geometry = new StreamGeometry();
                 using (var stream = geometry.Open())
                 {
-                    stream.BeginFigure(sourceTop, false);
-                    stream.LineTo(new Point(source.X, loopY));
-                    stream.LineTo(new Point(target.X, loopY));
-                    stream.LineTo(targetTop);
+                    stream.BeginFigure(route[0], false);
+                    foreach (var point in route.Skip(1)) stream.LineTo(point);
                 }
                 context.DrawGeometry(null, pen, geometry);
-                DrawArrowHead(context, targetTop, new Vector(0, 1), brush);
+                DrawArrowHead(context, route[^1], route[^1] - route[^2], brush);
                 var backLabel = $"BACK · {edge.Label} · ×{edge.TraversalCount} observed";
+                var labelOrigin = agenticRagGroup?.LoopLabelOrigin
+                    ?? new Point(
+                        Math.Min(source.X, target.X) + Math.Abs(source.X - target.X) * 0.18,
+                        loopY - 16);
                 DrawText(context, backLabel,
-                    new Point(Math.Min(source.X, target.X) + Math.Abs(source.X - target.X) * 0.18, loopY - 16),
+                    labelOrigin,
                     colour, 8);
             }
             else
@@ -127,6 +138,21 @@ public sealed class RuntimeGraphControl : Control
                     new Point(rect.Right - (node.Kind == "evaluation-controls" ? 43 : 27), rect.Y + 29),
                     "#9FB2CD", 8);
         }
+    }
+
+    private static void DrawAgenticRagGroup(DrawingContext context, AgenticRagGroupGeometry group)
+    {
+        var boundaryBrush = new SolidColorBrush(Color.Parse("#8F72D8"));
+        var boundaryPen = new Pen(boundaryBrush, 1.25) { DashStyle = DashStyle.Dash };
+        context.DrawRectangle(null, boundaryPen, group.Bounds, 12, 12);
+
+        var titleBackground = new Rect(
+            group.Bounds.X + 11,
+            group.Bounds.Y - 1,
+            Math.Min(282, group.Bounds.Width - 22),
+            16);
+        context.FillRectangle(new SolidColorBrush(Color.Parse("#091321")), titleBackground);
+        DrawText(context, AgenticRagGroupLayout.Label, group.LabelOrigin, "#CBB8FF", 8);
     }
 
     internal static double RequiredHeightForLayout(GraphViewModel model, double availableWidth)

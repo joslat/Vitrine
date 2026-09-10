@@ -177,7 +177,7 @@ public static class RecommendationRunEngine
             categories: catalogue.Categories,
             customerUtterance: prompt,
             asOf: Personas.DemoToday);
-        var replenishment = Demo01_RecommendationAgent.BuildReplenishmentLane(map, classified, catalogue);
+        var replenishment = ReplenishmentLaneBuilder.Build(map, classified, catalogue);
 
         if (GuardrailPipeline.ShouldAbstain(context, out var abstainReason))
         {

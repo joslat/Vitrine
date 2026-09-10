@@ -109,13 +109,20 @@
                           ItemsSource="{Binding Setup.EvaluationPlans}"
                           SelectedItem="{Binding Setup.SelectedEvaluationPlan}"
                           AutomationProperties.Name="Evaluation plan"
-                          ToolTip.Tip="Offline remains the safe default. Eval 01 runs the agent; Eval 02 the workflow; Eval 03 compares matched arms; Eval 04/05 report stochastic reliability; Eval 06 runs bounded AgentEval safety probes against Robin only.">
+                          ToolTip.Tip="The core view keeps the choice to offline evidence, Agent quality, or Workflow quality. Enable Advanced to reveal the paired diagnostic, stochastic reliability, and bounded safety plans.">
                   <ComboBox.ItemTemplate>
                     <DataTemplate x:DataType="evalLive:VitrineEvaluationPlanDescriptor">
                       <TextBlock Text="{Binding Label}" />
                     </DataTemplate>
                   </ComboBox.ItemTemplate>
                 </ComboBox>
+                <ToggleSwitch IsChecked="{Binding Setup.ShowAdvancedEvaluationPlans}"
+                              OnContent="advanced plans shown"
+                              OffContent="show advanced plans"
+                              Margin="0,5,0,0"
+                              AutomationProperties.Name="Show advanced evaluation plans"
+                              ToolTip.Tip="Reveals the non-authoritative Agent-vs-Workflow diagnostic, stochastic reliability plans, and bounded safety probes. It does not change or delete their CLI and artifact contracts." />
+                <TextBlock Width="330" Text="{Binding Setup.AdvancedEvaluationPlanSummary}" Classes="muted" FontSize="9" TextWrapping="Wrap" />
                 <TextBlock Width="330" Text="{Binding Setup.EvaluationPlanDescription}" Classes="muted" FontSize="9" TextWrapping="Wrap" />
               </StackPanel>
               <StackPanel Margin="0,0,14,0" IsVisible="{Binding IsLiveScenarioEvaluationMode}">
@@ -130,11 +137,11 @@
                                AutomationProperties.Name="Live evaluation repetitions"
                                ToolTip.Tip="One AgentEval BenchmarkRunner run is persisted per arm and repetition. Stochastic plans require at least four repetitions so an all-success 95% Wilson interval can clear the registered 0.50 floor." />
               </StackPanel>
-              <StackPanel Margin="0,0,14,0" IsVisible="{Binding IsLiveEvaluationMode}" MaxWidth="270">
+              <StackPanel Margin="0,0,14,0" IsVisible="{Binding IsPaidExecutionMode}" MaxWidth="270">
                 <TextBlock Text="PAID EXECUTION" Classes="eyebrow" />
-                <ToggleSwitch IsChecked="{Binding Setup.PaidEvaluationAcknowledged}" OnContent="confirmed" OffContent="not confirmed"
-                              AutomationProperties.Name="Confirm paid live evaluation"
-                              ToolTip.Tip="This must be switched right before Run is enabled. Live evals never fall back to offline subjects." />
+                <ToggleSwitch IsChecked="{Binding Setup.PaidExecutionAcknowledged}" OnContent="confirmed" OffContent="not confirmed"
+                              AutomationProperties.Name="Confirm paid live execution"
+                              ToolTip.Tip="This one-shot confirmation is required immediately before any live subject or evaluation run. Live evaluations never fall back to offline subjects." />
               </StackPanel>
               <StackPanel Margin="0,0,14,0" IsVisible="{Binding IsDemoMode}">
                 <TextBlock Text="PERSONALIZATION" Classes="eyebrow" />
@@ -478,7 +485,7 @@
                   <TextBlock Text="{Binding Evaluation.ControlSummary}" Foreground="#F2F6FD" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" />
                 </StackPanel>
                 <StackPanel Grid.Column="2" MinWidth="190" MaxWidth="300">
-                  <TextBlock Text="LIVE PROGRESS" Classes="eyebrow" />
+                  <TextBlock Text="EVALUATION PROGRESS" Classes="eyebrow" />
                   <TextBlock Text="{Binding Evaluation.RunProgress}" Foreground="#72B6FF" FontSize="11" FontWeight="SemiBold"
                              TextWrapping="Wrap" />
                 </StackPanel>
@@ -536,7 +543,7 @@
                   <TextBlock Grid.Row="2" Text="WORKLOAD" Classes="eyebrow" />
                   <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Evaluation.LiveWorkloadSummary}" Foreground="#F6C55C" TextWrapping="Wrap" />
                   <TextBlock Grid.Row="3" Text="QUALITY PASS BAR" Classes="eyebrow"
-                             ToolTip.Tip="The configured LLM quality score threshold. It is separate from each admitted check's chance floor, which is not derivable for these authored criteria." />
+                             ToolTip.Tip="The configured LLM quality-score threshold. The shipped 1.000 bar requires all four authored criteria. It is separate from each admitted check's chance floor." />
                   <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Evaluation.LiveQualityPassBar}" Foreground="#9FC5FF" TextWrapping="Wrap" />
                   <TextBlock Grid.Row="4" Text="SESSION / OUTCOME" Classes="eyebrow" />
                   <StackPanel Grid.Row="4" Grid.Column="1">
@@ -606,7 +613,7 @@
                 <StackPanel Spacing="6">
                   <TextBlock Text="TERMINAL ACCEPTANCE · PER-SCENARIO WILSON DECISIONS" Classes="eyebrow"
                              ToolTip.Tip="For stochastic plans, every arm and scenario must independently clear the configured Wilson lower-bound SLO. These rows—not pooled per-check rates—control the terminal verdict." />
-                  <TextBlock Text="Every planned trial must be fully measured. A whole-trial success means its three required checks passed: use-case quality, response observed, and the arm-specific agent tool journal or workflow trace. Each arm/scenario group must independently clear the 95% Wilson lower-bound floor of 0.500. Pooled per-check reliability remains diagnostic." Classes="muted" TextWrapping="Wrap" />
+                  <TextBlock Text="Every planned trial must be fully measured. With the shipped 1.000 quality bar, a whole-trial success requires all four authored criteria, response observation, and the arm-specific agent tool journal or workflow trace. Each arm/scenario group must independently clear the 95% Wilson lower-bound floor of 0.500. Pooled per-check reliability remains diagnostic." Classes="muted" TextWrapping="Wrap" />
                   <ItemsControl ItemsSource="{Binding Evaluation.LiveScenarioAcceptances}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="vm:LiveScenarioAcceptanceViewModel">

@@ -18,12 +18,10 @@ namespace Galaxus.RecommendationAgent.Workflows;
 /// prevent, and a structurally empty interest is not something a judge gets discretion over.
 /// </para>
 /// <para>
-/// <b>And the model cannot overrule it.</b> <see cref="Project"/> re-runs the starvation test
-/// after projecting a verdict and forces <see cref="DiscoveryState.CoverageApproved"/> to false
-/// if a DIRECT interest is still structurally empty — so "the reviewer approved round 1 every
-/// time" cannot happen by prompt drift. Verify the wiring in BOTH directions: a reviewer that
-/// never rejects and one that never approves are both faults, and both look fine on a single
-/// happy-path run.
+/// <b>And the model cannot overrule it.</b> <see cref="Project"/> requires an exhaustive reviewer
+/// partition, candidate-backed coverage for every mapped interest, the calibrated DIRECT-interest
+/// starvation rule, and evidence that every interest was searched. A reviewer that never rejects
+/// and one that never approves are both faults, and both look fine on a single happy-path run.
 /// </para>
 /// </remarks>
 public static class CoverageVerdictProjection
@@ -155,9 +153,38 @@ public static class CoverageVerdictProjection
         // ── approval ────────────────────────────────────────────────────────────────
         bool approved = verdict.IsSufficient && state.OpenGaps.Count == 0;
 
-        // ── Two structural vetoes. The reviewer does not get to approve over either. ─
+        // ── Four structural vetoes. The reviewer does not get to approve over any of them. ─
         //
-        // (1) A DIRECT interest that has been searched and came back with nothing.
+        // (1) A sufficient verdict must explicitly classify every interest as covered. The
+        //     structured-output prompt asks for this partition, but a model can still omit a row.
+        //     Silence is not evidence and must never become an implicit approval.
+        var omitted = state.Interests
+            .Where(i => !covered.Contains(i.Id))
+            .ToList();
+
+        if (approved && omitted.Count > 0)
+        {
+            approved = false;
+            state.ReviewNotes += $" · APPROVAL VETOED IN CODE: {string.Join(", ", omitted.Select(i => i.Id))} " +
+                                 "was omitted from the reviewer's covered-interest partition";
+        }
+
+        //
+        // (2) A reviewer-labelled covered row must still be structurally served. This applies to
+        //     direct and latent interests alike so "CoverageSufficient" can never coexist with a
+        //     zero-candidate row in the customer-facing shortfall.
+        var unserved = state.Interests
+            .Where(i => state.CoverageFor(i.Id).Status != CoverageStatus.Covered)
+            .ToList();
+
+        if (approved && unserved.Count > 0)
+        {
+            approved = false;
+            state.ReviewNotes += $" · APPROVAL VETOED IN CODE: {string.Join(", ", unserved.Select(i => i.Id))} " +
+                                 "is not structurally covered by any candidate";
+        }
+
+        // (3) A DIRECT interest that has been searched and came back with nothing.
         var starved = Starved(state, calibration);
         if (approved && starved.Count > 0)
         {
@@ -166,7 +193,7 @@ public static class CoverageVerdictProjection
                                  "has no candidate at all, and a cheap accept is the failure this gate exists to prevent";
         }
 
-        // (2) An interest NOBODY HAS SEARCHED. This is not hypothetical: the reviewer creates
+        // (4) An interest NOBODY HAS SEARCHED. This is not hypothetical: the reviewer creates
         //     exactly this state whenever it adds an interest after the round's query plan was
         //     built. Absence of evidence is not coverage, and approving here would end the run
         //     one round before the interest that justified the loop was ever explored.

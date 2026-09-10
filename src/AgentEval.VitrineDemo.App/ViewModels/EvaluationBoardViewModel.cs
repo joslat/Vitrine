@@ -24,7 +24,13 @@ public sealed record GateResultViewModel(
 {
     public string AuthorityColor => Authority == "DIAGNOSTIC" ? "#9FC5FF" : "#63D391";
 
-    public string StatusColor => Authority == "DIAGNOSTIC" ? "#F6C55C" : Status switch
+    public string StatusColor => Authority == "DIAGNOSTIC" ? Status switch
+    {
+        "PASS" => "#63D391",
+        "NOT APPLICABLE" => "#9FC5FF",
+        "INSTRUMENT ERROR" => "#F07076",
+        _ => "#F6C55C",
+    } : Status switch
     {
         "PASS" => "#63D391",
         "FAIL" or "INSTRUMENT ERROR" => "#F07076",
@@ -708,8 +714,8 @@ public sealed class EvaluationBoardViewModel : BindableBase
         LiveWorkloadSummary = WorkloadSummary(plan, workload);
         var safetyPlan = plan == VitrineEvaluationPlan.LiveEval06SafetyProbes;
         LiveQualityPassBar = safetyPlan
-            ? "NOT APPLICABLE · Eval06 uses compromised/resisted/inconclusive/error safety outcomes, not the 0.750 use-case quality bar."
-            : "PENDING · the completed result will disclose the evaluator-owned quality pass bar; it is not a null/chance floor.";
+            ? "NOT APPLICABLE · Eval06 uses compromised/resisted/inconclusive/error safety outcomes, not the 1.000 use-case quality bar."
+            : "PENDING · the completed result will disclose the evaluator-owned quality pass bar; the shipped 1.000 bar requires all four authored criteria and is not a null/chance floor.";
         LiveOutcomePath = "PENDING · no live outcome has been written yet.";
         LiveSessionSummary = "READY · execution has not started.";
         OverallStatus = "READY · paid live evaluation";
@@ -931,7 +937,7 @@ public sealed class EvaluationBoardViewModel : BindableBase
               $"{result.Workload.Repetitions} reps · {result.Trials.Count} trials · {checkCensus.Length} arm/check summaries · " +
               $"{checkSummary} · {result.Comparisons.Count} paired comparisons.";
         BenchmarkFloorDerivation = VitrineEvaluationPlans.IsStochastic(result.Plan)
-            ? $"{LiveQualityPassBar} Every terminal decision requires full measurement and uses whole-trial successes with a 95% Wilson lower-bound floor of 0.500. Decisions are copied from LiveScenarioAcceptanceDecision; pooled per-check summaries are diagnostic."
+            ? $"{LiveQualityPassBar} Every terminal decision requires full measurement; whole-trial success also requires response/trace checks before the 95% Wilson lower-bound floor of 0.500 is applied. Decisions are copied from LiveScenarioAcceptanceDecision; pooled per-check summaries are diagnostic."
             : $"{LiveQualityPassBar} No null/chance floor or aggregate was applied by the UI. Each displayed success count, denominator, estimate, and Wilson interval is copied from LiveCheckSummary; each comparison is copied from LiveCheckComparison.";
         EvaluationScope = $"{descriptor.Label} · {ArmPlan(result.Plan)} · {result.Workload.ScenarioCount} authored scenario(s) × " +
             $"{result.Workload.ArmCount} arm(s) × {result.Workload.Repetitions} repetition(s).";
@@ -1042,7 +1048,7 @@ public sealed class EvaluationBoardViewModel : BindableBase
               $"{result.Workload.Repetitions} reps · {result.Trials.Count} trials · {checks.Length} arm/check summaries · " +
               $"{replayCheckSummary} · {result.Comparisons.Count} paired comparisons.";
         BenchmarkFloorDerivation = VitrineEvaluationPlans.IsStochastic(plan)
-            ? $"{LiveQualityPassBar} Every terminal decision requires full measurement and uses whole-trial successes with a 95% Wilson lower-bound floor of 0.500. Decisions and their underlying trial census are integrity-verified artifact facts; pooled per-check summaries are diagnostic."
+            ? $"{LiveQualityPassBar} Every terminal decision requires full measurement; whole-trial success also requires response/trace checks before the 95% Wilson lower-bound floor of 0.500 is applied. Decisions and their underlying trial census are integrity-verified artifact facts; pooled per-check summaries are diagnostic."
             : $"{LiveQualityPassBar} No null/chance floor or aggregate was applied during replay. Success counts, denominators, estimates, Wilson intervals, and comparisons are the integrity-verified artifact facts.";
         EvaluationScope = $"{result.PlanLabel} · {ArmPlan(plan)} · {result.Workload.ScenarioCount} authored scenario(s) × " +
             $"{result.Workload.ArmCount} arm(s) × {result.Workload.Repetitions} repetition(s).";
@@ -1088,7 +1094,7 @@ public sealed class EvaluationBoardViewModel : BindableBase
         PersistenceSummary = $"Redacted outcome {result.Persistence.OutcomePath} · index {result.Persistence.IndexPath} · " +
             $"workspace {result.Persistence.WorkspaceRoot} · no BenchmarkRunner run references.";
         BenchmarkSummary = LiveSafetySummary;
-        BenchmarkFloorDerivation = "NOT APPLICABLE · compromise/resistance is not a chance-floor comparison, Wilson estimate, or 0.750 use-case quality threshold.";
+        BenchmarkFloorDerivation = "NOT APPLICABLE · compromise/resistance is not a chance-floor comparison, Wilson estimate, or 1.000 use-case quality threshold.";
         EvaluationScope = $"{descriptor.Label} · Robin-only fresh target · {result.Workload.SafetyAttackCount} attack categories · " +
             $"up to {result.Workload.PlannedSafetyProbes} bounded probes.";
         EvaluatorEngine = "Released AgentEval RedTeamRunner · JailbreakAttack + SystemPromptExtractionAttack · fallback judge. Raw canary, probes, responses, and system instructions were excluded at the result boundary.";
@@ -1131,7 +1137,7 @@ public sealed class EvaluationBoardViewModel : BindableBase
         PersistenceSummary = $"Redacted outcome {result.Persistence.OutcomePath} · index {result.Persistence.IndexPath} · " +
             $"workspace {result.Persistence.WorkspaceRoot} · no BenchmarkRunner run references.";
         BenchmarkSummary = LiveSafetySummary;
-        BenchmarkFloorDerivation = "NOT APPLICABLE · compromise/resistance is not a chance-floor comparison, Wilson estimate, or 0.750 use-case quality threshold.";
+        BenchmarkFloorDerivation = "NOT APPLICABLE · compromise/resistance is not a chance-floor comparison, Wilson estimate, or 1.000 use-case quality threshold.";
         EvaluationScope = $"{result.PlanLabel} · Robin-only fresh target · {result.Workload.SafetyAttackCount} attack categories · " +
             $"up to {result.Workload.PlannedSafetyProbes} bounded probes.";
         EvaluatorEngine = "Replay only · released AgentEval red-team attack/category and redacted probe receipts restored; no model, target, judge, canary, tool, or evaluator ran.";
@@ -1573,7 +1579,8 @@ public sealed class EvaluationBoardViewModel : BindableBase
         {
             LiveTerminalAcceptancePolicy.WilsonLowerBoundPerScenario =>
                 $" · terminal acceptance per-scenario Wilson lower bound ≥ {configuration.Acceptance.MinimumLowerBound:0.00} at {configuration.Acceptance.ConfidenceLevel:P0} confidence",
-            LiveTerminalAcceptancePolicy.EveryTrialMustPass => " · terminal acceptance every trial must pass",
+            LiveTerminalAcceptancePolicy.EveryTrialMustPass =>
+                " · terminal acceptance every trial must pass; shipped 1.000 bar requires all four criteria",
             _ => string.Empty,
         };
         return $"{configuration.DefinitionKey}@{configuration.DefinitionVersion} · judge {configuration.JudgeModelId} · " +
@@ -1598,7 +1605,7 @@ public sealed class EvaluationBoardViewModel : BindableBase
             nameof(LiveTerminalAcceptancePolicy.WilsonLowerBoundPerScenario) =>
                 $" · terminal acceptance per-scenario Wilson lower bound ≥ {configuration.Acceptance.MinimumLowerBound:0.00} at {configuration.Acceptance.ConfidenceLevel:P0} confidence",
             nameof(LiveTerminalAcceptancePolicy.EveryTrialMustPass) =>
-                " · terminal acceptance every trial must pass",
+                " · terminal acceptance every trial must pass; shipped 1.000 bar requires all four criteria",
             _ => string.Empty,
         };
         return $"{configuration.DefinitionKey}@{configuration.DefinitionVersion} · judge {configuration.JudgeModelId} · " +
@@ -2093,7 +2100,7 @@ public sealed class EvaluationBoardViewModel : BindableBase
 
     private static string QualityPassBar(double? value) => value is { } threshold
         && double.IsFinite(threshold) && threshold is >= 0 and <= 1
-            ? $"QUALITY PASS BAR {threshold.ToString("0.000", CultureInfo.InvariantCulture)} · evaluator acceptance threshold, not a null/chance floor."
+            ? $"QUALITY PASS BAR {threshold.ToString("0.000", CultureInfo.InvariantCulture)} · shipped default 1.000 requires all four authored criteria; not a null/chance floor."
             : "QUALITY PASS BAR NOT MEASURED · evaluator threshold absent; this is not a null/chance floor.";
 
     private static string DegradationSummary(int count, IReadOnlyList<string> kinds) =>
@@ -2128,8 +2135,9 @@ public sealed class EvaluationBoardViewModel : BindableBase
         var state = completed ? "completed" : OverallStatus.StartsWith("RUNNING", StringComparison.Ordinal) ? "running" : "reported";
         var mandatory = Gates.Count(static gate => gate.Authority == "MANDATORY");
         var diagnostics = Gates.Count(static gate => gate.Authority == "DIAGNOSTIC");
+        var diagnosticNoun = diagnostics == 1 ? "evaluation" : "evaluations";
         RunProgress = $"{_completedGates}/{_totalGates} evaluation rows · {mandatory} mandatory gates + " +
-            $"{diagnostics} diagnostic evaluations · {Controls.Count}/{_expectedControls} controls · {state}";
+            $"{diagnostics} diagnostic {diagnosticNoun} · {Controls.Count}/{_expectedControls} controls · {state}";
     }
 
     private void UpdateControlSummary()

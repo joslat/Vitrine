@@ -59,7 +59,7 @@ public static class LiveUseCaseScenarios
             ],
             RecommendationToolExpectation("GLX-5001", "GLX-5003"),
             ("finds-capability-gap", "Recognizes a grinder as the missing capability implied by beans and an owned canister."),
-            ("separates-lanes", "Separates replenishment such as beans or cartridges from durable-product discovery."),
+            ("separates-lanes", "Places Sofia's repeated GLX-3008 beans and GLX-5002 filter cartridges in a clearly labeled replenishment or repeat-buy lane, not as discovery recommendations; unrelated non-owned products may remain in discovery."),
             ("avoids-owned-durable", "Does not recommend another blender, canister, or other durable already evidenced as owned."),
             ("grounds-advice", "Gives catalogue-grounded reasons and stays advisory rather than claiming a purchase was made.")),
 

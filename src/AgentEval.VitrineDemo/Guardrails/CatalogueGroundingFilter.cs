@@ -33,8 +33,10 @@ namespace Galaxus.RecommendationAgent.Guardrails;
 ///   </item>
 ///   <item>
 ///     <i>Durable churn.</i> "Similar to your Vitamix" returns three more blenders. She owns
-///     one, thirty months old, still inside its horizon. Anything in a leaf category named by
-///     <see cref="GuardrailContext.OwnedDurableLeafCategories"/> is dropped.
+///     one, thirty months old, still inside its horizon. An unsolicited item in the same immediate
+///     parent category named by <see cref="GuardrailContext.OwnedDurableParentCategories"/> is
+///     dropped, including sibling leaves such as countertop and personal blenders. A category the
+///     customer explicitly requests in this session is not unsolicited and is exempt.
 ///   </item>
 /// </list>
 /// <para>
@@ -56,8 +58,8 @@ public static class CatalogueGroundingFilter
     }
 
     /// <summary>
-    /// Removes ungrounded, duplicated, already-owned and durable-churn items from both
-    /// discovery trays, and ungrounded items from the replenishment tray.
+    /// Removes ungrounded, duplicated, already-owned, replenishment-category and durable-churn
+    /// items from both discovery trays, and ungrounded items from the replenishment tray.
     /// </summary>
     /// <param name="set">The answer so far.</param>
     /// <param name="context">The catalogue-derived bar.</param>
@@ -147,12 +149,30 @@ public static class CatalogueGroundingFilter
                 continue;
             }
 
+            var immediateParent = GuardrailContext.ImmediateParentCategoryOf(product);
+            if (product.IsConsumable &&
+                immediateParent is not null &&
+                context.ReplenishmentParentCategories.Contains(immediateParent) &&
+                !context.ExplicitlyRequests(product))
+            {
+                ledger.Drop(GuardrailStage.CatalogueGrounding, GuardrailReasons.ReplenishmentNotDiscovery, item.ProductId,
+                    $"{product.Name} is a consumable in the '{immediateParent}' category, where this customer already " +
+                    "has a learned replenishment cadence. It may be a substitute, but there is no cadence evidence " +
+                    "that this SKU is about to run out; keep it out of discovery and show only cadence-backed items " +
+                    "in the repeat-buy tray");
+                continue;
+            }
+
             if (context.SuppressDurableUpgrades &&
                 !product.IsConsumable &&
-                context.OwnedDurableLeafCategories.Contains(product.LeafCategory))
+                (context.OwnedDurableLeafCategories.Contains(product.LeafCategory) ||
+                 (immediateParent is not null && context.OwnedDurableParentCategories.Contains(immediateParent))) &&
+                !context.ExplicitlyRequests(product))
             {
                 ledger.Drop(GuardrailStage.CatalogueGrounding, GuardrailReasons.DurableStillInHorizon, item.ProductId,
-                    $"the customer already owns a {product.LeafCategory} still inside its typical service life — the upgrade lane is suppressed, not merely down-ranked");
+                    $"the customer already owns a durable in the '{immediateParent ?? product.LeafCategory}' category " +
+                    $"still inside its typical service life; {product.Name} is a same-category replacement, not a missing capability — " +
+                    "the upgrade lane is suppressed, not merely down-ranked");
                 continue;
             }
 

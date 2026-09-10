@@ -209,7 +209,7 @@ public sealed class DiscoveryModelCall
             if (state.ModelCalls > callsBeforeThisAttempt)
                 _progress.Publish(DiscoveryEvent.ModelRequestFailed(
                     nodeId, agentName, typeof(TimeoutException), operationId));
-            _progress.Publish(DiscoveryEvent.Degraded(agentName,
+            _progress.Publish(DiscoveryEvent.Degraded(nodeId,
                 $"no response within {_timeout.TotalSeconds:0} s — the call was abandoned so the loop keeps moving"));
             return null;
         }
@@ -222,7 +222,7 @@ public sealed class DiscoveryModelCall
             if (state.ModelCalls > callsBeforeThisAttempt)
                 _progress.Publish(DiscoveryEvent.ModelRequestFailed(
                     nodeId, agentName, ex.GetType(), operationId));
-            _progress.Publish(DiscoveryEvent.Degraded(agentName,
+            _progress.Publish(DiscoveryEvent.Degraded(nodeId,
                 $"{ex.GetType().Name}: message withheld to prevent configuration disclosure"));
             return null;
         }
@@ -336,14 +336,18 @@ public sealed record MappedConstraint(
     [property: JsonPropertyName("source_signal_id")] string? SourceSignalId);
 
 /// <summary>
-/// The LIVE arm of stage 1: one structured model call, with the code-derived map as its floor.
+/// The LIVE arm of stage 1: one structured model call, with a bounded code-derived latent floor.
 /// </summary>
 /// <remarks>
 /// <para>
 /// The deterministic map is built FIRST, always. It supplies the ownership set, the
 /// anti-interests and the compatibility constraints — none of which are things a model should be
 /// the authority on — and it is the map that stands if the call fails or cannot be parsed. The
-/// model's contribution is the INTERESTS, which is the judgement the loop actually wants from it.
+/// The model contributes most of the INTERESTS, which is the judgement the loop actually wants
+/// from it. Up to <see cref="DiscoveryState.MaxCodeDerivedLatentFloorInterests"/> of the strongest
+/// code-derived latent conjunctions remain in the merged map. That makes "floor" an enforced
+/// invariant rather than merely the failure fallback, while leaving at least four slots for the
+/// model and keeping the global map bound intact.
 /// </para>
 /// <para>
 /// Every evidence id the model writes is checked against the customer's real purchase ids. An id
@@ -393,7 +397,9 @@ public sealed class ModelInterestMapper(Catalogue catalogue, DiscoveryModelCall 
         return state;
     }
 
-    /// <summary>Replaces the interests with the model's, after validating every field.</summary>
+    /// <summary>
+    /// Merges validated model interests with the bounded code-derived latent floor.
+    /// </summary>
     /// <param name="state">The run state.</param>
     /// <param name="envelope">The parsed envelope.</param>
     /// <param name="classified">The customer's classified purchase lines.</param>
@@ -414,11 +420,24 @@ public sealed class ModelInterestMapper(Catalogue catalogue, DiscoveryModelCall 
             realIds.Add(line.PurchaseId);
         }
 
-        state.Interests.Clear();
-        state.Coverage.Clear();
+        // PopulateFromCode ran immediately before this call. Preserve only its strongest latent
+        // conjunctions, and only while behavioural personalization is authorized. Direct history
+        // signals stay model-owned in the live arm; carrying all of them would turn a floor into a
+        // wholesale deterministic map and leave no meaningful mapper judgement.
+        var deterministicFloor = state.PersonalizationConsent
+            ? state.Interests
+                .Where(static interest =>
+                    interest.Origin == InterestOrigin.Mapper
+                    && interest.Kind == InterestKind.Latent
+                    && interest.EvidenceSignalIds.Distinct(StringComparer.OrdinalIgnoreCase).Count() >= 2)
+                .OrderByDescending(static interest => interest.Confidence)
+                .ThenBy(static interest => interest.Label, StringComparer.Ordinal)
+                .Take(DiscoveryState.MaxCodeDerivedLatentFloorInterests)
+                .ToList()
+            : [];
 
-        int index = 0;
-        foreach (var mapped in envelope.Interests!.Take(DiscoveryState.MaxInterests))
+        var modelInterests = new List<Interest>(DiscoveryState.MaxInterests);
+        foreach (var mapped in envelope.Interests ?? [])
         {
             if (string.IsNullOrWhiteSpace(mapped.Label)) continue;
 
@@ -438,9 +457,11 @@ public sealed class ModelInterestMapper(Catalogue catalogue, DiscoveryModelCall 
 
             if (terms.Count == 0) terms.Add(mapped.Label!.Trim());
 
-            state.Interests.Add(new Interest
+            modelInterests.Add(new Interest
             {
-                Id = $"I-{++index}",
+                // The merged map is sorted and numbered below. A temporary id prevents model
+                // response order from becoming an identity contract.
+                Id = string.Empty,
                 Label = mapped.Label!.Trim(),
                 Kind = string.Equals(mapped.Kind?.Trim(), "LATENT", StringComparison.OrdinalIgnoreCase)
                     ? InterestKind.Latent
@@ -456,9 +477,38 @@ public sealed class ModelInterestMapper(Catalogue catalogue, DiscoveryModelCall 
                 CategoryHints = [],
                 AttributeHints = new Dictionary<string, string>(StringComparer.Ordinal)
             });
+
+            if (modelInterests.Count == DiscoveryState.MaxInterests) break;
         }
 
-        foreach (var interest in state.Interests) state.CoverageFor(interest.Id);
+        // An envelope with only blank/invalid interest rows is not a usable model map. In that
+        // case the full code-derived map remains the fallback, matching MapAsync's null/empty path.
+        if (modelInterests.Count == 0) return;
+
+        // When the model independently names the exact same interest, prefer the mechanically
+        // evidenced floor row and do not spend a second slot on a duplicate label.
+        var modelCapacity = DiscoveryState.MaxInterests - deterministicFloor.Count;
+        var selectedModelInterests = modelInterests
+            .Where(model => !deterministicFloor.Any(floor =>
+                string.Equals(floor.Label, model.Label, StringComparison.OrdinalIgnoreCase)))
+            .Take(modelCapacity);
+
+        var merged = deterministicFloor
+            .Concat(selectedModelInterests)
+            .OrderByDescending(static interest => interest.Confidence)
+            .ThenBy(static interest => interest.Label, StringComparer.Ordinal)
+            .Take(DiscoveryState.MaxInterests)
+            .ToList();
+
+        state.Interests.Clear();
+        state.Coverage.Clear();
+
+        for (int index = 0; index < merged.Count; index++)
+        {
+            var interest = merged[index] with { Id = $"I-{index + 1}" };
+            state.Interests.Add(interest);
+            state.CoverageFor(interest.Id);
+        }
 
         // The model may ADD an anti-interest; it may not remove one the classifier derived.
         foreach (var anti in envelope.AntiInterests ?? [])

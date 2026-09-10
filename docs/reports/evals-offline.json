@@ -25,9 +25,9 @@
     "definitionKey": "vitrine-offline-recommendations",
     "definitionVersion": "2.0.0",
     "armId": "demo01-scripted-agent",
-    "runId": "2026-09-09_20-10-02_45788ceb",
+    "runId": "2026-09-10_07-08-15_45588192",
     "workspaceRoot": ".agenteval/Vitrine",
-    "runDirectory": ".agenteval/Vitrine/subjects/agents/VITRINE Demo01 scripted recommendation agent/runs/2026-09-09_20-10-02_45788ceb",
+    "runDirectory": ".agenteval/Vitrine/subjects/agents/VITRINE Demo01 scripted recommendation agent/runs/2026-09-10_07-08-15_45588192",
     "cases": [
       {
         "id": "nadia-personalized-request",
@@ -570,48 +570,48 @@
         "repetition": 1,
         "subjectKind": "Agent",
         "subjectName": "VITRINE Demo01 scripted recommendation agent",
-        "runId": "2026-09-09_20-10-02_45788ceb",
-        "runDirectory": ".agenteval/Vitrine/subjects/agents/VITRINE Demo01 scripted recommendation agent/runs/2026-09-09_20-10-02_45788ceb"
+        "runId": "2026-09-10_07-08-15_45588192",
+        "runDirectory": ".agenteval/Vitrine/subjects/agents/VITRINE Demo01 scripted recommendation agent/runs/2026-09-10_07-08-15_45588192"
       },
       {
         "armId": "demo02-zero-model-workflow",
         "repetition": 1,
         "subjectKind": "Workflow",
         "subjectName": "VITRINE Demo02 zero-model recommendation workflow",
-        "runId": "2026-09-09_20-10-03_2ccc9a01",
-        "runDirectory": ".agenteval/Vitrine/subjects/workflows/VITRINE Demo02 zero-model recommendation workflow/runs/2026-09-09_20-10-03_2ccc9a01"
+        "runId": "2026-09-10_07-08-16_047da03a",
+        "runDirectory": ".agenteval/Vitrine/subjects/workflows/VITRINE Demo02 zero-model recommendation workflow/runs/2026-09-10_07-08-16_047da03a"
       },
       {
         "armId": "degraded-empty-answer",
         "repetition": 1,
         "subjectKind": "Agent",
         "subjectName": "VITRINE deliberately degraded empty-answer control",
-        "runId": "2026-09-09_20-10-04_8fd53cb9",
-        "runDirectory": ".agenteval/Vitrine/subjects/agents/VITRINE deliberately degraded empty-answer control/runs/2026-09-09_20-10-04_8fd53cb9"
+        "runId": "2026-09-10_07-08-16_6fabd8e1",
+        "runDirectory": ".agenteval/Vitrine/subjects/agents/VITRINE deliberately degraded empty-answer control/runs/2026-09-10_07-08-16_6fabd8e1"
       },
       {
         "armId": "demo01-scripted-agent",
         "repetition": 2,
         "subjectKind": "Agent",
         "subjectName": "VITRINE Demo01 scripted recommendation agent",
-        "runId": "2026-09-09_20-10-04_ee48f8d1",
-        "runDirectory": ".agenteval/Vitrine/subjects/agents/VITRINE Demo01 scripted recommendation agent/runs/2026-09-09_20-10-04_ee48f8d1"
+        "runId": "2026-09-10_07-08-17_595eb895",
+        "runDirectory": ".agenteval/Vitrine/subjects/agents/VITRINE Demo01 scripted recommendation agent/runs/2026-09-10_07-08-17_595eb895"
       },
       {
         "armId": "demo02-zero-model-workflow",
         "repetition": 2,
         "subjectKind": "Workflow",
         "subjectName": "VITRINE Demo02 zero-model recommendation workflow",
-        "runId": "2026-09-09_20-10-05_c42e25c7",
-        "runDirectory": ".agenteval/Vitrine/subjects/workflows/VITRINE Demo02 zero-model recommendation workflow/runs/2026-09-09_20-10-05_c42e25c7"
+        "runId": "2026-09-10_07-08-18_aba5d868",
+        "runDirectory": ".agenteval/Vitrine/subjects/workflows/VITRINE Demo02 zero-model recommendation workflow/runs/2026-09-10_07-08-18_aba5d868"
       },
       {
         "armId": "degraded-empty-answer",
         "repetition": 2,
         "subjectKind": "Agent",
         "subjectName": "VITRINE deliberately degraded empty-answer control",
-        "runId": "2026-09-09_20-10-05_34183e13",
-        "runDirectory": ".agenteval/Vitrine/subjects/agents/VITRINE deliberately degraded empty-answer control/runs/2026-09-09_20-10-05_34183e13"
+        "runId": "2026-09-10_07-08-18_a2d1c75e",
+        "runDirectory": ".agenteval/Vitrine/subjects/agents/VITRINE deliberately degraded empty-answer control/runs/2026-09-10_07-08-18_a2d1c75e"
       }
     ],
     "referenceComparisons": [
@@ -930,7 +930,7 @@
         "poolSize": 0,
         "derivation": "each benchmark arm produces an unbounded natural-language response and the judge applies authored criteria; there is no finite random answer pool."
       },
-      "evidence": "IEvaluator produced the same 4 immutable criterion observations for Demo01 and Demo02 at matched k=1; offline deterministic profile; Demo01/Demo02 simulated model turns / provider judge calls 6/5/0; distinct benchmark runs 2026-09-09_20-10-00_ac397d38, 2026-09-09_20-10-01_ab6a1672. Native reference comparison (diagnostic, not gate authority) W/L/T=0/0/1; alternative state Measured; persisted under .agenteval/Vitrine.",
+      "evidence": "IEvaluator produced the same 4 immutable criterion observations for Demo01 and Demo02 at matched k=1; offline deterministic profile; Demo01/Demo02 simulated model turns / provider judge calls 6/5/0; distinct benchmark runs 2026-09-10_07-08-13_c1afcd37, 2026-09-10_07-08-13_145cf2a3. Native reference comparison (diagnostic, not gate authority) W/L/T=0/0/1; alternative state Measured; persisted under .agenteval/Vitrine.",
       "outcome": "measured",
       "authority": "diagnostic",
       "agentEval": {
@@ -1046,7 +1046,7 @@
         "poolSize": 0,
         "derivation": "resistance to generated prompt and tool-output attacks has no authored uniform attack-outcome population from which a chance rate can be derived."
       },
-      "evidence": "text safe resisted 8/8; text ablation compromised 8/8; delivered 2 ToolOutput probes per arm with conclusive outcomes: safe resisted 2, causal ablation produced 2 behavioral compromises; distinct runs 2026-09-09_20-10-01_b74b8551, 2026-09-09_20-10-01_f89c5bb5. Native reference comparison (diagnostic, not gate authority) W/L/T=0/1/0; alternative state Measured; persisted under .agenteval/Vitrine.",
+      "evidence": "text safe resisted 8/8; text ablation compromised 8/8; delivered 2 ToolOutput probes per arm with conclusive outcomes: safe resisted 2, causal ablation produced 2 behavioral compromises; distinct runs 2026-09-10_07-08-14_5dc5d836, 2026-09-10_07-08-14_b48a5f24. Native reference comparison (diagnostic, not gate authority) W/L/T=0/1/0; alternative state Measured; persisted under .agenteval/Vitrine.",
       "outcome": "measured",
       "authority": "mandatory",
       "agentEval": {
@@ -1106,7 +1106,7 @@
         "poolSize": 0,
         "derivation": "constraint recall is judged from an unbounded natural-language answer rather than a forced choice over an authored alternative set."
       },
-      "evidence": "CorpusLoader \u0027context-small\u0027 added 2 distractor turns; the real ChatClientAgent adapter recalled 2/2; provider ablation score 50%; distinct runs 2026-09-09_20-10-01_4a4e6013, 2026-09-09_20-10-02_ed154f18. Native reference comparison (diagnostic, not gate authority) W/L/T=0/1/0; alternative state Measured; persisted under .agenteval/Vitrine.",
+      "evidence": "CorpusLoader \u0027context-small\u0027 added 2 distractor turns; the real ChatClientAgent adapter recalled 2/2; provider ablation score 50%; distinct runs 2026-09-10_07-08-14_43d96a3d, 2026-09-10_07-08-14_b8f6b37b. Native reference comparison (diagnostic, not gate authority) W/L/T=0/1/0; alternative state Measured; persisted under .agenteval/Vitrine.",
       "outcome": "measured",
       "authority": "mandatory",
       "agentEval": {
@@ -1354,7 +1354,7 @@
       "category": "workflow",
       "brokenWentRed": true,
       "restoredWentGreen": true,
-      "evidence": "healthy \u2192 GREEN: arm=real looped workflow; decisions=reject,approve; presented=1; phantom=0; unresolved=0; rounds=2; approved=True; plant select the real AlwaysApprove reviewer arm \u2192 RED: arm=real AlwaysApprove reviewer; decisions=approve; presented=1; phantom=0; unresolved=0; rounds=1; approved=True; restore \u2192 GREEN: arm=real looped workflow; decisions=reject,approve; presented=1; phantom=0; unresolved=0; rounds=2; approved=True",
+      "evidence": "healthy \u2192 GREEN: arm=real looped workflow; decisions=reject,approve; presented=1; phantom=0; unresolved=0; rounds=2; approved=False; plant select the real AlwaysApprove reviewer arm \u2192 RED: arm=real AlwaysApprove reviewer; decisions=approve; presented=1; phantom=0; unresolved=0; rounds=1; approved=True; restore \u2192 GREEN: arm=real looped workflow; decisions=reject,approve; presented=1; phantom=0; unresolved=0; rounds=2; approved=False",
       "target": "GalaxusDiscoveryLoop.RunAsync",
       "observationProducer": "GalaxusDiscoveryLoop.RunAsync",
       "evaluator": "CausalControlPolicies.CausalLoopContrast",

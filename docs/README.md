@@ -11,6 +11,8 @@ independent Digitec Galaxus job-application sample and routes each audience to o
 - [One-page summary](https://azuresamurai.blog/Vitrine/Vitrine-One-Page-Summary.html) — the customer problem, approach, evidence,
   and limitations in plain language for non-technical readers.
 - [Operator walkthrough](https://azuresamurai.blog/Vitrine/Vitrine-Walkthrough.html) — what to run, click, and inspect.
+- [Microsoft Foundry live-run setup](https://azuresamurai.blog/Vitrine/Vitrine-Live-Run-Setup.html) — deployment, environment,
+  bounded CLI/UI smoke, evidence, and troubleshooting for the explicit paid lane.
 - [Retrieval deep dive](https://azuresamurai.blog/Vitrine/Vitrine-Retrieval-Deep-Dive.html) — retrieval mechanics and evidence.
 - [Architecture](https://azuresamurai.blog/Vitrine/Vitrine-Architecture.html) — ownership, runtime flow, trust, persistence, and replay.
 - [Evaluation protocol](https://azuresamurai.blog/Vitrine/Vitrine-Evaluation-Protocol.html) — the current offline/live evaluation contract.
@@ -21,3 +23,8 @@ Repository-native Markdown remains only where it is the better maintenance forma
 local source boundaries. Internal plans, root-cause reviews, and application-strategy notes are
 deliberately omitted from the public snapshot; they are not parallel current documentation.
 Generated artifacts under `reports` retain the run identity embedded in each receipt.
+
+Use the repository-native [portfolio scoring rubric](SCORING-RUBRIC.md) for repeatable review of
+technical accuracy, AI engineering, e-commerce relevance, recruiter first impression, pragmatic
+architecture, and documentation credibility. It defines weights, evidence ceilings, uncertainty,
+and the dated review template; it is an assessment method, not a product claim.

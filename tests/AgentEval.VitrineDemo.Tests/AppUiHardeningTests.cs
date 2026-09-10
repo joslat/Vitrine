@@ -32,17 +32,47 @@ public sealed class AppUiHardeningTests
         viewModel.SelectedMode = VitrineRunMode.Evals;
         viewModel.Setup.SelectedEvaluationPlan = VitrineEvaluationPlans.Require(
             VitrineEvaluationPlan.LiveEval01Agent);
-        viewModel.Setup.PaidEvaluationAcknowledged = true;
+        viewModel.Setup.PaidExecutionAcknowledged = true;
 
         var request = viewModel.CaptureRunRequestForExecution();
 
-        Assert.True(request.PaidEvaluationConfirmed);
-        Assert.False(viewModel.Setup.PaidEvaluationAcknowledged);
-        viewModel.Setup.PaidEvaluationAcknowledged = true;
+        Assert.True(request.PaidExecutionConfirmed);
+        Assert.False(viewModel.Setup.PaidExecutionAcknowledged);
+        viewModel.Setup.PaidExecutionAcknowledged = true;
         viewModel.SelectedMode = VitrineRunMode.Demo01;
-        Assert.False(viewModel.Setup.PaidEvaluationAcknowledged);
+        Assert.False(viewModel.Setup.PaidExecutionAcknowledged);
         viewModel.SelectedMode = VitrineRunMode.Evals;
-        Assert.False(viewModel.Setup.PaidEvaluationAcknowledged);
+        Assert.False(viewModel.Setup.PaidExecutionAcknowledged);
+
+        viewModel.SelectedMode = VitrineRunMode.Demo02;
+        viewModel.Setup.SelectedArm = viewModel.Setup.Arms.Single(option =>
+            option.Arm == RecommendationExecutionArm.LiveAzure);
+        Assert.True(viewModel.IsPaidExecutionMode);
+        Assert.Contains(viewModel.RunButtonText, new[] { "CONFIRM PAID LIVE", "LIVE UNAVAILABLE" });
+
+        viewModel.Setup.PaidExecutionAcknowledged = true;
+        var liveSubject = viewModel.CaptureRunRequestForExecution();
+
+        Assert.True(liveSubject.PaidExecutionConfirmed);
+        Assert.False(viewModel.Setup.PaidExecutionAcknowledged);
+        viewModel.Setup.PaidExecutionAcknowledged = true;
+        viewModel.Setup.MaxRounds++;
+        Assert.False(viewModel.Setup.PaidExecutionAcknowledged);
+    }
+
+    [Fact]
+    public async Task CoordinatorRejectsUnconfirmedLiveSubjectBeforeAnyModelBoundary()
+    {
+        await using var coordinator = new VitrineRunCoordinator();
+
+        var outcome = await coordinator.RunAsync(new VitrineRunRequest(
+            VitrineRunMode.Demo02,
+            Personas.MarcoUserId,
+            Demo01Arm: RecommendationExecutionArm.LiveAzure));
+
+        Assert.Equal(nameof(InvalidOperationException), outcome.FailureKind);
+        Assert.Single(outcome.Events);
+        Assert.Equal("RunFailed", outcome.Events[0].Kind);
     }
 
     [Fact]
@@ -460,7 +490,7 @@ public sealed class AppUiHardeningTests
         var artifact = VitrineArtifactSerializer.Create(new VitrineRunOutcome(Guid.NewGuid(),
             new(VitrineRunMode.Evals, VitrineRunRequest.NotApplicablePersonaScope,
                 PersonalizationEnabled: null, EvaluationPlan: result.Plan,
-                PaidEvaluationConfirmed: true),
+                PaidExecutionConfirmed: true),
             VitrineGraphFactory.ForRunningLiveEvaluation(result.Plan), [], LiveEvaluation: result));
         var replayArtifact = VitrineArtifactSerializer.Deserialize(VitrineArtifactSerializer.Serialize(artifact));
         var replayBoard = new EvaluationBoardViewModel();
@@ -496,7 +526,7 @@ public sealed class AppUiHardeningTests
             VitrineRunRequest.NotApplicablePersonaScope,
             PersonalizationEnabled: null,
             EvaluationPlan: VitrineEvaluationPlan.LiveEval06SafetyProbes,
-            PaidEvaluationConfirmed: true));
+            PaidExecutionConfirmed: true));
 
         Assert.Equal("LiveSessionCompleted", outcome.Events[^1].Kind);
         var safetyTerminal = Assert.Single(outcome.Events, item =>
@@ -511,7 +541,7 @@ public sealed class AppUiHardeningTests
         var result = SafetyResult(LiveEvalTerminalStatus.QualityFailed);
         var outcome = new VitrineRunOutcome(Guid.NewGuid(),
             new(VitrineRunMode.Evals, "persona", EvaluationPlan: result.Plan,
-                PaidEvaluationConfirmed: true),
+                PaidExecutionConfirmed: true),
             VitrineGraphFactory.ForRunningLiveEvaluation(result.Plan), [], LiveEvaluation: result);
 
         var artifact = VitrineArtifactSerializer.Create(outcome);
@@ -529,6 +559,8 @@ public sealed class AppUiHardeningTests
         Assert.Contains("\"passThreshold\": null", json, StringComparison.Ordinal);
         Assert.Contains("\"compromised\": 1", json, StringComparison.Ordinal);
         Assert.Contains("Paid live safety evaluation", html, StringComparison.Ordinal);
+        Assert.Contains("safety compromise/resistance census", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("requires all four authored criteria", html, StringComparison.Ordinal);
         Assert.Contains("VULNERABLE", html, StringComparison.Ordinal);
         Assert.Contains("ATTACK SUCCEEDED", html, StringComparison.Ordinal);
         Assert.Contains("Quality pass bar", html, StringComparison.Ordinal);
@@ -550,7 +582,7 @@ public sealed class AppUiHardeningTests
         var result = SafetyResult(LiveEvalTerminalStatus.InfrastructureError);
         var outcome = new VitrineRunOutcome(Guid.NewGuid(),
             new(VitrineRunMode.Evals, "persona", EvaluationPlan: result.Plan,
-                PaidEvaluationConfirmed: true),
+                PaidExecutionConfirmed: true),
             VitrineGraphFactory.ForRunningLiveEvaluation(result.Plan), [], LiveEvaluation: result);
         var artifact = VitrineArtifactSerializer.Create(outcome);
         var json = VitrineArtifactSerializer.Serialize(artifact);
@@ -642,7 +674,7 @@ public sealed class AppUiHardeningTests
         var result = SafetyResult(LiveEvalTerminalStatus.InfrastructureError);
         var artifact = VitrineArtifactSerializer.Create(new VitrineRunOutcome(Guid.NewGuid(),
             new(VitrineRunMode.Evals, "persona", EvaluationPlan: result.Plan,
-                PaidEvaluationConfirmed: true),
+                PaidExecutionConfirmed: true),
             VitrineGraphFactory.ForRunningLiveEvaluation(result.Plan), [], LiveEvaluation: result));
         var live = Assert.IsType<VitrineLiveEvaluationSnapshot>(artifact.Result.LiveEvaluation);
         var safety = Assert.IsType<VitrineLiveSafetySnapshot>(live.Safety);
@@ -702,7 +734,7 @@ public sealed class AppUiHardeningTests
         var result = SafetyResult(LiveEvalTerminalStatus.InfrastructureError);
         var current = VitrineArtifactSerializer.Create(new VitrineRunOutcome(Guid.NewGuid(),
             new(VitrineRunMode.Evals, "persona", EvaluationPlan: result.Plan,
-                PaidEvaluationConfirmed: true),
+                PaidExecutionConfirmed: true),
             VitrineGraphFactory.ForRunningLiveEvaluation(result.Plan), [], LiveEvaluation: result));
         var live = Assert.IsType<VitrineLiveEvaluationSnapshot>(current.Result.LiveEvaluation);
         var safety = Assert.IsType<VitrineLiveSafetySnapshot>(live.Safety);
@@ -780,7 +812,7 @@ public sealed class AppUiHardeningTests
         var result = SafetyResult(LiveEvalTerminalStatus.InfrastructureError);
         var artifact = VitrineArtifactSerializer.Create(new VitrineRunOutcome(Guid.NewGuid(),
             new(VitrineRunMode.Evals, "persona", EvaluationPlan: result.Plan,
-                PaidEvaluationConfirmed: true),
+                PaidExecutionConfirmed: true),
             VitrineGraphFactory.ForRunningLiveEvaluation(result.Plan), [], LiveEvaluation: result));
         var live = Assert.IsType<VitrineLiveEvaluationSnapshot>(artifact.Result.LiveEvaluation);
         var safety = Assert.IsType<VitrineLiveSafetySnapshot>(live.Safety);
@@ -843,7 +875,7 @@ public sealed class AppUiHardeningTests
             new("workspace", "session", "outcome.json", "index.json"));
         var artifact = VitrineArtifactSerializer.Create(new VitrineRunOutcome(Guid.NewGuid(),
             new(VitrineRunMode.Evals, "persona", EvaluationPlan: result.Plan,
-                LiveScenarioId: null, PaidEvaluationConfirmed: true),
+                LiveScenarioId: null, PaidExecutionConfirmed: true),
             VitrineGraphFactory.ForRunningLiveEvaluation(result.Plan), [], LiveEvaluation: result));
 
         var live = Assert.IsType<VitrineLiveEvaluationSnapshot>(
@@ -859,6 +891,7 @@ public sealed class AppUiHardeningTests
         var cases = new (VitrineRunMode Mode, VitrineEvaluationPlan? Plan, string CaptureVariable)[]
         {
             (VitrineRunMode.Demo01, null, "VITRINE_CAPTURE_PATH_DEMO01_PREVIEW_1280"),
+            (VitrineRunMode.Demo02, null, "VITRINE_CAPTURE_PATH_DEMO02_PREVIEW_1280"),
             (VitrineRunMode.Evals, VitrineEvaluationPlan.LiveEval01Agent, "VITRINE_CAPTURE_PATH_EVAL01_PREVIEW_1280"),
             (VitrineRunMode.Evals, VitrineEvaluationPlan.LiveEval02Workflow, "VITRINE_CAPTURE_PATH_EVAL02_PREVIEW_1280"),
             (VitrineRunMode.Evals, VitrineEvaluationPlan.LiveEval03AgentVsWorkflow, "VITRINE_CAPTURE_PATH_EVAL03_PREVIEW_1280"),

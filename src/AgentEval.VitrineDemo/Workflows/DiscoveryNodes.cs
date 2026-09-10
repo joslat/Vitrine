@@ -246,9 +246,17 @@ public static class DiscoveryProjection
     /// </para>
     /// </remarks>
     /// <param name="state">The run state.</param>
-    public static InterestMap ToDomainInterestMap(DiscoveryState state)
+    /// <param name="classified">
+    /// The purchase classifications used to build the map. Gift and replenishment routing are
+    /// purchase-level facts, so they must survive this projection independently of any weak
+    /// contextual contribution those classifications made to an interest.
+    /// </param>
+    public static InterestMap ToDomainInterestMap(
+        DiscoveryState state,
+        IReadOnlyList<ClassifiedPurchase> classified)
     {
         ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(classified);
 
         var signals = new List<InterestSignal>(state.Interests.Count);
 
@@ -270,8 +278,18 @@ public static class DiscoveryProjection
         return new InterestMap(
             state.CustomerId,
             signals,
-            ExcludedBecauseGift: [],
-            RoutedToReplenishment: [],
+            ExcludedBecauseGift: classified
+                .Where(static line => line.IsGift)
+                .Select(static line => line.PurchaseId)
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal)
+                .ToArray(),
+            RoutedToReplenishment: classified
+                .Where(static line => line.IsReplenishment)
+                .Select(static line => line.PurchaseId)
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal)
+                .ToArray(),
             PersonalizationEnabled: state.PersonalizationConsent);
     }
 

@@ -24,8 +24,15 @@ offline suite. Eval 01–05 write one standard AgentEval run directory per arm/r
 Every live session, including a readiness failure, writes a sanitized
 `live-sessions/<session-id>/outcome.json` and updates `live-sessions/index.json`.
 
-The Eval 01–05 result reports its quality pass threshold (`0.75` by default), bounded criterion
-explanations, and per-check census/Wilson facts. Eval 04 and Eval 05 default to five repetitions
+Configure the provider and run a one-scenario subject/judge smoke through the canonical
+[Microsoft Foundry live-run setup](https://azuresamurai.blog/Vitrine/Vitrine-Live-Run-Setup.html).
+It distinguishes the Azure OpenAI deployment name from the base-model ID, documents the current
+API-key boundary, and keeps real-vector setup separate from normal live evaluation.
+
+The Eval 01–05 result reports its quality pass threshold (`1.00` by default), bounded criterion
+explanations, and per-check census/Wilson facts. Because every registered use case has exactly four
+authored criteria, the shipped bar requires all four to pass; a three-of-four result is a measured
+quality failure. Eval 04 and Eval 05 default to five repetitions
 and require at least four; every selected `(arm, scenario)` must be fully measured and its
 whole-trial 95% Wilson lower bound must be at least `0.50`. Decisions are keyed per arm/scenario,
 with architecture and persona retained in the key. That terminal acceptance decision is
@@ -45,7 +52,7 @@ Eval 06 is fixed rather than scenario-selectable: fresh real Robin targets recei
 probes per attack, with a declared ceiling of 25 target model calls plus at most one fallback-judge
 call per probe (104 model calls for the four-probe campaign). It persists only redacted
 attack/probe census and allow-listed metadata; raw prompts, responses, reasons, and the canary are
-excluded. The use-case `0.75` threshold does not classify this safety plan.
+excluded. The use-case `1.00` threshold does not classify this safety plan.
 
 The stable programmatic selector is `LiveEvaluationPlanRunner`; its public entry point requires
 `paidExecutionConfirmed: true` before it can reach the executor. The named convenience entry

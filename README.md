@@ -49,6 +49,7 @@ The live **[VITRINE documentation hub](https://azuresamurai.blog/Vitrine/)** is 
 shareable front door. Its checked-in source links to the
 [value proposal](https://azuresamurai.blog/Vitrine/Vitrine-Digitec-Galaxus-Value-Proposal.html),
 [operator walkthrough](https://azuresamurai.blog/Vitrine/Vitrine-Walkthrough.html),
+[Microsoft Foundry live-run setup](https://azuresamurai.blog/Vitrine/Vitrine-Live-Run-Setup.html),
 [architecture](https://azuresamurai.blog/Vitrine/Vitrine-Architecture.html),
 [evaluation protocol](https://azuresamurai.blog/Vitrine/Vitrine-Evaluation-Protocol.html),
 [retrieval deep dive](https://azuresamurai.blog/Vitrine/Vitrine-Retrieval-Deep-Dive.html), and
@@ -75,10 +76,14 @@ Related platform work:
   five-check recommendation benchmark, and 43 registered healthy → defect → recovery
   diagnostics. This is the default.
 - **Paid evals:** Eval01–Eval05 measure four shared shopping scenarios across agent/workflow arms.
-  Eval04/05 require every trial to be measured and every scenario's whole-trial 95% Wilson lower
+  The shipped 1.000 quality bar requires all four authored criteria per trial; three of four is a
+  measured failure. Eval04/05 require every trial to be measured and every scenario's whole-trial 95% Wilson lower
   bound to reach 0.50 (minimum 4, default 5 repetitions); Eval03 adds a native paired comparison.
   Eval06 runs real
   AgentEval jailbreak and canary-backed system-prompt-extraction probes against fresh Robin agents.
+  The App's first-view picker shows only Offline, Eval01 Agent, and Eval02 Workflow; an explicit
+  **Advanced** switch reveals the paired, stochastic, and safety investigations without removing
+  their CLI or artifact contracts.
 - **Evidence control room:** runtime-derived graphs, correlated timeline evidence, an evaluation
   board, checksummed JSON/HTML export for accidental-change detection, and replay that executes
   nothing. The checksum is not a signature or proof against malicious replacement.
@@ -105,11 +110,13 @@ avoid the Windows launcher script.
 
 # Run the complete offline evidence chain and its diagnostics.
 .\start.ps1 -Mode Evals -NoRestore
-.\start.ps1 -Mode Controls -NoRestore
 
 # Plant one isolated catalogue defect; detection intentionally exits non-zero.
 .\start.ps1 -Mode Ablation -NoRestore
 ```
+
+Advanced diagnostic shortcut: `.\start.ps1 -Mode Controls -NoRestore` reruns only the 43 registered
+control mutations already included in the complete `Evals` path above.
 
 Direct commands:
 
@@ -119,8 +126,11 @@ dotnet test AgentEval.VitrineDemo.slnx --filter "Category!=LiveModel"
 dotnet run --project src/AgentEval.VitrineDemo.Evals -- --all
 dotnet run --project src/AgentEval.VitrineDemo.Evals -- --self-test
 
-# Standalone subject selectors 1-6 are deterministic and offline by default.
+# Standalone selector 1 defaults to the zero-model baseline.
 dotnet run --project src/AgentEval.VitrineDemo -- 1
+
+# Reproduce the checked-in Demo01 scripted-agent receipt with real tools and no remote model.
+dotnet run --project src/AgentEval.VitrineDemo -- 1 --scripted --report docs/reports/demo01-scripted.html
 ```
 
 ## Execution and cost boundary
@@ -129,8 +139,10 @@ The subject demos expose `ZeroModelBaseline`, deterministic local `ScriptedAgent
 selected `LiveAzure` arms. The evaluation runner separately exposes `OfflineSuite` plus six named
 paid plans; it has no implicit live profile. Credentials alone never change the selected lane.
 
-The standalone subject CLI also fails closed: selectors 1–6 remain offline unless both `--live`
-and `--confirm-paid` are present. `--real-vectors` and `--rebuild-embeddings` can perform live
+The standalone subject CLI also fails closed: selectors 1–6 select the zero-model baseline unless
+Demo01 is explicitly given `--scripted`, or a provider-backed subject is explicitly given both
+`--live` and `--confirm-paid`. The `--offline`, `--scripted`, and `--live` subject-arm flags are
+mutually exclusive. `--real-vectors` and `--rebuild-embeddings` can perform live
 embedding work, so each also requires `--confirm-paid`. Every paid eval plan requires the same
 confirmation, and the app requires the equivalent confirmation after showing the planned workload.
 The public programmatic runner also requires an explicit `paidExecutionConfirmed: true` argument.
@@ -146,10 +158,14 @@ dotnet run --project src/AgentEval.VitrineDemo.Evals -- `
 dotnet run --project src/AgentEval.VitrineDemo -- 1 --live --confirm-paid
 ```
 
-Optional live code reads `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, and
-`AZURE_OPENAI_DEPLOYMENT`. VITRINE never prints, persists, fingerprints, or hashes the key or
-endpoint URL. Raw Eval06 prompts, responses, extraction canaries, system instructions, provider
-messages, and exception text are excluded from its receipt.
+The current live client uses an Azure OpenAI inference/resource endpoint and API key. It reads
+`AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT`, and—only for optional
+live embedding work—`AZURE_OPENAI_EMBEDDING_DEPLOYMENT`. The
+[Microsoft Foundry live-run guide](https://azuresamurai.blog/Vitrine/Vitrine-Live-Run-Setup.html)
+explains deployment names, safe session-scoped PowerShell setup, local readiness versus provider
+connectivity, the smallest CLI/UI smoke, and troubleshooting. VITRINE never prints, persists,
+fingerprints, or hashes the key or endpoint URL. Raw Eval06 prompts, responses, extraction
+canaries, system instructions, provider messages, and exception text are excluded from its receipt.
 
 Eval process classes are: `0` pass, `1` measured failure, `2` invalid arguments, `3` not measured,
 and `4` infrastructure failure. Missing evidence remains absent—it is never displayed as zero.
@@ -177,7 +193,7 @@ available under the [MIT License](LICENSE).
 The current credential-free receipt is:
 
 - Release build: 0 warnings, 0 errors.
-- `Category!=LiveModel`: 361/361 passed, 0 failed, 0 skipped.
+- `Category!=LiveModel`: 406/406 passed, 0 failed, 0 skipped.
 - Offline admitted-check self-test: exit 0.
 - Offline check stages: 6/6 completed; all 5/5 mandatory evaluation gates pass, the matched-quality
   diagnostic is reported separately, and 43/43 registered mutation diagnostics are caught.

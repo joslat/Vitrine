@@ -42,6 +42,13 @@ public sealed class DiscoveryState
     /// <summary>Largest interest map the mapper may produce.</summary>
     public const int MaxInterests = 6;
 
+    /// <summary>
+    /// Largest code-derived LATENT floor retained when the live mapper supplies its own map.
+    /// The bound preserves the strongest structural conjunctions without crowding the model out:
+    /// at least four of the six mapper slots remain available to validated model-authored interests.
+    /// </summary>
+    public const int MaxCodeDerivedLatentFloorInterests = 2;
+
     /// <summary>How many interests the reviewer may add across the whole run.</summary>
     public const int MaxReviewerInferredInterests = 2;
 

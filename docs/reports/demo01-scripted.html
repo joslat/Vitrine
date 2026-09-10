@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nadia Brunner — Demo 01 — one tool-using agent</title>
+<title>Nadia Brunner — Demo 01 — one agent</title>
 <style>
 :root{color-scheme:light}
 *{box-sizing:border-box}
@@ -119,7 +119,7 @@ h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5f6672;ma
 <nav class="tour"><a href="https://azuresamurai.blog/Vitrine/">← Back to the VITRINE tour</a></nav>
 <header class="top">
   <div class="brand">VITRINE · <b>Robin</b>, the recommendation agent</div>
-  <div class="top-meta"><span class="pill">Demo 01 — one tool-using agent</span><span class="pill">scripted model boundary — no provider call</span></div>
+  <div class="top-meta"><span class="pill">Demo 01 — one agent</span><span class="pill">scripted ChatClient — deterministic local chat boundary</span></div>
 </header>
 <section class="card who">
   <h2>1 · The customer</h2>
@@ -216,7 +216,7 @@ h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5f6672;ma
     <tr><td>Tool calls spent</td><td class="num">4 of 24 allowed</td></tr>
   </table>
   <p class="lbl">What this page does not measure</p>
-  <p class="note">Everything above is <b>one turn</b>. The claims that need more than one turn — does the loop cover more of a customer's interests than the single agent, does a hostile product review change what gets recommended, is the answer stable when the same turn is repeated — cannot be read off this page in either direction. The credential-free <span class="mono">--all</span> command runs the deterministic offline gates, benchmark and registered negative controls; it does not run the paid multi-scenario or repeated-model plans:</p>
+  <p class="note">Everything above is <b>one turn</b>. The claims that need more than one turn — does the loop cover more of a customer's interests than the single agent, does a hostile product review change what gets recommended, is the answer stable when the same turn is repeated — cannot be read off this page in either direction. The credential-free <span class="mono">--all</span> command runs deterministic offline gates, a benchmark scoped to exactly <b>2 synthetic cases/personas × 3 deterministic arms × 2 repetitions</b>, and registered mutation controls. That benchmark's admitted checks record chance floor <span class="mono">NotDerivable</span> because no defensible random-answer chance floor is derivable; it does not run the paid multi-scenario or repeated-model plans:</p>
   <pre class="cmd">dotnet run --project src/AgentEval.VitrineDemo.Evals -- --all</pre>
   <p class="note">For those claims, select the corresponding live eval plan and pass <span class="mono">--confirm-paid</span>. Live plans declare their actual scenario and repetition scope and do not manufacture a per-arm chance floor where none is derivable.</p>
 </section>

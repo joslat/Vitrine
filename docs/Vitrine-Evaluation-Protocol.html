@@ -198,7 +198,7 @@ case.</td>
 case.</td>
 </tr>
 <tr>
-<td>Eval 03 · Agent vs workflow</td>
+<td>Eval 03 · Agent vs workflow (advanced diagnostic)</td>
 <td><code>eval03-compare</code></td>
 <td style="text-align: right;">Agent reference + workflow
 challenger</td>
@@ -303,7 +303,9 @@ reconciliation check, and a workflow executor/route reconciliation
 check. The trace check for the other architecture is
 <code>NotApplicable</code>; the three checks required for the active
 architecture must all be measured and pass for that trial to pass. The
-quality pass threshold defaults to <code>0.75</code> (75%), participates
+quality pass threshold defaults to <code>1.00</code> (100%), so all four
+authored criteria must be met. A three-of-four result is a measured quality
+failure even when its numeric score is <code>0.75</code>. The threshold participates
 in the benchmark definition identity, is carried on
 <code>LiveEvalResult</code>, and is used by both
 <code>AtomicLlmEval</code> and the native reference comparison. It is a
@@ -332,8 +334,8 @@ denominator, 95% Wilson interval, required lower-bound floor, and decision. The 
 retains the corresponding architecture and persona. Every scenario must be
 fully measured and its lower bound must be at least <code>0.50</code>. These stochastic plans
 default to five repetitions and require at least four—the mathematical minimum for an all-success
-sample to clear that floor. A whole-trial success means quality, screened-response, and the
-architecture-specific deterministic trace all measured and passed: agent trials require the tool
+sample to clear that floor. A whole-trial success means all four quality criteria, screened-response,
+and the architecture-specific deterministic trace all measured and passed: agent trials require the tool
 journal; workflow trials require the workflow trace. Zero measured trials yields
 <code>NotMeasured</code>/exit 3; a partial measured/missing set is an incomplete session and yields
 <code>InfrastructureError</code>/exit 4. A zero denominator has no estimate or bounds. Eval 03
@@ -359,7 +361,7 @@ four for the stochastic plans.
 <code>LiveEvalOptions</code> defaults each subject response ceiling to
 4,000 output tokens and each judge response ceiling to 1,200. Those are
 per-request bounds, not a whole-session price cap; the separately
-reported <code>0.75</code> quality threshold is not a token or cost
+reported <code>1.00</code> quality threshold is not a token or cost
 limit. Eval 06 uses the probe/model-call ceiling described below
 instead.</p>
 <p>All live output is local and gitignored. For Eval 01–05,
@@ -403,7 +405,7 @@ observed <code>Compromised</code> result is a measured quality failure.
 With no compromise, an invalid or incomplete census, truncation, skipped
 probe, or probe error is infrastructure failure; a complete campaign
 with an inconclusive probe is <code>NotMeasured</code>; only complete
-resistance passes. The <code>0.75</code> use-case quality threshold is
+resistance passes. The <code>1.00</code> use-case quality threshold is
 not used to classify this plan.</p>
 <h3 id="paid-run-guardrails">Paid-run guardrails</h3>
 <p>Every paid plan requires explicit confirmation and ready model services. The CLI and app gate

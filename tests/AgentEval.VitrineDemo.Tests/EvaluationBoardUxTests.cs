@@ -14,6 +14,28 @@ namespace AgentEval.VitrineDemo.Tests;
 public sealed class EvaluationBoardUxTests
 {
     [Fact]
+    public void ProgressCopyPluralizesDiagnosticEvaluationCount()
+    {
+        var board = new EvaluationBoardViewModel();
+        var mandatory = new GateResult("mandatory", true, 1, null, "ok");
+        var firstDiagnostic = new GateResult("diagnostic one", true, 1, null, "ok")
+        {
+            Authority = GateAuthority.Diagnostic,
+        };
+        var secondDiagnostic = new GateResult("diagnostic two", true, 1, null, "ok")
+        {
+            Authority = GateAuthority.Diagnostic,
+        };
+
+        board.Load(new SuiteResult([mandatory, firstDiagnostic], []));
+        Assert.Contains("1 diagnostic evaluation ·", board.RunProgress, StringComparison.Ordinal);
+        Assert.DoesNotContain("1 diagnostic evaluations", board.RunProgress, StringComparison.Ordinal);
+
+        board.Load(new SuiteResult([mandatory, firstDiagnostic, secondDiagnostic], []));
+        Assert.Contains("2 diagnostic evaluations ·", board.RunProgress, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TypedProgressStreamsRowsWithoutRecomputingTheirVerdicts()
     {
         var board = new EvaluationBoardViewModel();
@@ -163,11 +185,12 @@ public sealed class EvaluationBoardUxTests
         Assert.Contains("zero", viewModel.ModeExplanation, StringComparison.OrdinalIgnoreCase);
         Assert.True(viewModel.RunCommand.CanExecute(null));
 
+        viewModel.Setup.ShowAdvancedEvaluationPlans = true;
         viewModel.Setup.SelectedEvaluationPlan = viewModel.Setup.EvaluationPlans.Single(
             item => item.Plan == AgentEval.VitrineDemo.Evals.Live.VitrineEvaluationPlan.LiveEval03AgentVsWorkflow);
         Assert.Contains("explicit", viewModel.ModeExplanation, StringComparison.OrdinalIgnoreCase);
         Assert.False(viewModel.RunCommand.CanExecute(null));
-        viewModel.Setup.PaidEvaluationAcknowledged = true;
+        viewModel.Setup.PaidExecutionAcknowledged = true;
         Assert.Equal(viewModel.Setup.IsSelectedLivePlanConfigured, viewModel.RunCommand.CanExecute(null));
 
         viewModel.SelectedMode = VitrineRunMode.Ablation;

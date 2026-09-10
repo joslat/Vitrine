@@ -22,6 +22,7 @@ public sealed class LiveEvaluationAppIntegrationTests
         window.Show();
         var viewModel = Assert.IsType<MainWindowViewModel>(window.DataContext);
         viewModel.SelectedMode = VitrineRunMode.Evals;
+        viewModel.Setup.ShowAdvancedEvaluationPlans = true;
         viewModel.Setup.SelectedEvaluationPlan = viewModel.Setup.EvaluationPlans.Single(item =>
             item.Plan == VitrineEvaluationPlan.LiveEval03AgentVsWorkflow);
         var tab = window.GetVisualDescendants().OfType<TabItem>()
@@ -51,8 +52,12 @@ public sealed class LiveEvaluationAppIntegrationTests
 
         Assert.Equal(VitrineEvaluationPlan.OfflineSuite, setup.SelectedEvaluationPlan.Plan);
         Assert.False(setup.SelectedEvaluationPlan.IsLive);
-        Assert.Equal(7, setup.EvaluationPlans.Count);
+        Assert.Equal(3, setup.EvaluationPlans.Count);
+        Assert.DoesNotContain(setup.EvaluationPlans,
+            static item => item.Plan == VitrineEvaluationPlan.LiveEval03AgentVsWorkflow);
 
+        setup.ShowAdvancedEvaluationPlans = true;
+        Assert.Equal(7, setup.EvaluationPlans.Count);
         setup.SelectedEvaluationPlan = setup.EvaluationPlans.Single(item =>
             item.Plan == VitrineEvaluationPlan.LiveEval03AgentVsWorkflow);
         setup.SelectedLiveScenario = setup.LiveScenarios.Single(item => item.Id is null);
@@ -66,6 +71,10 @@ public sealed class LiveEvaluationAppIntegrationTests
         });
         Assert.Equal(LiveUseCaseScenarios.All.Count * 2, setup.PlannedLiveSubjectRuns);
         Assert.Equal(setup.PlannedLiveSubjectRuns, setup.PlannedLiveJudgeCalls);
+
+        setup.ShowAdvancedEvaluationPlans = false;
+        Assert.Equal(VitrineEvaluationPlan.OfflineSuite, setup.SelectedEvaluationPlan.Plan);
+        Assert.Equal(3, setup.EvaluationPlans.Count);
     }
 
     [Fact]
@@ -76,19 +85,19 @@ public sealed class LiveEvaluationAppIntegrationTests
             SelectedEvaluationPlan = VitrineEvaluationPlans.Require(
                 VitrineEvaluationPlan.LiveEval04StochasticAgent),
         };
-        setup.PaidEvaluationAcknowledged = true;
-        Assert.True(setup.PaidEvaluationAcknowledged);
+        setup.PaidExecutionAcknowledged = true;
+        Assert.True(setup.PaidExecutionAcknowledged);
         Assert.Equal(4, setup.MinimumEvaluationRepetitions);
         setup.EvaluationRepetitions = 1;
         Assert.Equal(4, setup.EvaluationRepetitions);
-        setup.PaidEvaluationAcknowledged = true;
+        setup.PaidExecutionAcknowledged = true;
 
         setup.EvaluationRepetitions++;
-        Assert.False(setup.PaidEvaluationAcknowledged);
+        Assert.False(setup.PaidExecutionAcknowledged);
 
-        setup.PaidEvaluationAcknowledged = true;
+        setup.PaidExecutionAcknowledged = true;
         setup.SelectedLiveScenario = setup.LiveScenarios.Single(item => item.Id is null);
-        Assert.False(setup.PaidEvaluationAcknowledged);
+        Assert.False(setup.PaidExecutionAcknowledged);
     }
 
     [Fact]
@@ -130,7 +139,7 @@ public sealed class LiveEvaluationAppIntegrationTests
             EvaluationPlan: VitrineEvaluationPlan.LiveEval01Agent,
             LiveScenarioId: "nadia-cross-category",
             EvaluationRepetitions: 1,
-            PaidEvaluationConfirmed: true));
+            PaidExecutionConfirmed: true));
 
         Assert.Equal(1, calls);
         Assert.Null(outcome.Evaluation);

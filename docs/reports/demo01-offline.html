@@ -138,24 +138,6 @@ h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5f6672;ma
 <div class="col-main">
 <section class="card">
   <h2>2 · What Robin recommended</h2>
-  <p class="lbl">Recommended · 1</p>
-  <div class="tray">
-    <article class="prod">
-      <div class="prod-head">
-        <div>
-          <div class="prod-name">Nitecore NB10000 Gen 3 ultralight power bank</div>
-          <div class="dim small">Nitecore · Power &amp; Travel Tech › Power banks › Ultralight power banks · <span class="mono">GLX-8005</span></div>
-        </div>
-        <div class="conf" title="code-derived routing heuristic; uncalibrated, it routes between trays">conf 0.73</div>
-      </div>
-      <div class="price">CHF 79.00 <span class="dim small">· 19 in stock · 2 working days</span></div>
-      <p class="why">Matches the derived interest &quot;multi-day trips, starts before sunrise, carried&quot; because &#39;multi&#39; meets &#39;multi&#39; in the product&#39;s title, category or attributes. Selected by the baseline arm, with no model call.</p>
-      <div class="ev">
-        <div class="ev-side"><span class="ev-lbl">Your signal</span> multi-day trips, starts before sunrise, carried <span class="mono dim">← PUR-NB-01, PUR-NB-02, PUR-NB-03, PUR-NB-04, PUR-NB-05</span></div>
-        <div class="ev-side"><span class="ev-lbl">Catalogue</span> Ports: 1 USB-C, 1 USB-A <span class="mono dim">[attr:ports]</span></div>
-      </div>
-    </article>
-  </div>
   <p class="lbl">You might also consider · 1</p>
   <div class="tray">
     <article class="prod prod-second">
@@ -197,6 +179,7 @@ h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5f6672;ma
       <div class="chk-head"><span class="chk-name">Catalogue grounding + ownership</span><span class="chk-verdict">NOT MEASURED</span></div>
       <div class="chk-what">The SKU must resolve in the catalogue, and must not be something the customer already owns.</div>
       <div class="chk-entry"><span class="mono">replenishment lane</span> <b>not tested</b> · <span class="mono dim">arm_inapplicable</span><div class="dim small">this customer has no purchase on a replenishment cadence, so the replenishment_not_discovery arm had nothing to fire against (chance floor 1.0 — not a pass). The already-owned arm beside it DID run.</div></div>
+      <div class="chk-entry"><span class="mono">GLX-8005</span> <b>dropped</b> · <span class="mono dim">durable_still_in_horizon</span><div class="dim small">the customer already owns a durable in the &#39;Power banks&#39; category still inside its typical service life; Nitecore NB10000 Gen 3 ultralight power bank is a same-category replacement, not a missing capability — the upgrade lane is suppressed, not merely down-ranked</div></div>
     </li>
     <li class="chk chk-na">
       <div class="chk-head"><span class="chk-name">Two-sided evidence</span><span class="chk-verdict">NOT MEASURED</span></div>
@@ -229,15 +212,15 @@ h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5f6672;ma
   </ul>
   <p class="lbl">This turn, counted</p>
   <table class="nums">
-    <tr><td>Proposed → shown</td><td class="num">2 → 2</td></tr>
-    <tr><td>Removed by a guardrail</td><td class="num">0</td></tr>
+    <tr><td>Proposed → shown</td><td class="num">2 → 1</td></tr>
+    <tr><td>Removed by a guardrail</td><td class="num">1</td></tr>
     <tr><td>Moved to the second tray</td><td class="num">1</td></tr>
     <tr><td>Purchases ruled out as gifts</td><td class="num">0</td></tr>
-    <tr><td>Prices re-read from the catalogue</td><td class="num">2 of 2</td></tr>
+    <tr><td>Prices re-read from the catalogue</td><td class="num">1 of 1</td></tr>
     <tr><td>Tool calls spent</td><td class="num absent">n/a — this arm makes no refusable tool calls</td></tr>
   </table>
   <p class="lbl">What this page does not measure</p>
-  <p class="note">Everything above is <b>one turn</b>. The claims that need more than one turn — does the loop cover more of a customer's interests than the single agent, does a hostile product review change what gets recommended, is the answer stable when the same turn is repeated — cannot be read off this page in either direction. The credential-free <span class="mono">--all</span> command runs the deterministic offline gates, benchmark and registered negative controls; it does not run the paid multi-scenario or repeated-model plans:</p>
+  <p class="note">Everything above is <b>one turn</b>. The claims that need more than one turn — does the loop cover more of a customer's interests than the single agent, does a hostile product review change what gets recommended, is the answer stable when the same turn is repeated — cannot be read off this page in either direction. The credential-free <span class="mono">--all</span> command runs deterministic offline gates, a benchmark scoped to exactly <b>2 synthetic cases/personas × 3 deterministic arms × 2 repetitions</b>, and registered mutation controls. That benchmark's admitted checks record chance floor <span class="mono">NotDerivable</span> because no defensible random-answer chance floor is derivable; it does not run the paid multi-scenario or repeated-model plans:</p>
   <pre class="cmd">dotnet run --project src/AgentEval.VitrineDemo.Evals -- --all</pre>
   <p class="note">For those claims, select the corresponding live eval plan and pass <span class="mono">--confirm-paid</span>. Live plans declare their actual scenario and repetition scope and do not manufacture a per-arm chance floor where none is derivable.</p>
 </section>

@@ -22,6 +22,10 @@ For the recruiter-facing intent, read the
 For the current end-to-end operating path, read the
 [walkthrough](https://azuresamurai.blog/Vitrine/Vitrine-Walkthrough.html) and repository-root
 [README](../../README.md).
+For the optional provider-backed path, use the canonical
+[Microsoft Foundry live-run setup](https://azuresamurai.blog/Vitrine/Vitrine-Live-Run-Setup.html);
+the current client requires the Azure OpenAI resource endpoint and API key, not a Foundry project
+endpoint or `az login` session.
 
 ## Run the subject
 
@@ -37,14 +41,18 @@ From the repository root:
 # Optional: open the visual control room and choose an arm/persona before running
 .\start.ps1 -Mode App
 
-# Direct subject selector 1; selectors 1-6 are offline by default
+# Direct subject selector 1; the zero-model baseline remains the default
 dotnet run --project src/AgentEval.VitrineDemo -- 1
+
+# Real Demo01 agent and tools with the deterministic local chat client
+dotnet run --project src/AgentEval.VitrineDemo -- 1 --scripted
 
 # Model-backed subject execution requires both flags
 dotnet run --project src/AgentEval.VitrineDemo -- 1 --live --confirm-paid
 ```
 
-Credentials never change that default. The standalone CLI rejects a provider-capable request
+Credentials never change that default. `--offline`, `--scripted`, and `--live` are mutually
+exclusive subject-arm selectors, and `--scripted` is valid only for Demo01. The standalone CLI rejects a provider-capable request
 before execution unless it is explicitly confirmed: `--live`, `--real-vectors`, and
 `--rebuild-embeddings` each require `--confirm-paid`. `--real-vectors` may embed queries live even
 when the subject itself is offline.

@@ -49,6 +49,9 @@ public sealed class ObservedRecommendationAgentTests
         Assert.Equal("GLX-3007", Assert.Single(result.Presented).Sku);
         Assert.Contains(result.Outcome!.Cleaned.AllPresented,
             static item => item.ProductId == "GLX-3007");
+        Assert.Equal(
+            ["GLX-5002", "GLX-3008"],
+            result.Outcome.Cleaned.Replenishment.Select(static item => item.ProductId));
         Assert.Equal(5, result.Events.Count(static item =>
             item.Kind == RecommendationRuntimeEventKind.ToolExecutionStarted));
         Assert.Equal(5, result.Events.Count(static item =>

@@ -235,7 +235,7 @@ public static class DiscoveryWorkflowFactory
                                         ? "➡ ROUTE  CoverageReviewer → Ranker   [coverage sufficient]"
                                         : $"➡ ROUTE  CoverageReviewer → Ranker   [{s.ResolveStopReason()}]   (degraded — PARTIAL answer)",
                                     progress),
-                label: "coverage sufficient")
+                label: "approved / bounded partial")
 
             .AddEdge<DiscoveryState>(
                 rankerExecutor, presenterExecutor,

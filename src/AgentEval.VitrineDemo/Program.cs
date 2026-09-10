@@ -10,6 +10,7 @@
 //   dotnet run --project src/AgentEval.VitrineDemo
 //   dotnet run --project src/AgentEval.VitrineDemo -- 1                     Demo 01, offline by default
 //   dotnet run --project src/AgentEval.VitrineDemo -- 2                     Demo 02, offline by default
+//   dotnet run --project src/AgentEval.VitrineDemo -- 1 --scripted          Demo 01, deterministic agent + tools
 //   dotnet run --project src/AgentEval.VitrineDemo -- 1 --live --confirm-paid
 //   dotnet run --project src/AgentEval.VitrineDemo -- 2 --no-personalization
 //   dotnet run --project src/AgentEval.VitrineDemo -- 1 --user USR-MI-02
@@ -18,6 +19,7 @@
 
 using System.Text;
 using Galaxus.RecommendationAgent;
+using Galaxus.RecommendationAgent.Agents;
 using Galaxus.RecommendationAgent.Catalog;
 using Galaxus.RecommendationAgent.Demos;
 using Galaxus.RecommendationAgent.Retrieval;
@@ -35,6 +37,7 @@ Console.OutputEncoding = Encoding.UTF8;
 //   --user <USR-XX-NN>      Persona to run. Overrides the digit's persona.
 //   --no-personalization    the personalization opt-out: history is not read, the turn runs on stated need.
 //   --offline               Explicitly select the default deterministic, no-provider arm.
+//   --scripted              Demo 01: real agent/tools with the deterministic local chat client.
 //   --live                  Request the model-backed subject arm (never inferred from credentials).
 //   --confirm-paid          Required with every provider-capable option before work can start.
 //   --rebuild-embeddings    Regenerate Data/catalogue.embeddings.json from a LIVE embedding model.
@@ -59,6 +62,13 @@ if (parsed is null)
 if (parsed.HelpRequested)
 {
     PrintUsage();
+    return;
+}
+
+if (HasForcedOfflineArmConflict(parsed))
+{
+    PrintForcedOfflineArmConflict(parsed.Selector!);
+    Environment.ExitCode = 2;
     return;
 }
 
@@ -182,6 +192,10 @@ static ParsedArgs? ParseArgs(string[] args)
                 parsed.Offline = true;
                 break;
 
+            case "--scripted":
+                parsed.Scripted = true;
+                break;
+
             case "--live":
                 parsed.Live = true;
                 break;
@@ -216,7 +230,10 @@ static ParsedArgs? ParseArgs(string[] args)
         }
     }
 
-    return parsed.Live && parsed.Offline ? null : parsed;
+    var selectedSubjectArms = (parsed.Offline ? 1 : 0)
+                              + (parsed.Scripted ? 1 : 0)
+                              + (parsed.Live ? 1 : 0);
+    return selectedSubjectArms > 1 ? null : parsed;
 }
 
 static bool RequiresPaidConfirmation(ParsedArgs parsed) =>
@@ -224,6 +241,16 @@ static bool RequiresPaidConfirmation(ParsedArgs parsed) =>
 
 static bool IsSelector(string token) =>
     token is "0" or "1" or "2" or "3" or "4" or "5" or "6" or "7" or "8" or "9";
+
+static bool HasForcedOfflineArmConflict(ParsedArgs parsed) =>
+    parsed.Selector is "0" or "7" or "8" or "9"
+    && (parsed.Scripted || parsed.Live);
+
+static void PrintForcedOfflineArmConflict(string selector) =>
+    Console.Error.WriteLine(
+        $"Selector {selector} is a fixed zero-model alias and cannot be combined with " +
+        "--scripted or --live. Use selector 1, 4 or 6 for a committed Demo01 scripted arm. " +
+        "No provider call was made.");
 
 // Maps a menu digit to a demo, a persona and its toggles. Every subject selector is offline unless
 // the operator supplies BOTH --live and --confirm-paid; configured credentials never select a paid
@@ -235,7 +262,9 @@ static bool IsSelector(string token) =>
 //
 // 1 = Demo 01 and 2 = Demo 02 is a documented presentation contract: the walkthrough invokes
 // those selectors in sequence. Persona-specific Demo 01 shortcuts therefore use 3-7.
-static bool TryResolveSelector(ParsedArgs parsed, out (int Demo, string UserId, bool NoPersonalization, bool Offline) choice)
+static bool TryResolveSelector(
+    ParsedArgs parsed,
+    out (int Demo, string UserId, bool NoPersonalization, RecommendationExecutionArm Arm) choice)
 {
     var (demo, defaultUser, defaultNoPersonalization, defaultOffline) = parsed.Selector switch
     {
@@ -274,21 +303,49 @@ static bool TryResolveSelector(ParsedArgs parsed, out (int Demo, string UserId, 
         return false;
     }
 
+    var arm = defaultOffline || parsed.Offline
+        ? RecommendationExecutionArm.ZeroModelBaseline
+        : parsed.Scripted
+            ? RecommendationExecutionArm.ScriptedAgent
+            : parsed.Live
+                ? RecommendationExecutionArm.LiveAzure
+                : RecommendationExecutionArm.ZeroModelBaseline;
+
     choice = (
         demo,
         string.IsNullOrWhiteSpace(parsed.UserId) ? defaultUser : parsed.UserId.Trim(),
         parsed.NoPersonalization || defaultNoPersonalization,
-        parsed.Offline || defaultOffline || !parsed.Live);
+        arm);
 
     return true;
 }
 
 // The one place a resolved choice becomes a run.
 static async Task RunChoiceAsync(
-    (int Demo, string UserId, bool NoPersonalization, bool Offline) choice,
+    (int Demo, string UserId, bool NoPersonalization, RecommendationExecutionArm Arm) choice,
     int? modelTimeoutSeconds = null,
     string? reportPath = null)
 {
+    if (choice.Arm == RecommendationExecutionArm.ScriptedAgent && choice.Demo != 1)
+    {
+        Console.Error.WriteLine(
+            "--scripted selects Demo01's deterministic ChatClientAgent arm and cannot be used " +
+            "with Demo02 or the termination proof. No provider call was made.");
+        Environment.ExitCode = 2;
+        return;
+    }
+
+    if (choice.Arm == RecommendationExecutionArm.ScriptedAgent
+        && !OfflineRecommendationScript.Supports(choice.UserId))
+    {
+        Console.Error.WriteLine(
+            $"No committed Demo01 scripted trajectory exists for customer '{choice.UserId}'. " +
+            "Use Nadia (USR-NB-01), Sofia (USR-SK-03), the zero-model baseline, or live Azure. " +
+            "No provider call was made.");
+        Environment.ExitCode = 2;
+        return;
+    }
+
     if (choice.Demo == 3)
     {
         var probes = await Galaxus.RecommendationAgent.Workflows.DiscoveryTerminationProbe.RunAllAsync();
@@ -300,13 +357,15 @@ static async Task RunChoiceAsync(
     if (choice.Demo == 2)
     {
         Environment.ExitCode = await Demo02_InterestMapWorkflow.RunAsync(
-            choice.UserId, choice.NoPersonalization, choice.Offline,
+            choice.UserId, choice.NoPersonalization,
+            choice.Arm == RecommendationExecutionArm.ZeroModelBaseline,
             Galaxus.RecommendationAgent.Workflows.DiscoveryState.DefaultMaxDiscoveryRounds,
             modelTimeoutSeconds is { } s ? TimeSpan.FromSeconds(s) : null);
         return;
     }
 
-    await Demo01_RecommendationAgent.RunAsync(choice.UserId, choice.NoPersonalization, choice.Offline, reportPath);
+    await Demo01_RecommendationAgent.RunAsync(
+        choice.UserId, choice.NoPersonalization, choice.Arm, reportPath);
 }
 
 // ── Menu ──────────────────────────────────────────────────────────────────────
@@ -371,7 +430,14 @@ static async Task ShowMenuAsync(ParsedArgs parsed)
 ");
         Console.ResetColor();
 
-        if (!parsed.Live && parsed.Space is EmbeddingSpaceChoice.RealVectors)
+        if (parsed.Scripted)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("  Demo01 uses the deterministic local ChatClientAgent and real read-only tools.");
+            Console.WriteLine("  Demo02 and the termination proof do not accept --scripted.\n");
+            Console.ResetColor();
+        }
+        else if (!parsed.Live && parsed.Space is EmbeddingSpaceChoice.RealVectors)
         {
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine("  Subject selectors are offline. Real-vector query embedding is confirmed and");
@@ -415,6 +481,11 @@ static async Task ShowMenuAsync(ParsedArgs parsed)
         else
         {
             var selection = parsed with { Selector = key.ToString() };
+            if (HasForcedOfflineArmConflict(selection))
+            {
+                PrintForcedOfflineArmConflict(selection.Selector!);
+                continue;
+            }
             if (!TryResolveSelector(selection, out var choice))
             {
                 continue;
@@ -503,7 +574,8 @@ The two headline selectors, in the order the demo script types them:
       same-customer comparison against Demo 01, run: -- 2 --user USR-NB-01 (Nadia's
       coverage is sufficient in round 1, so the loop declines to spend a second one).
       Both are deterministic and offline by default. To request a model-backed subject,
-      add BOTH --live and --confirm-paid.
+      use --scripted for Demo01's local deterministic ChatClientAgent, or add BOTH
+      --live and --confirm-paid for a provider-backed subject.
 
 Selectors 3-7 are Demo 01's other personas and toggles:
   3   Marco Iten      USR-MI-02   the gift trap
@@ -521,6 +593,7 @@ Selector 0 proves the loop's three terminations (offline, no cost, exit code 1 o
   0   Forces the round cap, no-progress and gaps-unresolvable in turn, and shows why each
       outcome could NOT have been produced by the other two. Also checks the loop-back edge
       and the query-vocabulary constraint in BOTH directions.
+      Selectors 0, 7, 8 and 9 are fixed zero-model aliases; they reject --scripted and --live.
 
 Flags:
   --user <USR-XX-NN>     Run this persona instead of the selector's default.
@@ -528,6 +601,10 @@ Flags:
                          the turn runs on what the customer says in this conversation.
   --offline              Explicitly select the default deterministic retrieval +
                          guardrail arm. No provider call is made.
+  --scripted             Demo 01 only. Run the real ChatClientAgent and registered
+                         read-only tools against a committed Nadia/Sofia deterministic
+                         local chat trajectory. By itself this needs no remote chat
+                         model or paid confirmation.
   --live                 Request the model-backed subject arm. Credentials alone never
                          enable it. Requires --confirm-paid.
   --confirm-paid         Explicit acknowledgement required before --live,
@@ -569,6 +646,7 @@ sealed record ParsedArgs
     public string? UserId { get; set; }
     public bool NoPersonalization { get; set; }
     public bool Offline { get; set; }
+    public bool Scripted { get; set; }
     public bool Live { get; set; }
     public bool ConfirmPaid { get; set; }
     public bool RebuildEmbeddings { get; set; }

@@ -171,10 +171,11 @@ public sealed class SafetyBoundaryTests
 
             Assert.Contains("code-derived routing heuristic; uncalibrated", html, StringComparison.Ordinal);
             Assert.DoesNotContain("self-reported by the selector", html, StringComparison.Ordinal);
-            Assert.Contains(
-                "runs the deterministic offline gates, benchmark and registered negative controls",
-                html,
-                StringComparison.Ordinal);
+            Assert.Contains("2 synthetic cases/personas × 3 deterministic arms × 2 repetitions", html, StringComparison.Ordinal);
+            Assert.Contains("registered mutation controls", html, StringComparison.Ordinal);
+            Assert.Contains("chance floor <span class=\"mono\">NotDerivable</span>", html, StringComparison.Ordinal);
+            Assert.Contains("no defensible random-answer chance floor is derivable", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("registered negative controls", html, StringComparison.Ordinal);
             Assert.Contains("does not run the paid multi-scenario or repeated-model plans", html, StringComparison.Ordinal);
             Assert.Contains("--confirm-paid", html, StringComparison.Ordinal);
             Assert.Contains("do not manufacture a per-arm chance floor", html, StringComparison.Ordinal);

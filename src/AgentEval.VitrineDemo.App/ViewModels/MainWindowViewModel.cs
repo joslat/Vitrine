@@ -72,8 +72,8 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
         "The UI observes execution. Criteria, floors, scoring, controls, and verdicts remain in AgentEval.VitrineDemo.Evals.";
 
     public string LiveReadiness => Config.IsConfigured
-        ? $"Live available · deployment {Config.Model}"
-        : "Live unavailable · no credentials detected; every default path remains offline.";
+        ? $"Local live configuration found · deployment {Config.Model} · provider not contacted"
+        : "Live unavailable · no local credentials detected; every default path remains offline.";
 
     public IReadOnlyList<VitrineRunMode> Modes { get; } = Enum.GetValues<VitrineRunMode>();
 
@@ -99,7 +99,7 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
             if (!SetProperty(ref _selectedMode, value)) return;
             // Paid consent is deliberately one-shot and mode-scoped. Returning to the same
             // paid plan must never reuse an acknowledgement made in a different UI context.
-            Setup.PaidEvaluationAcknowledged = false;
+            Setup.PaidExecutionAcknowledged = false;
             if (value == VitrineRunMode.Demo02) Setup.SelectWorkflowDemonstrationPersona();
             if (value == VitrineRunMode.Demo01) Setup.SelectRecommendationDemonstrationPersona();
             if (value == VitrineRunMode.Ablation)
@@ -122,6 +122,8 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
     public bool IsCatalogueSelfTestMode => SelectedMode == VitrineRunMode.Ablation;
     public bool IsProfiledEvaluationMode => SelectedMode == VitrineRunMode.Evals;
     public bool IsLiveEvaluationMode => IsProfiledEvaluationMode && Setup.IsLiveEvaluationPlan;
+    public bool IsPaidExecutionMode => IsLiveEvaluationMode
+        || (IsDemoMode && Setup.SelectedArm.Arm == RecommendationExecutionArm.LiveAzure);
     public bool IsLiveScenarioEvaluationMode => IsLiveEvaluationMode && Setup.SupportsLiveScenarioSelection;
     public bool IsSafetyEvaluationMode => IsLiveEvaluationMode && Setup.IsSafetyEvaluationPlan;
     public bool IsStochasticEvaluationMode => IsLiveEvaluationMode && Setup.SupportsEvaluationRepetitions;
@@ -217,7 +219,7 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
                 ? Setup.IsLiveEvaluationPlan
                     ? !Setup.IsSelectedLivePlanConfigured
                         ? "LIVE EVAL UNAVAILABLE"
-                        : !Setup.PaidEvaluationAcknowledged
+                        : !Setup.PaidExecutionAcknowledged
                             ? "CONFIRM PAID EVAL"
                             : $"RUN {Setup.SelectedEvaluationPlan.Label.ToUpperInvariant()}"
                     : "RUN OFFLINE EVALS"
@@ -226,7 +228,11 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
               && !OfflineRecommendationScript.Supports(Setup.SelectedPersona.Id)
                 ? "SCRIPT UNAVAILABLE"
                 : IsDemoMode && Setup.SelectedArm.Arm == RecommendationExecutionArm.LiveAzure
-                    ? Config.IsConfigured ? "RUN LIVE AZURE" : "LIVE UNAVAILABLE"
+                    ? !Config.IsConfigured
+                        ? "LIVE UNAVAILABLE"
+                        : !Setup.PaidExecutionAcknowledged
+                            ? "CONFIRM PAID LIVE"
+                            : "RUN LIVE AZURE"
                     : IsDemoMode && Setup.SelectedArm.Arm == RecommendationExecutionArm.ScriptedAgent
                         ? "RUN MOCKED MODEL"
                         : IsDemoMode && Setup.SelectedArm.Arm == RecommendationExecutionArm.ZeroModelBaseline
@@ -287,7 +293,7 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
             || OfflineRecommendationScript.Supports(Setup.SelectedPersona.Id))
         && (!IsDemoMode
             || Setup.SelectedArm.Arm != RecommendationExecutionArm.LiveAzure
-            || Config.IsConfigured)
+            || Config.IsConfigured && Setup.PaidExecutionAcknowledged)
         && (!IsProfiledEvaluationMode || Setup.CanRunSelectedEvaluationPlan);
 
     private bool CanClear() => !IsRunning &&
@@ -377,16 +383,16 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
             SelectedMode == VitrineRunMode.Evals
                 ? Setup.SelectedEvaluationPlan.Plan
                 : VitrineEvaluationPlan.OfflineSuite,
-            Setup.SupportsLiveScenarioSelection ? Setup.SelectedLiveScenario.Id : null,
-            Setup.EffectiveEvaluationRepetitions,
-            SelectedMode == VitrineRunMode.Evals && Setup.PaidEvaluationAcknowledged);
-        if (request.Mode == VitrineRunMode.Evals
-            && request.EvaluationPlan != VitrineEvaluationPlan.OfflineSuite
-            && request.PaidEvaluationConfirmed)
+            SelectedMode == VitrineRunMode.Evals && Setup.SupportsLiveScenarioSelection
+                ? Setup.SelectedLiveScenario.Id
+                : null,
+            SelectedMode == VitrineRunMode.Evals ? Setup.EffectiveEvaluationRepetitions : 1,
+            IsPaidExecutionMode && Setup.PaidExecutionAcknowledged);
+        if (request.PaidExecutionConfirmed)
         {
             // Capture consent into this immutable request, then consume it before any paid work.
             // A retry, even after a safe failure, therefore requires an explicit fresh click.
-            Setup.PaidEvaluationAcknowledged = false;
+            Setup.PaidExecutionAcknowledged = false;
         }
         return request;
     }
@@ -655,6 +661,7 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
         RaisePropertyChanged(nameof(IsCatalogueSelfTestMode));
         RaisePropertyChanged(nameof(IsProfiledEvaluationMode));
         RaisePropertyChanged(nameof(IsLiveEvaluationMode));
+        RaisePropertyChanged(nameof(IsPaidExecutionMode));
         RaisePropertyChanged(nameof(IsLiveScenarioEvaluationMode));
         RaisePropertyChanged(nameof(IsSafetyEvaluationMode));
         RaisePropertyChanged(nameof(IsStochasticEvaluationMode));
@@ -671,7 +678,7 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
             or nameof(RunSetupViewModel.SelectedEvaluationPlan)
             or nameof(RunSetupViewModel.SelectedLiveScenario)
             or nameof(RunSetupViewModel.EvaluationRepetitions)
-            or nameof(RunSetupViewModel.PaidEvaluationAcknowledged))
+            or nameof(RunSetupViewModel.PaidExecutionAcknowledged))
         {
             if (!IsRunning && IsProfiledEvaluationMode
                 && eventArgs.PropertyName is nameof(RunSetupViewModel.SelectedEvaluationPlan)
@@ -684,6 +691,7 @@ public sealed class MainWindowViewModel : BindableBase, IAsyncDisposable
             RaisePropertyChanged(nameof(ModeExplanation));
             RaisePropertyChanged(nameof(RunButtonText));
             RaisePropertyChanged(nameof(IsLiveEvaluationMode));
+            RaisePropertyChanged(nameof(IsPaidExecutionMode));
             RaisePropertyChanged(nameof(IsLiveScenarioEvaluationMode));
             RaisePropertyChanged(nameof(IsSafetyEvaluationMode));
             RaisePropertyChanged(nameof(IsStochasticEvaluationMode));

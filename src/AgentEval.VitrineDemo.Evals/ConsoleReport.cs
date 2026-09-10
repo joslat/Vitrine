@@ -169,13 +169,16 @@ public static class ConsoleReport {
             $"{result.Workload.PlannedSubjectCalls} planned subject call(s) · " +
             $"up to {result.Workload.PlannedJudgeEvaluations} judge evaluation(s)");
         writer.WriteLine($"LLM quality pass threshold: {result.PassThreshold.ToString("0.000", CultureInfo.InvariantCulture)}");
+        var qualityRule = result.PassThreshold >= 1
+            ? "all four authored criteria"
+            : $"the configured {result.PassThreshold.ToString("0.000", CultureInfo.InvariantCulture)} aggregate quality bar";
         writer.WriteLine(result.Configuration.Acceptance.Policy switch
         {
             LiveTerminalAcceptancePolicy.WilsonLowerBoundPerScenario =>
-                $"Terminal acceptance: every arm/scenario must be fully measured; a whole-trial success requires quality, response-observed, and arm-specific tool-journal/workflow-trace checks; its 95% Wilson lower bound must be >= " +
+                $"Terminal acceptance: every arm/scenario must be fully measured; a whole-trial success requires {qualityRule}, response-observed, and arm-specific tool-journal/workflow-trace checks; its 95% Wilson lower bound must be >= " +
                 $"{Optional(result.Configuration.Acceptance.MinimumLowerBound)}",
             LiveTerminalAcceptancePolicy.EveryTrialMustPass =>
-                "Terminal acceptance: every fully measured trial must pass",
+                $"Terminal acceptance: every fully measured trial must meet {qualityRule}, response-observed, and its arm-specific trace check",
             _ => "Terminal acceptance: NOT APPLICABLE",
         });
         foreach (var decision in result.ScenarioAcceptances)

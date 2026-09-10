@@ -1,0 +1,228 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Configure Microsoft Foundry/Azure OpenAI for an explicit VITRINE live subject or evaluation run, then preserve a sanitized receipt.">
+  <title>Live-run setup · VITRINE</title>
+  <meta name="author" content="José Luis Latorre Millas">
+  <link rel="canonical" href="https://azuresamurai.blog/Vitrine/Vitrine-Live-Run-Setup.html">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Live-run setup · VITRINE">
+  <meta property="og:description" content="The bounded Microsoft Foundry/Azure OpenAI setup and smoke path for VITRINE.">
+  <meta property="og:url" content="https://azuresamurai.blog/Vitrine/Vitrine-Live-Run-Setup.html">
+  <link rel="stylesheet" href="assets/vitrine-doc-page.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<header class="hero"><div class="wrap">
+  <div class="eyebrow">VITRINE · Operator reference</div>
+  <h1>Microsoft Foundry live-run setup</h1>
+  <p class="lead">Provision the two deployment types VITRINE understands, set credentials for one
+    PowerShell session, run the smallest useful smoke, and keep claims inside the evidence.</p>
+</div></header>
+<nav class="topnav" aria-label="VITRINE documentation">
+  <div class="wrap">
+    <a href="index.html">VITRINE docs</a>
+    <a href="Vitrine-Walkthrough.html">Walkthrough</a>
+    <a href="Vitrine-Live-Run-Setup.html">Live setup</a>
+    <a href="Vitrine-Retrieval-Deep-Dive.html">Retrieval</a>
+    <a href="Vitrine-Architecture.html">Architecture</a>
+    <a href="Vitrine-Evaluation-Protocol.html">Evaluation protocol</a>
+    <a href="Vitrine-Verification.html">Verification</a>
+  </div>
+</nav>
+<main id="content" class="doc-shell">
+<aside class="toc" aria-label="On this page"><strong>On this page</strong><ul>
+  <li><a href="#boundary">Know the boundary</a></li>
+  <li><a href="#foundry">Prepare Foundry</a></li>
+  <li><a href="#variables">Set four variables</a></li>
+  <li><a href="#local-check">Check locally</a></li>
+  <li><a href="#smoke">Run a small smoke</a></li>
+  <li><a href="#vectors">Optional real vectors</a></li>
+  <li><a href="#evidence">Preserve evidence</a></li>
+  <li><a href="#troubleshooting">Troubleshoot</a></li>
+</ul></aside>
+<article class="prose">
+  <h2 id="boundary">Know the boundary before spending</h2>
+  <p>VITRINE is offline by default. Having credentials in the environment does not select a live
+    lane. A subject run needs an explicit <code>LiveAzure</code> choice; its CLI equivalent is
+    <code>--live --confirm-paid</code>. A paid evaluation needs a named Eval01–Eval06 plan and the
+    same confirmation. Real-vector queries and embedding-index rebuilds are separate paid actions
+    behind <code>--confirm-paid</code>.</p>
+  <blockquote><p><strong>Current authentication contract:</strong> VITRINE constructs
+    <code>AzureOpenAIClient</code> with an Azure OpenAI endpoint and API key. Microsoft Entra ID,
+    managed identity, a Foundry project endpoint, and <code>az login</code> are not authentication
+    paths in the current code. Do not configure them and assume readiness.</p></blockquote>
+  <p>A one-case smoke can establish that this checkout reached a named deployment and produced one
+    observed result. It does not establish stochastic reliability, production fitness, business
+    impact, or the behavior of another model/version.</p>
+
+  <h2 id="foundry">Prepare the Microsoft Foundry resource</h2>
+  <ol>
+    <li>Use a subscription, region, and Microsoft Foundry/Azure OpenAI resource where you are
+      authorized to deploy models and read the resource endpoint and key. Availability, quota,
+      model versions, and deployment types vary by region and subscription.</li>
+    <li>Deploy one chat model. The repository default is <code>gpt-5-mini</code>; a compatible
+      alternative must support chat completions, tool/function calling, and the structured-output
+      work used by the workflow and evaluator.</li>
+    <li>Record the <strong>deployment name</strong> you assigned. VITRINE sends this value to the
+      SDK. A catalogue model ID or model-family label is not interchangeable with a deployment
+      name unless you deliberately made them identical.</li>
+    <li>From the same resource/deployment details, copy the Azure OpenAI inference/resource
+      endpoint and one API key. A common endpoint form is
+      <code><span>https:</span><span>//&lt;resource-name&gt;.openai.azure.com/</span></code>. Do not substitute a Foundry project
+      endpoint containing <code>/api/projects/...</code>; the current application does not create
+      an <code>AIProjectClient</code>.</li>
+    <li>Only if you intend to use <code>--real-vectors</code> or rebuild the vector asset, also
+      deploy <code>text-embedding-3-small</code>. Normal Demo01, Demo02, and Eval01–Eval06 runs use
+      the authored concept-vector space by default and need no embedding deployment.</li>
+  </ol>
+  <p>Microsoft's upstream references explain how to
+    <a href="https://learn.microsoft.com/azure/foundry/foundry-models/how-to/deploy-foundry-models">deploy a Foundry model</a>
+    and why an Azure OpenAI API call uses the
+    <a href="https://learn.microsoft.com/azure/developer/ai/how-to/switching-endpoints">deployment name rather than the underlying model name</a>.
+    Those pages own portal and service details; this page owns VITRINE's configuration contract.</p>
+
+  <h2 id="variables">Set the four understood environment variables</h2>
+  <table>
+    <thead><tr><th>Variable</th><th>Required when</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>AZURE_OPENAI_ENDPOINT</code></td><td>Every live operation</td><td>Absolute Azure OpenAI inference/resource endpoint copied from the same resource as the key.</td></tr>
+      <tr><td><code>AZURE_OPENAI_API_KEY</code></td><td>Every live operation</td><td>API key for that resource. VITRINE never intentionally prints, persists, fingerprints, or hashes it.</td></tr>
+      <tr><td><code>AZURE_OPENAI_DEPLOYMENT</code></td><td>Chat subject/judge; set explicitly</td><td>Your chat <em>deployment name</em>. If absent, code resolves <code>gpt-5-mini</code>; that fallback works only if a deployment with exactly that name exists.</td></tr>
+      <tr><td><code>AZURE_OPENAI_EMBEDDING_DEPLOYMENT</code></td><td>Embedding-index rebuild</td><td>Deployment name stamped onto a rebuilt index; defaults to <code>text-embedding-3-small</code>. A shipped <code>--real-vectors</code> query instead follows the committed index stamp, and a normal concept-vector run makes no embedding call.</td></tr>
+    </tbody>
+  </table>
+  <p>Set them only in the PowerShell session that will launch VITRINE:</p>
+  <pre><code>$vitrineAzureOpenAiResource = '&lt;resource-name&gt;'
+$env:AZURE_OPENAI_ENDPOINT = 'https://' + $vitrineAzureOpenAiResource + '.openai.azure.com/'
+$env:AZURE_OPENAI_DEPLOYMENT = '&lt;chat-deployment-name&gt;'
+$env:AZURE_OPENAI_API_KEY = Read-Host 'Azure OpenAI API key' -MaskInput
+
+# Optional: only for --rebuild-embeddings. The committed real-vector index
+# already names text-embedding-3-small for live query embedding.
+$env:AZURE_OPENAI_EMBEDDING_DEPLOYMENT = 'text-embedding-3-small'</code></pre>
+  <p>Do not put the key in source, command history, screenshots, or checked-in logs. Do not create
+    a <code>.env</code> secret for this path—the current application does not load one, and a local
+    secret file adds accidental-commit risk. Do not use <code>setx</code> for the secret: it makes a
+    persistent user-level copy and does not update the current shell. Closing this PowerShell
+    session removes the session-scoped variables.</p>
+
+  <h2 id="local-check">Separate local readiness from provider connectivity</h2>
+  <p>This zero-call check reports only whether the two required variable <em>names</em> hold
+    non-empty values. It never prints either value:</p>
+  <pre><code>$required = 'AZURE_OPENAI_ENDPOINT', 'AZURE_OPENAI_API_KEY'
+$required | ForEach-Object {
+  $configured = -not [string]::IsNullOrWhiteSpace(
+    [Environment]::GetEnvironmentVariable($_))
+  '{0}: {1}' -f $_, $(if ($configured) { 'SET' } else { 'MISSING' })
+}
+
+'Chat deployment: {0}' -f $(if ($env:AZURE_OPENAI_DEPLOYMENT) {
+  $env:AZURE_OPENAI_DEPLOYMENT
+} else {
+  'gpt-5-mini (code default; a deployment with this exact name must exist)'
+})</code></pre>
+  <p><strong>SET is not CONNECTED.</strong> Current readiness validates non-empty endpoint/key
+    values and an absolute endpoint URI. It does not contact Foundry, validate the key, find the
+    deployment, inspect its underlying model, or check quota. Only an explicitly confirmed live
+    call establishes those facts.</p>
+
+  <h2 id="smoke">Run the smallest useful live smoke</h2>
+  <p>Build first without invoking a provider:</p>
+  <pre><code>dotnet restore AgentEval.VitrineDemo.slnx --locked-mode
+dotnet build AgentEval.VitrineDemo.slnx -c Release --no-restore</code></pre>
+  <p>Then choose one paid smoke. Concept vectors remain the default in all three examples, so no
+    live embedding call is added.</p>
+  <table>
+    <thead><tr><th>Question</th><th>Small CLI run</th><th>Expected evidence</th></tr></thead>
+    <tbody>
+      <tr><td>Can the single agent call its real read-only tools?</td><td><code>dotnet run --project src/AgentEval.VitrineDemo -c Release --no-restore -- 1 --live --confirm-paid --report .agenteval/smoke/demo01-live.html</code></td><td>Nadia subject outcome, observed tool journal, guardrail result, provider-usage state, and self-contained HTML.</td></tr>
+      <tr><td>Can the workflow complete its model-backed stages?</td><td><code>dotnet run --project src/AgentEval.VitrineDemo -c Release --no-restore -- 2 --user USR-NB-01 --live --confirm-paid --model-timeout 60</code></td><td>One Nadia workflow trace. Nadia normally avoids an unnecessary second discovery round; use Marco only when deliberately exercising the bounded loop.</td></tr>
+      <tr><td>Can subject plus LLM judge complete one criterion set?</td><td><code>dotnet run --project src/AgentEval.VitrineDemo.Evals -c Release --no-restore -- --eval-plan eval01-agent --scenario nadia-cross-category --confirm-paid</code></td><td>One agent subject trial, one criterion evaluation, measurement state, typed checks, usage when reported, and a sanitized session receipt.</td></tr>
+    </tbody>
+  </table>
+  <p>A “subject trial” is not a promise of one provider request. Agent tool loops, workflow stages,
+    structured-output retries, and judge activity can issue multiple requests. Inspect the plan
+    preview and reported usage; missing usage means <em>not reported</em>, not free.</p>
+
+  <h3>Run the corresponding control-room smoke</h3>
+  <pre><code>dotnet run --project src/AgentEval.VitrineDemo.App -c Release --no-restore</code></pre>
+  <ol>
+    <li>For subject parity, select <strong>Agent Demo01</strong>, <strong>Nadia</strong>, and
+      <strong>Live Azure</strong>. Review the live/paid state shown by the app, explicitly confirm
+      paid execution when prompted, then run. Inspect the tool graph, timeline, and screened outcome.</li>
+    <li>For workflow parity, select <strong>Workflow Demo02</strong>, <strong>Nadia</strong>,
+      <strong>Live Azure</strong>, and a small round cap. Confirm, run, then inspect model-stage,
+      search, executor, and route observations. Marco is the intentional visible-loop case and can
+      consume more model turns.</li>
+    <li>For evaluated parity, select <strong>Evals → Eval 01 · Agent → Nadia cross-category</strong>,
+      leave repetitions at one, inspect the planned subject/judge workload, turn on
+      <strong>Confirm paid execution</strong>, and run. Inspect the criterion rows as well as the
+      terminal session state.</li>
+  </ol>
+  <p>The App intentionally shows only Offline, Eval 01 Agent, and Eval 02 Workflow at first.
+    Enable <strong>Advanced plans</strong> to reveal Eval 03 paired diagnostics, Eval 04/05
+    stochastic runs, or Eval 06 safety probes; those plans remain directly addressable from the CLI.</p>
+  <p>The CLI and UI are adapters over the same subject/evaluation cores, but two runs are still two
+    independent provider observations. Similar wiring does not require byte-identical model output.</p>
+
+  <h2 id="vectors">Add real-vector retrieval only when that is the question</h2>
+  <p><code>--real-vectors</code> loads the committed 99-product
+    <code>text-embedding-3-small</code> index, makes a live space-identity probe, and embeds new
+    queries live against the deployment named by the asset's model stamp. It can therefore add an
+    embedding call even when the subject arm is otherwise offline:</p>
+  <pre><code>dotnet run --project src/AgentEval.VitrineDemo -c Release --no-restore -- 1 --live --real-vectors --confirm-paid</code></pre>
+  <p>The committed stamp is authoritative for query compatibility. If
+    <code>AZURE_OPENAI_EMBEDDING_DEPLOYMENT</code> names something else, that configured name is not
+    used to query this asset. To move to a different embedding deployment/space, rebuild the whole
+    product index deliberately:</p>
+  <pre><code>dotnet run --project src/AgentEval.VitrineDemo -c Release --no-restore -- --rebuild-embeddings --confirm-paid</code></pre>
+  <blockquote><p>The shipped catalogue rebuild makes <strong>99 embedding calls</strong> and
+    overwrites a committed data asset. Review the diff, model stamp, dimensions, document-template
+    stamp, and usage report before committing it. It is maintenance—not a smoke-test prerequisite.</p></blockquote>
+  <p>The <a href="Vitrine-Retrieval-Deep-Dive.html">retrieval deep dive</a> explains the two spaces,
+    identity probe, explicit fallback, and why scores cannot be compared across spaces.</p>
+
+  <h2 id="evidence">Preserve evidence without publishing secrets</h2>
+  <ul>
+    <li>Keep the deployment name, scenario, arm, timestamps, terminal state, measured/not-measured
+      census, bounded outcome/evaluator evidence, and provider usage state.</li>
+    <li>For Demo01 CLI, use <code>--report &lt;path&gt;</code>. In the app, save sanitized JSON and HTML
+      after completion. Paid evals also persist below <code>.agenteval/live</code> and write
+      <code>.agenteval/live/live-sessions/&lt;session-id&gt;/outcome.json</code>.</li>
+    <li>Do not paste the endpoint, key, raw provider exceptions, unrestricted prompts/responses,
+      Eval06 canary, or system instructions into an issue or public artifact.</li>
+    <li>Before publishing, open the exported receipt and search for the resource host, secret fragments,
+      personal paths, and raw prompts. Publish a sanitized copy only after that review.</li>
+  </ul>
+  <p>A checksum detects accidental artifact changes; it is not a signature and does not prove who
+    executed the run. See the <a href="Vitrine-Evaluation-Protocol.html#cost-persistence-and-paid-execution">evaluation protocol</a>
+    for normative paid-plan persistence and classification.</p>
+
+  <h2 id="troubleshooting">Troubleshoot by failure class</h2>
+  <table>
+    <thead><tr><th>Symptom</th><th>Likely boundary</th><th>Check without exposing secrets</th></tr></thead>
+    <tbody>
+      <tr><td>Readiness says configuration is missing</td><td>Local process environment</td><td>Run the SET/MISSING check in the same PowerShell process tree that launches <code>dotnet</code>. A value set in another terminal is not inherited.</td></tr>
+      <tr><td>Endpoint is rejected before a call</td><td>Local URI/configuration</td><td>Copy the absolute Azure OpenAI resource endpoint again. Do not use the Foundry project endpoint or a portal page URL.</td></tr>
+      <tr><td>HTTP 401</td><td>Credential/resource pairing</td><td>Use a current key from the same resource as the endpoint; rotate a possibly exposed key. Never print it to compare.</td></tr>
+      <tr><td>HTTP 403</td><td>Resource/network policy</td><td>Check disabled-key policy, private-network/firewall rules, and whether this machine may reach the endpoint. Current VITRINE cannot fall back to Entra ID.</td></tr>
+      <tr><td>HTTP 404 / deployment not found</td><td>Endpoint or deployment routing</td><td>Verify <code>AZURE_OPENAI_DEPLOYMENT</code> is the deployment name in that exact resource—not merely <code>gpt-5-mini</code> as a model ID.</td></tr>
+      <tr><td>HTTP 429 / timeout</td><td>Quota, capacity, or transient service load</td><td>Stop broad/repeated plans, inspect quota/capacity, and retry one bounded scenario. Do not reinterpret an infrastructure failure as a quality failure.</td></tr>
+      <tr><td>Real vectors visibly fall back</td><td>Embedding credentials, asset, or space probe</td><td>Read the printed reason. Confirm the stamped embedding deployment exists and the identity cosine clears its declared floor; otherwise keep the result labelled concept-space.</td></tr>
+      <tr><td>UI warning while console lines look green</td><td>Aggregate measurement semantics</td><td>Expand the warning card. A completed stage, green child check, missing measurement, diagnostic-only row, or plan-level terminal rule are different states; preserve the board and session receipt when reporting the issue.</td></tr>
+    </tbody>
+  </table>
+  <p>If a live run fails, retain its non-success receipt. VITRINE is designed not to replace a
+    provider failure with an offline success. The <a href="Vitrine-Walkthrough.html#reading">walkthrough's status guide</a>
+    explains how to distinguish execution progress, evidence state, and evaluator verdict.</p>
+</article>
+</main>
+<footer><div class="wrap">VITRINE operator reference · current code uses Azure OpenAI endpoint +
+  API key authentication · offline remains the default.</div></footer>
+</body>
+</html>

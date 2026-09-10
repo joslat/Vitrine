@@ -2,6 +2,9 @@
 // Copyright (c) 2026 AgentEval Contributors
 
 using System.Text.Json;
+using AgentEval.VitrineDemo.App.Artifacts;
+using AgentEval.VitrineDemo.App.Runtime;
+using AgentEval.VitrineDemo.App.ViewModels;
 using Galaxus.RecommendationAgent;
 using Galaxus.RecommendationAgent.Agents;
 using Galaxus.RecommendationAgent.Catalog;
@@ -146,13 +149,20 @@ public sealed class ModelPathEndToEndTests
     {
         RequireLiveCredentialsAfterExplicitOptIn();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+        await using var coordinator = new VitrineRunCoordinator();
 
-        var result = await RecommendationRunEngine.RunAsync(new RecommendationRunOptions(
+        var outcome = await coordinator.RunAsync(new VitrineRunRequest(
+            VitrineRunMode.Demo01,
             Personas.NadiaUserId,
-            Arm: RecommendationExecutionArm.LiveAzure),
-            cancellationToken: timeout.Token);
+            Demo01Arm: RecommendationExecutionArm.LiveAzure,
+            PaidExecutionConfirmed: true), timeout.Token);
 
+        Assert.Null(outcome.FailureKind);
+        var result = Assert.IsType<RecommendationRunResult>(outcome.Recommendation);
         AssertAgentContract(result);
+        var artifact = VitrineArtifactSerializer.Create(outcome);
+        Assert.Equal(Personas.NadiaUserId, artifact.PersonaId);
+        Assert.NotEmpty(artifact.Events);
     }
 
     [LiveModelFact]
@@ -161,13 +171,24 @@ public sealed class ModelPathEndToEndTests
     {
         RequireLiveCredentialsAfterExplicitOptIn();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+        await using var coordinator = new VitrineRunCoordinator();
 
-        var result = await GalaxusDiscoveryLoop.RunAsync(
+        var outcome = await coordinator.RunAsync(new VitrineRunRequest(
+            VitrineRunMode.Demo02,
             Personas.MarcoUserId,
-            new DiscoveryLoopOptions(Offline: false, MaxRounds: 3),
-            timeout.Token);
+            Demo01Arm: RecommendationExecutionArm.LiveAzure,
+            MaxRounds: 3,
+            PaidExecutionConfirmed: true), timeout.Token);
 
+        Assert.Null(outcome.FailureKind);
+        var result = Assert.IsType<DiscoveryRunResult>(outcome.Workflow);
         AssertWorkflowContract(result);
+        Assert.Equal(DiscoveryExecutorIds.All, outcome.Graph.Nodes.Select(static node => node.Id));
+        Assert.Equal(DiscoveryTopology.Shipped.Routes.Select(static route => route.Id),
+            outcome.Graph.Edges.Select(static edge => edge.Id));
+        var artifact = VitrineArtifactSerializer.Create(outcome);
+        Assert.Equal(Personas.MarcoUserId, artifact.PersonaId);
+        Assert.NotEmpty(artifact.Events);
     }
 
     private static void AssertAgentContract(RecommendationRunResult result)

@@ -106,7 +106,7 @@ public sealed class LiveEvaluationProjectionTests
         var artifact = VitrineArtifactSerializer.Create(new VitrineRunOutcome(
             Guid.NewGuid(),
             new(VitrineRunMode.Evals, Personas.NadiaUserId, EvaluationPlan: result.Plan,
-                LiveScenarioId: "nadia-cross-category", PaidEvaluationConfirmed: true),
+                LiveScenarioId: "nadia-cross-category", PaidExecutionConfirmed: true),
             VitrineGraphFactory.ForRunningLiveEvaluation(result.Plan),
             [],
             LiveEvaluation: result));
@@ -187,7 +187,7 @@ public sealed class LiveEvaluationProjectionTests
                 EvaluationPlan: result.Plan,
                 LiveScenarioId: "nadia-cross-category",
                 EvaluationRepetitions: 1,
-                PaidEvaluationConfirmed: true),
+                PaidExecutionConfirmed: true),
             VitrineGraphFactory.ForEvaluationSuite(),
             [],
             LiveEvaluation: result);
@@ -332,7 +332,7 @@ public sealed class LiveEvaluationProjectionTests
                 EvaluationPlan: result.Plan,
                 LiveScenarioId: "nadia-cross-category",
                 EvaluationRepetitions: 4,
-                PaidEvaluationConfirmed: true),
+                PaidExecutionConfirmed: true),
             VitrineGraphFactory.ForRunningLiveEvaluation(result.Plan),
             [],
             LiveEvaluation: result));
@@ -355,7 +355,7 @@ public sealed class LiveEvaluationProjectionTests
         Assert.Contains("Terminal per-scenario Wilson decisions", html, StringComparison.Ordinal);
         Assert.Contains("nadia-cross-category", html, StringComparison.Ordinal);
         Assert.Contains("lower bound &gt;= 0.500", html, StringComparison.Ordinal);
-        Assert.Contains("three required checks passed", html, StringComparison.Ordinal);
+        Assert.Contains("requires all four authored criteria", html, StringComparison.Ordinal);
         Assert.True(
             html.IndexOf("Terminal per-scenario Wilson decisions", StringComparison.Ordinal)
             < html.IndexOf("Per-check census and Wilson reliability", StringComparison.Ordinal));
@@ -556,7 +556,7 @@ public sealed class LiveEvaluationProjectionTests
                 EvaluationPlan: partial.Plan,
                 LiveScenarioId: "nadia-cross-category",
                 EvaluationRepetitions: 4,
-                PaidEvaluationConfirmed: true),
+                PaidExecutionConfirmed: true),
             VitrineGraphFactory.ForRunningLiveEvaluation(partial.Plan),
             [],
             LiveEvaluation: partial));
@@ -584,7 +584,7 @@ public sealed class LiveEvaluationProjectionTests
                 Personas.NadiaUserId,
                 EvaluationPlan: result.Plan,
                 LiveScenarioId: "nadia-cross-category",
-                PaidEvaluationConfirmed: true),
+                PaidExecutionConfirmed: true),
             VitrineGraphFactory.ForEvaluationSuite(),
             [],
             LiveEvaluation: result));

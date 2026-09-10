@@ -667,7 +667,12 @@ public static class GuardrailControls
             p.IsAvailableIn(context.User.Market) &&
             !context.OwnedProductIds.Contains(p.Id) &&
             !context.ReplenishmentProductIds.Contains(p.Id) &&
+            !(p.IsConsumable &&
+              GuardrailContext.ImmediateParentCategoryOf(p) is { } replenishmentParent &&
+              context.ReplenishmentParentCategories.Contains(replenishmentParent)) &&
             !context.OwnedDurableLeafCategories.Contains(p.LeafCategory) &&
+            !(GuardrailContext.ImmediateParentCategoryOf(p) is { } durableParent &&
+              context.OwnedDurableParentCategories.Contains(durableParent)) &&
             !p.CategoryPath.Any(e => context.SensitiveCategoryNames.Contains(e)
                                   || SensitiveInferenceBlocklist.IsBlockedCategoryName(e)));
 

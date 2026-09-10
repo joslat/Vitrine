@@ -330,7 +330,8 @@ public static class VitrineEventAdapters
                 && item.Gate?.Outcome == GateMeasurementOutcome.NotApplicable => VitrineEventDisposition.NotApplicable,
             EvaluationProgressKind.GateCompleted when authority == GateAuthority.Diagnostic
                 && item.Passed is null => VitrineEventDisposition.NotMeasured,
-            EvaluationProgressKind.GateCompleted when authority == GateAuthority.Diagnostic => VitrineEventDisposition.Neutral,
+            EvaluationProgressKind.GateCompleted when authority == GateAuthority.Diagnostic
+                => item.Passed == true ? VitrineEventDisposition.Succeeded : VitrineEventDisposition.Warning,
             EvaluationProgressKind.GateCompleted when item.Gate?.Outcome == GateMeasurementOutcome.InstrumentError => VitrineEventDisposition.Failed,
             EvaluationProgressKind.GateCompleted when item.Gate?.Outcome == GateMeasurementOutcome.NotApplicable => VitrineEventDisposition.NotApplicable,
             EvaluationProgressKind.GateCompleted or EvaluationProgressKind.SuiteCompleted when item.Passed is null => VitrineEventDisposition.NotMeasured,
