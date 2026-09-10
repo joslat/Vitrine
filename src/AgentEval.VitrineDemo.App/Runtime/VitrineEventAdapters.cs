@@ -326,13 +326,14 @@ public static class VitrineEventAdapters
                 when item.Expectation == EvaluationProgressExpectation.CatalogueSelfTestSucceeded
                 => VitrineEventDisposition.SelfTestSucceeded,
             EvaluationProgressKind.SuiteStarted or EvaluationProgressKind.GateStarted or EvaluationProgressKind.ControlStarted => VitrineEventDisposition.Active,
+            EvaluationProgressKind.GateCompleted when item.Gate?.Outcome == GateMeasurementOutcome.InstrumentError
+                => VitrineEventDisposition.Failed,
             EvaluationProgressKind.GateCompleted when authority == GateAuthority.Diagnostic
                 && item.Gate?.Outcome == GateMeasurementOutcome.NotApplicable => VitrineEventDisposition.NotApplicable,
             EvaluationProgressKind.GateCompleted when authority == GateAuthority.Diagnostic
                 && item.Passed is null => VitrineEventDisposition.NotMeasured,
             EvaluationProgressKind.GateCompleted when authority == GateAuthority.Diagnostic
                 => item.Passed == true ? VitrineEventDisposition.Succeeded : VitrineEventDisposition.Warning,
-            EvaluationProgressKind.GateCompleted when item.Gate?.Outcome == GateMeasurementOutcome.InstrumentError => VitrineEventDisposition.Failed,
             EvaluationProgressKind.GateCompleted when item.Gate?.Outcome == GateMeasurementOutcome.NotApplicable => VitrineEventDisposition.NotApplicable,
             EvaluationProgressKind.GateCompleted or EvaluationProgressKind.SuiteCompleted when item.Passed is null => VitrineEventDisposition.NotMeasured,
             EvaluationProgressKind.ControlHealthyCompleted when item.Passed is null => VitrineEventDisposition.NotMeasured,
@@ -356,6 +357,13 @@ public static class VitrineEventAdapters
                 => $"SELF-TEST FAILED · catalogue defect was not detected · {item.Name}",
             EvaluationProgressExpectation.CatalogueSelfTestSucceeded
                 => "SELF-TEST SUCCEEDED · expected 99→observed 98 catalogue detection",
+            _ when item.Kind == EvaluationProgressKind.GateCompleted
+                && authority == GateAuthority.Diagnostic
+                && item.Gate?.Outcome == GateMeasurementOutcome.InstrumentError
+                => $"DIAGNOSTIC INSTRUMENT ERROR · no exit authority · {item.Name}",
+            _ when item.Kind == EvaluationProgressKind.GateCompleted
+                && item.Gate?.Outcome == GateMeasurementOutcome.InstrumentError
+                => $"INSTRUMENT ERROR · {item.Name}",
             _ when item.Kind == EvaluationProgressKind.GateCompleted
                 && authority == GateAuthority.Diagnostic && item.Gate?.Passed == false
                 => $"DIAGNOSTIC FINDING · no exit authority · {item.Name}",
@@ -410,6 +418,7 @@ public static class VitrineEventAdapters
                         => "FAIL AS EXPECTED · defect detected",
                     false when gate.Authority == GateAuthority.Diagnostic => "OBSERVED FAIL · diagnostic only",
                     false => "FAIL",
+                    null when gate.Outcome == GateMeasurementOutcome.InstrumentError => "INSTRUMENT ERROR",
                     null => "NOT MEASURED",
                 })
                 .Append("Observed score: ").AppendLine(gate.Score?.ToString("0.000", CultureInfo.InvariantCulture) ?? "NOT MEASURED")

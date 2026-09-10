@@ -198,7 +198,7 @@ available under the [MIT License](LICENSE).
 The current credential-free receipt is:
 
 - Release build: 0 warnings, 0 errors.
-- `Category!=LiveModel`: 449/449 passed, 0 failed, 0 skipped.
+- `Category!=LiveModel`: 450/450 passed, 0 failed, 0 skipped.
 - Offline admitted-check self-test: exit 0.
 - Offline check stages: 6/6 completed; all 5/5 mandatory evaluation gates pass, the matched-quality
   diagnostic is reported separately, and 43/43 registered mutation diagnostics are caught.

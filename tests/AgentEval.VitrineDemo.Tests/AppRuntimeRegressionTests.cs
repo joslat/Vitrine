@@ -341,6 +341,48 @@ public sealed class AppRuntimeRegressionTests
     }
 
     [Fact]
+    public void DiagnosticInstrumentErrorIsRenderedAsFailedInfrastructureEvidence()
+    {
+        var diagnostic = GateResult.InstrumentError(
+            "Matched agent/workflow judged quality",
+            null,
+            typeof(InvalidDataException)) with
+        {
+            Authority = GateAuthority.Diagnostic,
+        };
+        var progress = new EvaluationProgressEvent(
+            EvaluationProgressKind.GateCompleted,
+            "judged",
+            diagnostic.Name,
+            diagnostic.Evidence,
+            Passed: null,
+            Gate: diagnostic,
+            Authority: GateAuthority.Diagnostic);
+        var draft = VitrineEventAdapters.FromEvaluation(progress);
+
+        Assert.Equal(VitrineEventDisposition.Failed, draft.Disposition);
+        Assert.Contains("DIAGNOSTIC INSTRUMENT ERROR · no exit authority", draft.Title,
+            StringComparison.Ordinal);
+        Assert.Contains("Measurement: InstrumentError", draft.Payload,
+            StringComparison.Ordinal);
+        Assert.Contains("Verdict: INSTRUMENT ERROR", draft.Payload,
+            StringComparison.Ordinal);
+
+        var board = new EvaluationBoardViewModel();
+        board.Apply(progress);
+        var row = Assert.Single(board.Gates);
+        Assert.Equal("DIAGNOSTIC", row.Authority);
+        Assert.Equal("INSTRUMENT ERROR", row.Status);
+        Assert.Equal("#F07076", row.StatusColor);
+
+        var graph = new GraphViewModel();
+        var store = new VitrineEventStore();
+        graph.Load(VitrineGraphFactory.ForRunningEvaluationSuite());
+        graph.Apply(store.Append(draft));
+        Assert.Equal(GraphNodeState.Failed, graph.StateOf("judged"));
+    }
+
+    [Fact]
     public void WorkflowFailureMapsToAFailedTerminalEvent()
     {
         var draft = VitrineEventAdapters.FromDiscovery(new DiscoveryEvent(
