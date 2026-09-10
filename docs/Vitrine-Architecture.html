@@ -234,7 +234,7 @@ progress routes. The graph describes execution and persistence; the
 evaluation board projects evaluator-owned facts and never manufactures a
 winner or score. Operation IDs close start cards on terminal events so a
 completed run cannot remain visually active.</p>
-<p>Exports and replay project the same sanitized schema-v9 screened
+<p>Exports and replay project the same sanitized schema-v10 screened
 outcome used by the UI, including answers, recommendations, verification
 measurements, ledger, routes, degradations, control tranches, all
 offline benchmark arms/runs/reference comparisons, named live-evaluation
@@ -246,12 +246,14 @@ integrity serialization when any string would require secret/URL
 redaction. HTML and the inspector verify before rendering. They never
 rerun the subject or evaluator.</p>
 <p>Schema 8 added allow-listed Eval 06 probe diagnostics and typed failure
-stage/code/detail. Schema 9 adds explicit evaluation-gate authority plus typed stochastic
-acceptance and trial-consistency validation. The reader still accepts integrity-valid schema-7 artifacts and reconstructs the
+stage/code/detail. Schema 9 added explicit evaluation-gate authority plus typed stochastic
+acceptance and trial-consistency validation. Schema 10 adds typed, sanitized live-workflow
+provider-stage attempt and recovery evidence. The reader still accepts integrity-valid schema-7 artifacts and reconstructs the
 generic safe explanation from the stored outcome/error category; it
 never invents or recovers a raw provider exception that the older
-receipt did not contain. Schema-7 and schema-8 application artifacts remain readable; new
-paid-session receipts use live-session schema 1.3.</p>
+receipt did not contain. Schema-7 through schema-9 application artifacts remain readable; new
+paid-session receipts use live-session schema 1.4, while the public exporter retains the strict
+historical schema-1.3 read path without inventing the newer evidence.</p>
 <p>The exact per-check floor, admission, measurement-state, and ablation
 inventory is maintained in the repository-native <code>MIGRATION.md</code> ledger.</p>
 <div class="note"><strong>Reading boundary.</strong> This is an independent, synthetic portfolio sample prepared for Digitec Galaxus. It is not affiliated with, commissioned by, or endorsed by the company, and it makes no claim about company production systems or customer data.</div>

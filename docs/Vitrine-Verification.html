@@ -53,8 +53,8 @@ verification</a></li>
 <li><a href="#eval06-diagnostic-verification"
 id="toc-eval06-diagnostic-verification">Eval06 diagnostic
 verification</a></li>
-<li><a href="#historical-live-run-disclosure"
-id="toc-historical-live-run-disclosure">Historical live-run
+<li><a href="#live-run-disclosure"
+id="toc-live-run-disclosure">Live-run
 disclosure</a></li>
 <li><a href="#claim-boundary" id="toc-claim-boundary">Claim
 boundary</a></li>
@@ -92,23 +92,23 @@ safety scan.</p>
 </tr>
 <tr>
 <td>Changed-seam regression coverage</td>
-<td>PASS · graph, artifact/replay, live-plan, stochastic, gate-authority, and safety coverage is included in the 407-test credential-free lane</td>
+<td>PASS · graph, artifact/replay, live-plan, stochastic, gate-authority, and safety coverage is included in the 449-test credential-free lane</td>
 </tr>
 <tr>
 <td>Artifact compatibility</td>
-<td>Schema 9 creation; integrity-valid schema 7 and 8 read compatibility</td>
+<td>Schema 10 creation; integrity-valid schema 7, 8, and 9 read compatibility</td>
 </tr>
 <tr>
 <td>Documentation integrity</td>
-<td>PASS · 28 Markdown/HTML files · local links, fragments, unique IDs, and standalone HTML envelopes</td>
+<td>PASS · 29 Markdown/HTML files · local links, fragments, unique IDs, and standalone HTML envelopes</td>
 </tr>
 <tr>
 <td>Publication boundary</td>
-<td>PASS · 256 tracked files · exactly one deny-by-default public classification per path</td>
+<td>PASS · 260 tracked files · exactly one deny-by-default public classification per path</td>
 </tr>
 <tr>
 <td>Live-evidence exporter</td>
-<td>PASS · synthetic Eval03/Eval06 fixtures, missingness, malformed-measurement rejection, escaping, and deployment-sentinel exclusion</td>
+<td>PASS · synthetic Eval02/Eval03/Eval06 fixtures, typed recovery/fallback, schema-1.3 compatibility, paired-output rollback, malformed-evidence rejection, escaping, and redaction</td>
 </tr>
 </tbody>
 </table>
@@ -194,7 +194,7 @@ verification</h2>
 provider: complete resistance, known compromise, clean inconclusive
 measurement, timeout/transport/execution errors, malformed or truncated
 census, cancellation, persistence, replay, and tamper rejection.</p>
-<p>Schema 9 and live-session schema 1.3 retain only allow-listed
+<p>Schema 10 and live-session schema 1.4 retain only allow-listed
 per-probe outcome and failure facts: attack, probe id, stage, code, safe
 detail, severity, fidelity, and technique. The board, timeline, console,
 inspector, and HTML report distinguish a red
@@ -203,9 +203,18 @@ inspector, and HTML report distinguish a red
 <code>Inconclusive</code>; those counts must not be added. Raw prompts,
 responses, extraction canaries, system instructions, endpoints, provider
 messages, and exception text remain excluded.</p>
-<h2 id="historical-live-run-disclosure">Historical live-run
-disclosure</h2>
-<p>No paid live result is used as final acceptance evidence. One saved
+<h2 id="live-run-disclosure">Live-run disclosure</h2>
+<p>The final credential-free acceptance above invoked no provider. Separately, one intentionally
+paid Sofia <code>Eval02</code> workflow observation ran once against implementation commit
+<code>028ac51bd73987b6c4292e78408a9b56de560fe2</code>. It completed one measured trial with all
+four authored criteria, response observation, and workflow trace passing; the required
+InterestMapper, Ranker, and Presenter stages each completed one attempt with no unusable, failed,
+cancelled, or terminal provider stage. The strict sanitized
+<a href="evidence/vitrine-live-eval02-sofia-2026-09-10.html">HTML receipt</a> and
+<a href="evidence/vitrine-live-eval02-sofia-2026-09-10.json">JSON receipt</a> omit raw prompts,
+responses, evaluator explanations, tool arguments, endpoints, credentials, and private paths.
+This is one integration observation, not a reliability estimate, model comparison, or production-quality claim.</p>
+<p>One saved historical
 Eval06 session from development recorded all four planned probe attempts
 but ended <code>InfrastructureError</code>/exit 4: one resisted, zero
 compromised, and three inconclusive probes, all three carrying the

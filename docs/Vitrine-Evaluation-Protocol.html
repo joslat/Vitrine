@@ -139,7 +139,7 @@ duplicate rows inside one run. Manifests, scenario results, and
 summaries are written below the gitignored
 <code>.agenteval/Vitrine</code>; all arm identities, repetitions, run
 IDs/directories, and ten Demo01-reference comparisons appear in console,
-JSON, HTML, artifact schema v9, and the evaluation board; schema-7 and schema-8 artifacts remain readable.</p>
+JSON, HTML, artifact schema v10, and the evaluation board; integrity-valid schema-7 through schema-9 artifacts remain readable.</p>
 <p>The evaluation preview/runtime graph has 14 nodes: five mandatory evaluation gates,
 the matched-quality diagnostic, five recommendation predicates, native
 persistence/score, a separate 43-control diagnostic node, and the suite
@@ -316,15 +316,20 @@ explanation is represented explicitly rather than as an empty cell.</p>
 degradation</h3>
 <p>A terminal subject-provider failure or cancellation makes that
 subject/trial <code>NotMeasured</code>; an unusable judge result makes
-the quality check <code>NotMeasured</code>. The workflow also has an
-independent, bounded content-degradation path: after two unusable
-structured-output attempts, InterestMapper may use a code-derived map,
-CoverageReviewer a conservative verdict, Ranker deterministic selection,
-and Presenter a composed answer. The result discloses the count and
-allow-listed
-<code>&lt;executor&gt;:fallback</code>/<code>&lt;executor&gt;:model-failure</code>
-kinds. A terminal provider failure remains <code>NotMeasured</code> even
-if this path produced a fallback response.</p>
+the quality check <code>NotMeasured</code>. Every workflow model stage records a typed, sanitized
+logical-attempt census: attempts, responses, unusable attempts, provider failures,
+cancellations, status, and the last unusable/usable-response ordinals. A failed or structurally
+unusable attempt followed by a later usable response is <code>Recovered</code>: the failure remains
+visible reliability evidence, but the final stage may remain measured. An unrecovered,
+cancelled, or <code>FinalFallback</code> stage fails the live quality observation closed as
+<code>NotMeasured</code>.</p>
+<p>The workflow retains an independent, bounded content-degradation path: after two unusable
+structured-output attempts, InterestMapper may use a code-derived map, CoverageReviewer a
+conservative verdict, Ranker deterministic selection, and Presenter a composed answer. The
+customer can still receive a clearly disclosed bounded partial result, but a live eval does not
+count that provider-backed trial as measured quality when the model stage ended in fallback.
+Impossible censuses, duplicate attempt ownership, invalid chronology, unknown stage/status values,
+and missing required model stages are rejected rather than normalized into success.</p>
 <h3 id="reliability-and-comparison">Reliability and comparison</h3>
 <p>For every arm and check, the result reports measured/N/A/not-measured
 census and a Wilson interval over measured pass/fail facts; these are diagnostic check-level
@@ -368,13 +373,13 @@ instead.</p>
 <code>FileSystemOutputStore</code> writes one standard AgentEval run
 directory per arm/repetition below <code>.agenteval/live</code>. For
 every paid plan, the live session store writes the bounded, sanitized
-schema-1.3 receipt to
+schema-1.4 receipt to
 <code>.agenteval/live/live-sessions/&lt;session-id&gt;/outcome.json</code>
 and updates <code>.agenteval/live/live-sessions/index.json</code>; the
 receipt refers to each AgentEval run directory by relative path. It
 contains the quality pass threshold, a bounded response preview (1,000
 characters by default), allow-listed tool names/counts and workflow
-executor/route/degradation facts, individual criterion
+executor/route/degradation facts, typed provider-stage attempt/recovery evidence, individual criterion
 verdicts/explanations and check facts, census/Wilson/comparison facts,
 and usage/cost only when the provider reports it. Credentials, endpoint
 URLs, unrestricted runtime objects, hidden reasoning, and raw provider
@@ -548,9 +553,11 @@ are separate persisted arms and runs of
 reference. The leaf and paired comparison are diagnostic evidence; neither has mandatory
 evaluation-gate or process-exit authority.</p>
 <h3 id="paid-llm-judge">Paid LLM judge</h3>
-<p>Eval 01–05 use their separate configured LLM judge through
+<p>Eval 01–05 use a separately composed LLM judge role through
 <code>AtomicLlmEval</code> and the scenario-specific
-criteria/ground-truth contract above. That paid judge path is not part
+criteria/ground-truth contract above. It can route to
+<code>AZURE_OPENAI_JUDGE_DEPLOYMENT</code>; when that variable is absent it deliberately shares
+the subject deployment, and the receipt states that relation. That paid judge path is not part
 of the offline <code>matched-quality</code> diagnostic check.</p>
 <h2 id="subject-arms-and-package-boundary">Subject arms and package
 boundary</h2>
@@ -588,7 +595,7 @@ generic-contract, and applicability-census layers.</p>
 <p>The migration commit is the receipt for the final deterministic
 admitted-check command and output. Typed control scope and the new
 benchmark arm/run/reference facts are projected through results,
-console, evaluation JSON/HTML, schema-v9 app artifacts, inspector, app
+console, evaluation JSON/HTML, schema-v10 app artifacts, inspector, app
 HTML, and UI labels. The separate diagnostic panel still means 43
 registered mutations—not 43 production experiments—and does not increase the five mandatory
 evaluation gates. The matched-quality check remains its own diagnostic stage.</p>

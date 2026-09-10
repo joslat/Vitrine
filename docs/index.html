@@ -440,7 +440,7 @@
             <tr><td>Recall</td><td><code>MemoryTestRunner → AtomicCodeEval</code></td><td>Actual recommendation <code>ChatClientAgent</code> adapter with deterministic/ablated providers</td><td>Raw recall measurements feed the admitted leaf; this is not durable or live-model memory proof</td></tr>
             <tr><td>Honesty</td><td><code>ExactTests → AtomicCodeEval</code></td><td>Four informative pairs plus committed evidence</td><td>Minimum attainable two-sided p = 0.125; recomputation owns the verdict</td></tr>
             <tr><td>Benchmark</td><td><code>BenchmarkDefinition → Arm → Runner → Score</code></td><td>Nadia + Sofia stimuli; Demo01, Demo02, and degraded system arms; five admitted checks; two separate reps</td><td>Six standard runs below <code>.agenteval/Vitrine</code>; native census/floor facts plus Demo01-reference comparisons; score facts are not gate verdicts</td></tr>
-            <tr><td>Controls</td><td>Diagnostic shipped decision seams; no chance floors</td><td>20 production-observation + 23 boundary/calibration fixtures</td><td>Typed scope travels from manifest through results, CLI/reports, schema-v9 artifacts, inspector, app HTML, and UI. Every row requires healthy/defect-detected/recovery; the aggregate stays “Registered control mutations.”</td></tr>
+            <tr><td>Controls</td><td>Diagnostic shipped decision seams; no chance floors</td><td>20 production-observation + 23 boundary/calibration fixtures</td><td>Typed scope travels from manifest through results, CLI/reports, schema-v10 artifacts, inspector, app HTML, and UI. Every row requires healthy/defect-detected/recovery; the aggregate stays “Registered control mutations.”</td></tr>
           </tbody>
         </table>
       </div>
@@ -482,8 +482,10 @@
         a measured quality failure. The bar is not a chance floor. Bounded criterion explanations are
         retained. A provider terminal failure makes the affected subject/trial <code>NotMeasured</code>;
         cancellation keeps the session <code>Cancelled</code> (exit 130) while preserving that missing trial evidence. The
-        workflow's separate two-attempt mapper/reviewer/ranker/presenter fallbacks are counted and
-        disclosed as degradation evidence, not hidden.</p></div>
+        workflow's model stages retain typed attempt, response, unusable, failure, cancellation,
+        and recovery evidence. A failed/unusable attempt followed by a usable response is visibly
+        <code>Recovered</code> and may remain measured; unrecovered, cancelled, or final-fallback
+        stages fail the live quality observation closed as <code>NotMeasured</code>.</p></div>
       <div class="callout"><p><strong>Four shared use cases:</strong>
         <code>nadia-cross-category</code> tests connected multi-interest evidence;
         <code>sofia-capability-gap</code> separates durable discovery from replenishment;
@@ -574,7 +576,7 @@
       <div class="grid2">
         <article class="card"><span class="tag ok">Runtime-aligned</span><h3>Directed, counted evidence</h3><p>Demo01's graph and agent consume the same prepared observed tools. Demo02's topology comes from <code>MAFWorkflowAdapter</code>. Arrowed edges show traversal counts; nodes show execution counts; the flat <code>BACK</code> route and an executor-action shelf explain the loop without inventing tools.</p></article>
         <article class="card"><span class="tag ok">Correlated</span><h3>Requests, responses, and outcomes</h3><p>Model/tool cards correlate by operation ID and expand to safe arguments/results or explicit absence copy. The exact screened customer response stays separate. Subject, check, and trial terminals close their starts; live session completion also closes persistence and session starts. Nothing stays <code>ACTIVE</code> after completion, even while optional presentation pacing drains.</p></article>
-        <article class="card"><span class="tag ok">Same verdicts</span><h3>Evals, export, and replay</h3><p>For the offline suite, the board separates five mandatory evaluation gates, one matched-quality diagnostic, the persisted three-arm/two-repetition benchmark, and 43 mutation diagnostics. Eval 01–03 show every-trial acceptance with no scenario-decision rows; Eval 04/05 add per-scenario whole-trial Wilson decisions. All five show scenario trials, bounded response/trace evidence, per-check Wilson facts, comparisons, usage when reported, and local persistence. Eval 06 shows its redacted Robin safety census, safe session-level cause, per-probe allow-listed diagnostics, and 104-call ceiling. Schema-v9 JSON/HTML and replay preserve the same facts and execute nothing; schema-v7/v8 artifacts remain readable.</p></article>
+        <article class="card"><span class="tag ok">Same verdicts</span><h3>Evals, export, and replay</h3><p>For the offline suite, the board separates five mandatory evaluation gates, one matched-quality diagnostic, the persisted three-arm/two-repetition benchmark, and 43 mutation diagnostics. Eval 01–03 show every-trial acceptance with no scenario-decision rows; Eval 04/05 add per-scenario whole-trial Wilson decisions. All five show scenario trials, bounded response/trace evidence, per-check Wilson facts, comparisons, usage when reported, and local persistence. Eval 06 shows its redacted Robin safety census, safe session-level cause, per-probe allow-listed diagnostics, and 104-call ceiling. Schema-v10 JSON/HTML and replay preserve the same facts and execute nothing; integrity-valid schema-v7/v8/v9 artifacts remain readable.</p></article>
         <article class="card"><span class="tag info">Discoverable</span><h3>Options and actions</h3><p>Delayed hover help explains modes, personalization, JSON, HTML, replay, and disabled prerequisites. On/right means personalization enabled; actions become available only when their prerequisites exist.</p></article>
       </div>
       <div class="callout"><p><strong>Trust boundary:</strong> execution publishes immediately;
@@ -663,6 +665,11 @@ dotnet run --project src/AgentEval.VitrineDemo.Evals -- --eval-plan eval06-safet
         <a href="reports/evals-offline.json">evaluation JSON</a>. Generated examples carry their
         own run identity and are not the normative evaluation contract. Standard AgentEval output is also persisted below the
         gitignored <code>.agenteval/Vitrine</code>, with six directories per benchmark execution.</p></div>
+      <div class="callout"><p><strong>One current paid integration observation:</strong>
+        <a href="evidence/vitrine-live-eval02-sofia-2026-09-10.html">sanitized Sofia Eval02 HTML</a> ·
+        <a href="evidence/vitrine-live-eval02-sofia-2026-09-10.json">JSON</a>. The single measured
+        trial is bound to implementation commit <code>028ac51</code>; it proves one successful
+        end-to-end workflow and judge observation, not reliability or production quality.</p></div>
     </div>
   </section>
 </main>

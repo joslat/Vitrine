@@ -838,7 +838,7 @@ function Html([object]$Value) {
     foreach ($metric in @(
         @('Terminal status', $Value.terminalStatus), @('Exit code', $Value.exitCode),
         @('Started (UTC)', $Value.startedAtUtc), @('Completed (UTC)', $Value.completedAtUtc),
-        @('Planned subject calls', $Value.workload.plannedSubjectCalls),
+        @('Planned subject executions', $Value.workload.plannedSubjectCalls),
         @('Planned judge evaluations', $Value.workload.plannedJudgeEvaluations),
         @('Reported subject tokens', (Display $Value.usageTotals.subject.reportedTotalTokens)),
         @('Subject estimated cost', (Money $Value.usageTotals.subject.estimatedCostUsd)),
@@ -869,7 +869,7 @@ function Html([object]$Value) {
         [void]$builder.AppendLine('</tbody></table></div>')
     }
     if (@($Value.arms).Count -gt 0) {
-        [void]$builder.AppendLine('<h2>Per-check diagnostic census</h2><p class="muted">These pooled rows explain each arm; the terminal policy for stochastic plans is the per-scenario table above.</p><div class="scroll"><table><thead><tr><th>Arm</th><th>Check</th><th>Census</th><th>Successes</th><th>Estimate</th><th>95% Wilson interval</th></tr></thead><tbody>')
+        [void]$builder.AppendLine('<h2>Per-check diagnostic census</h2><p class="muted">These pooled rows explain each arm. When present, the separate per-scenario table owns terminal policy for stochastic plans.</p><div class="scroll"><table><thead><tr><th>Arm</th><th>Check</th><th>Census</th><th>Successes</th><th>Estimate</th><th>95% Wilson interval</th></tr></thead><tbody>')
         foreach ($arm in $Value.arms) {
             foreach ($check in $arm.checks) {
                 [void]$builder.Append('<tr><td><code>').Append((H $arm.armId)).Append('</code></td><td><code>').Append((H $check.key)).Append('</code><br>').Append((H $check.name)).Append('</td><td>M ').Append((H $check.census.measured)).Append(' · N/A ').Append((H $check.census.notApplicable)).Append(' · NM ').Append((H $check.census.notMeasured)).Append('</td><td>').Append((H $check.reliability.successes)).Append('/').Append((H $check.reliability.total)).Append('</td><td>').Append((H (Probability $check.reliability.estimate))).Append('</td><td>[').Append((H (Probability $check.reliability.lower))).Append(', ').Append((H (Probability $check.reliability.upper))).AppendLine(']</td></tr>')

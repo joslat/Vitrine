@@ -204,7 +204,11 @@ The current credential-free receipt is:
   diagnostic is reported separately, and 43/43 registered mutation diagnostics are caught.
 - Catalogue integrity self-test: expected exit 1, followed by a restored exit-0 run with all five
   mandatory gates passing and the matched-quality diagnostic reported.
-- No live/provider call was made by the final acceptance commands.
+- No live/provider call was made by the final credential-free acceptance commands.
+- A separate, single paid Sofia Eval02 integration observation passed on implementation commit
+  `028ac51`; its strict sanitized [HTML receipt](docs/evidence/vitrine-live-eval02-sofia-2026-09-10.html)
+  and [JSON receipt](docs/evidence/vitrine-live-eval02-sofia-2026-09-10.json) are commit-bound. One
+  measured trial proves that path worked once, not reliability or generalization.
 
 See the [dated verification page](https://azuresamurai.blog/Vitrine/Vitrine-Verification.html) for the exact receipt and
 incidents, and [MIGRATION.md](MIGRATION.md) for every admitted check, native floor, ablation, and
