@@ -3,6 +3,7 @@
 
 using Galaxus.RecommendationAgent.Guardrails;
 using Galaxus.RecommendationAgent.Observability;
+using Galaxus.RecommendationAgent.Providers;
 using Galaxus.RecommendationAgent.Tools;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
@@ -210,23 +211,22 @@ public static class RecommendationAgentFactory
         new ApprovalRequiredAIFunction(AIFunctionFactory.Create(GalaxusTools.PlaceOrder))
     ];
 
-    /// <summary>Builds the Azure OpenAI chat client from <see cref="Config"/>.</summary>
+    /// <summary>Builds the chat client for the resolved host from <see cref="Config"/>.</summary>
     public static IChatClient CreateConfiguredChatClient() =>
         CreateConfiguredChatClient(Config.Model);
 
     /// <summary>
-    /// Builds an Azure OpenAI chat client for an explicit deployment through the same resource and
-    /// authentication composition used by the subject and embedding paths. Evals use this overload
-    /// with <see cref="Config.JudgeDeployment"/> so judge routing can be independent.
+    /// Builds a chat client for an explicit model through the same host and authentication
+    /// composition used by the subject and embedding paths. Evals use this overload with
+    /// <see cref="Config.JudgeDeployment"/> so judge routing can be independent.
     /// </summary>
-    /// <param name="deployment">Deployment name in the configured Azure OpenAI resource.</param>
+    /// <param name="deployment">Model or deployment name on the resolved host.</param>
     public static IChatClient CreateConfiguredChatClient(string deployment)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(deployment);
-        if (!Config.IsValidDeploymentName(deployment))
-            throw new ArgumentException("The Azure OpenAI deployment name contains unsupported characters.", nameof(deployment));
-        var azureClient = AzureOpenAiClientFactory.CreateConfigured(out _);
-        return azureClient.GetChatClient(deployment.Trim()).AsIChatClient();
+        if (!Config.IsValidModelNameForResolvedProvider(deployment))
+            throw new ArgumentException("The model name contains unsupported characters.", nameof(deployment));
+        return InferenceClientFactory.CreateChatClient(deployment);
     }
 }
 

@@ -13,7 +13,7 @@ public sealed class AzureOpenAiConfigurationTests
     [Fact]
     public void MissingAuthModeRetainsTheApiKeyCompatibilityPath()
     {
-        using var environment = new AzureEnvironmentScope();
+        using var environment = new ProviderEnvironmentScope();
         environment.Set("AZURE_OPENAI_ENDPOINT", "https://configuration.example.invalid/");
         environment.Set("AZURE_OPENAI_API_KEY", "secret-that-must-not-appear");
         environment.Set("AZURE_OPENAI_DEPLOYMENT", "subject-deployment");
@@ -34,7 +34,7 @@ public sealed class AzureOpenAiConfigurationTests
     [Fact]
     public void LocalDefaultCredentialNeedsNoApiKeyAndBuildsWithoutContactingAzure()
     {
-        using var environment = new AzureEnvironmentScope();
+        using var environment = new ProviderEnvironmentScope();
         environment.Set("AZURE_OPENAI_ENDPOINT", "https://configuration.example.invalid/");
         environment.Set("AZURE_OPENAI_AUTH_MODE", "default-credential");
         environment.Set("AZURE_OPENAI_API_KEY", null);
@@ -54,7 +54,7 @@ public sealed class AzureOpenAiConfigurationTests
     public void ManagedIdentityIsDeterministicAndDoesNotExposeAUserAssignedClientId()
     {
         const string clientId = "2a7a75ef-7f80-43f4-8dbf-c4679fb91fa4";
-        using var environment = new AzureEnvironmentScope();
+        using var environment = new ProviderEnvironmentScope();
         environment.Set("AZURE_OPENAI_ENDPOINT", "https://managed-identity.example.invalid/");
         environment.Set("AZURE_OPENAI_AUTH_MODE", "managed-identity");
         environment.Set("AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID", clientId);
@@ -77,7 +77,7 @@ public sealed class AzureOpenAiConfigurationTests
     [Fact]
     public void InvalidManagedIdentityClientIdDoesNotFallBackToAPresentApiKey()
     {
-        using var environment = new AzureEnvironmentScope();
+        using var environment = new ProviderEnvironmentScope();
         environment.Set("AZURE_OPENAI_ENDPOINT", "https://configuration.example.invalid/");
         environment.Set("AZURE_OPENAI_AUTH_MODE", "managed-identity");
         environment.Set("AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID", "not-a-guid");
@@ -94,7 +94,7 @@ public sealed class AzureOpenAiConfigurationTests
     [Fact]
     public void UnrecognizedExplicitAuthModeFailsClosedEvenWhenAKeyExists()
     {
-        using var environment = new AzureEnvironmentScope();
+        using var environment = new ProviderEnvironmentScope();
         environment.Set("AZURE_OPENAI_ENDPOINT", "https://configuration.example.invalid/");
         environment.Set("AZURE_OPENAI_AUTH_MODE", "try-everything");
         environment.Set("AZURE_OPENAI_API_KEY", "must-not-be-used");
@@ -109,7 +109,7 @@ public sealed class AzureOpenAiConfigurationTests
     [Fact]
     public void SeparateJudgeDeploymentIsExplicitAndBuildsThroughTheSharedComposition()
     {
-        using var environment = new AzureEnvironmentScope();
+        using var environment = new ProviderEnvironmentScope();
         environment.Set("AZURE_OPENAI_ENDPOINT", "https://configuration.example.invalid/");
         environment.Set("AZURE_OPENAI_API_KEY", "secret-that-must-not-appear");
         environment.Set("AZURE_OPENAI_DEPLOYMENT", "subject-deployment");
@@ -129,7 +129,7 @@ public sealed class AzureOpenAiConfigurationTests
     [Fact]
     public void InvalidDeploymentCharactersFailReadinessAndCannotInjectLogLines()
     {
-        using var environment = new AzureEnvironmentScope();
+        using var environment = new ProviderEnvironmentScope();
         environment.Set("AZURE_OPENAI_ENDPOINT", "https://configuration.example.invalid/");
         environment.Set("AZURE_OPENAI_API_KEY", "secret-that-must-not-appear");
         environment.Set("AZURE_OPENAI_JUDGE_DEPLOYMENT", "judge\r\ninjected");
@@ -147,7 +147,7 @@ public sealed class AzureOpenAiConfigurationTests
     [Fact]
     public void EndpointMustBeHttpsForEveryAuthenticationMode()
     {
-        using var environment = new AzureEnvironmentScope();
+        using var environment = new ProviderEnvironmentScope();
         environment.Set("AZURE_OPENAI_ENDPOINT", "http://configuration.example.invalid/");
         environment.Set("AZURE_OPENAI_AUTH_MODE", "default-credential");
 
@@ -163,7 +163,7 @@ public sealed class AzureOpenAiConfigurationTests
     [InlineData("https://resource.services.ai.azure.com/api%2Fprojects%2Fproject-name")]
     public void FoundryProjectEndpointIsRejectedBeforeAnyProviderCall(string endpoint)
     {
-        using var environment = new AzureEnvironmentScope();
+        using var environment = new ProviderEnvironmentScope();
         environment.Set("AZURE_OPENAI_ENDPOINT", endpoint);
         environment.Set("AZURE_OPENAI_AUTH_MODE", "default-credential");
 
@@ -182,7 +182,7 @@ public sealed class AzureOpenAiConfigurationTests
     [InlineData("https://user@configuration.example.invalid/")]
     public void EndpointMustBeTheResourceBaseUri(string endpoint)
     {
-        using var environment = new AzureEnvironmentScope();
+        using var environment = new ProviderEnvironmentScope();
         environment.Set("AZURE_OPENAI_ENDPOINT", endpoint);
         environment.Set("AZURE_OPENAI_AUTH_MODE", "default-credential");
 
@@ -197,7 +197,7 @@ public sealed class AzureOpenAiConfigurationTests
     public void SecretShapedDeploymentIsRejectedAndRedactedFromEverySafeSurface()
     {
         const string accidentalSecret = "sk-accidental-secret-in-deployment-123456";
-        using var environment = new AzureEnvironmentScope();
+        using var environment = new ProviderEnvironmentScope();
         environment.Set("AZURE_OPENAI_ENDPOINT", "https://configuration.example.invalid/");
         environment.Set("AZURE_OPENAI_API_KEY", "different-configured-key");
         environment.Set("AZURE_OPENAI_DEPLOYMENT", accidentalSecret);
@@ -214,7 +214,7 @@ public sealed class AzureOpenAiConfigurationTests
         try
         {
             Console.SetOut(writer);
-            Config.PrintAzureTarget();
+            Config.PrintProviderTarget();
         }
         finally
         {
@@ -223,43 +223,7 @@ public sealed class AzureOpenAiConfigurationTests
 
         Assert.DoesNotContain(accidentalSecret, writer.ToString(), StringComparison.Ordinal);
         Assert.Contains("[REDACTED]", writer.ToString(), StringComparison.Ordinal);
-        Assert.Equal("[REDACTED]", new AgentEvalRedTeamSafetyEvaluator().ModelId);
-    }
-
-    private sealed class AzureEnvironmentScope : IDisposable
-    {
-        private static readonly string[] Names =
-        [
-            "AZURE_OPENAI_ENDPOINT",
-            "AZURE_OPENAI_API_KEY",
-            "AZURE_OPENAI_AUTH_MODE",
-            "AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID",
-            "AZURE_OPENAI_DEPLOYMENT",
-            "AZURE_OPENAI_JUDGE_DEPLOYMENT",
-            "AZURE_OPENAI_EMBEDDING_DEPLOYMENT"
-        ];
-
-        private readonly IReadOnlyDictionary<string, string?> _original =
-            Names.ToDictionary(name => name, Environment.GetEnvironmentVariable, StringComparer.Ordinal);
-        private readonly string? _originalModelOverride = Config.ModelOverride;
-        private readonly string? _originalEmbeddingOverride = Config.EmbeddingModelOverride;
-
-        public AzureEnvironmentScope()
-        {
-            foreach (var name in Names)
-                Environment.SetEnvironmentVariable(name, null);
-            Config.ModelOverride = null;
-            Config.EmbeddingModelOverride = null;
-        }
-
-        public void Set(string name, string? value) => Environment.SetEnvironmentVariable(name, value);
-
-        public void Dispose()
-        {
-            foreach (var pair in _original)
-                Environment.SetEnvironmentVariable(pair.Key, pair.Value);
-            Config.ModelOverride = _originalModelOverride;
-            Config.EmbeddingModelOverride = _originalEmbeddingOverride;
-        }
+        // The identity carries the host as well as the model, and the model half stays redacted.
+        Assert.Equal("[REDACTED]@azure", new AgentEvalRedTeamSafetyEvaluator().ModelId);
     }
 }

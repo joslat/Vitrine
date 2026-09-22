@@ -40,3 +40,4 @@ appsettings.*.local.json
 *.tar
 *.tar.gz
 publication-receipts/
+strategy/

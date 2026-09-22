@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 using System.Diagnostics;
+using Galaxus.RecommendationAgent.Providers;
 using Galaxus.RecommendationAgent.Retrieval;
 
 namespace AgentEval.VitrineDemo.Tests;
@@ -258,10 +259,12 @@ public sealed class EmbeddingRebuildTests
         start.ArgumentList.Add("--no-restore");
         start.ArgumentList.Add("--");
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
-        start.Environment.Remove("AZURE_OPENAI_ENDPOINT");
-        start.Environment.Remove("AZURE_OPENAI_API_KEY");
-        start.Environment.Remove("AZURE_OPENAI_DEPLOYMENT");
-        start.Environment.Remove("AZURE_OPENAI_EMBEDDING_DEPLOYMENT");
+        // Scrub EVERY provider variable the resolver reads, not only the Azure ones. A developer
+        // machine with an ambient OPENAI_API_KEY or BITDEER_API_KEY would otherwise hand the child
+        // process a configured host, and a test asserting "no credentials" would attempt a real
+        // paid call instead of the refusal it is checking for.
+        foreach (var name in InferenceProviderEnvironment.AllVariables)
+            start.Environment.Remove(name);
         if (configuredLookingEnvironment)
         {
             start.Environment["AZURE_OPENAI_ENDPOINT"] = "https://sentinel-vitrine-cli.example.invalid/";

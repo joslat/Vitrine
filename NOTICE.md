@@ -22,5 +22,11 @@ separate project and is consumed from its published NuGet package. See
 [eng/upstream/UPSTREAM.md](eng/upstream/UPSTREAM.md) and
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
+VITRINE is released under the [MIT License](LICENSE). Reuse is welcome and needs no permission,
+on the licence's one condition: the copyright notice and permission notice must be included in all
+copies or substantial portions of the Software. Keep `LICENSE`, the
+`Copyright (c) 2026 José Luis Latorre Millas` line, and the per-file `SPDX-License-Identifier: MIT`
+headers with anything you take. [AUTHORS.md](AUTHORS.md) records the credit in full.
+
 AI coding assistants were used during implementation and review. The author remains responsible
 for the design, source, claims, tests, publication decisions, and any defects.

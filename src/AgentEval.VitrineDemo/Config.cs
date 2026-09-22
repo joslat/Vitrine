@@ -3,6 +3,7 @@
 
 using Azure;
 using Galaxus.RecommendationAgent.Observability;
+using Galaxus.RecommendationAgent.Providers;
 
 namespace Galaxus.RecommendationAgent;
 
@@ -25,7 +26,7 @@ public enum AzureOpenAiAuthenticationMode
 }
 
 /// <summary>
-/// The three resolved deployment names. Its string representation is log-safe: it never contains
+/// The three resolved model names. Its string representation is log-safe: it never contains
 /// an endpoint or credential, and control characters are removed from labels.
 /// </summary>
 public sealed record AzureOpenAiDeploymentSelection(
@@ -33,17 +34,17 @@ public sealed record AzureOpenAiDeploymentSelection(
     string JudgeDeployment,
     string EmbeddingDeployment)
 {
-    /// <summary>True when subject and judge intentionally resolve to the same deployment.</summary>
+    /// <summary>True when subject and judge intentionally resolve to the same model.</summary>
     public bool JudgeSharesSubjectDeployment =>
         string.Equals(SubjectDeployment, JudgeDeployment, StringComparison.Ordinal);
 
-    /// <summary>Log-safe subject deployment label.</summary>
+    /// <summary>Log-safe subject model label.</summary>
     public string SubjectLabel => Config.SafeDeploymentLabel(SubjectDeployment);
 
-    /// <summary>Log-safe judge deployment label.</summary>
+    /// <summary>Log-safe judge model label.</summary>
     public string JudgeLabel => Config.SafeDeploymentLabel(JudgeDeployment);
 
-    /// <summary>Log-safe embedding deployment label.</summary>
+    /// <summary>Log-safe embedding model label.</summary>
     public string EmbeddingLabel => Config.SafeDeploymentLabel(EmbeddingDeployment);
 
     /// <inheritdoc />
@@ -60,37 +61,49 @@ public sealed record AzureOpenAiReadiness(
     AzureOpenAiAuthenticationMode? AuthenticationMode,
     string AuthenticationLabel,
     AzureOpenAiDeploymentSelection Deployments,
-    string? BlockingReason)
+    string? BlockingReason,
+    string ProviderTag = "none",
+    string ProviderDisplayName = "no inference provider")
 {
     /// <summary>A concise safe status for operator surfaces.</summary>
     public string SafeSummary => IsReady
-        ? $"Local live configuration found · {AuthenticationLabel} · subject {Deployments.SubjectLabel} · "
+        ? $"Local live configuration found · {ProviderDisplayName} · {AuthenticationLabel} · subject {Deployments.SubjectLabel} · "
           + (Deployments.JudgeSharesSubjectDeployment
-              ? "judge shares subject deployment"
+              ? "judge shares subject model"
               : $"judge {Deployments.JudgeLabel}")
           + " · provider not contacted"
         : $"Live configuration not ready · {BlockingReason ?? "configuration is incomplete"} · provider not contacted";
 }
 
-/// <summary>Azure OpenAI configuration sourced from environment variables.</summary>
+/// <summary>Live inference configuration sourced from environment variables.</summary>
 /// <remarks>
-/// <para><c>AZURE_OPENAI_ENDPOINT</c> is required for every live path.</para>
 /// <para>
-/// <c>AZURE_OPENAI_AUTH_MODE</c> explicitly selects <c>api-key</c>,
-/// <c>default-credential</c>, or <c>managed-identity</c>. When it is unset, VITRINE retains its
-/// backward-compatible API-key behavior; an explicitly selected identity mode never silently
-/// falls back to a key.
+/// <c>AI_INFERENCE_PROVIDER</c> selects the host: <c>azure</c>, <c>bitdeer</c>, <c>openai</c>,
+/// <c>foundry</c>, or <c>openai-compatible</c>. Leaving it unset auto-detects in that order, so a
+/// machine that has only ever configured <c>AZURE_OPENAI_*</c> behaves exactly as it did before the
+/// selector existed. <see cref="Providers.InferenceProviderEnvironment"/> owns that decision and the
+/// per-host variable table; this type applies the family-specific validation and composes the
+/// snapshot a client is built from.
 /// </para>
 /// <para>
-/// API-key mode additionally requires <c>AZURE_OPENAI_API_KEY</c>. Managed-identity mode may set
+/// <b>Azure OpenAI.</b> <c>AZURE_OPENAI_ENDPOINT</c> is required.
+/// <c>AZURE_OPENAI_AUTH_MODE</c> explicitly selects <c>api-key</c>, <c>default-credential</c>, or
+/// <c>managed-identity</c>. When it is unset, VITRINE retains its backward-compatible API-key
+/// behavior; an explicitly selected identity mode never silently falls back to a key. API-key mode
+/// additionally requires <c>AZURE_OPENAI_API_KEY</c>. Managed-identity mode may set
 /// <c>AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID</c> for a user-assigned identity; otherwise it uses
 /// the system-assigned identity. <c>default-credential</c> is for local development only.
 /// </para>
-/// <para>Optional deployment variables:</para>
+/// <para>
+/// <b>Bitdeer and every other OpenAI-compatible host.</b> One API key is the whole requirement:
+/// <c>BITDEER_API_KEY</c>, with <c>BITDEER_ENDPOINT</c> and <c>BITDEER_MODEL</c> defaulted. These
+/// hosts authenticate by key only, and their endpoint must be https or http to loopback.
+/// </para>
+/// <para>Optional model variables, per host:</para>
 /// <list type="bullet">
-///   <item><c>AZURE_OPENAI_DEPLOYMENT</c> — subject chat deployment.</item>
-///   <item><c>AZURE_OPENAI_JUDGE_DEPLOYMENT</c> — evaluation judge deployment; defaults explicitly to the subject deployment.</item>
-///   <item><c>AZURE_OPENAI_EMBEDDING_DEPLOYMENT</c> — live embedding deployment.</item>
+///   <item><c>&lt;HOST&gt;_DEPLOYMENT</c> / <c>&lt;HOST&gt;_MODEL</c> — subject chat model.</item>
+///   <item><c>&lt;HOST&gt;_JUDGE_DEPLOYMENT</c> / <c>&lt;HOST&gt;_JUDGE_MODEL</c> — evaluation judge; defaults explicitly to the subject model.</item>
+///   <item><c>&lt;HOST&gt;_EMBEDDING_DEPLOYMENT</c> / <c>&lt;HOST&gt;_EMBEDDING_MODEL</c> — live embedding model.</item>
 /// </list>
 /// </remarks>
 public static class Config
@@ -99,13 +112,13 @@ public static class Config
     public const string ManagedIdentityClientIdEnvironmentVariable = "AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID";
 
     /// <summary>
-    /// Recommended subject deployment. Used when <c>AZURE_OPENAI_DEPLOYMENT</c> is unset.
-    /// Override it with a deployment name that exists in the configured Azure OpenAI resource.
+    /// Recommended Azure OpenAI subject deployment. Used when <c>AZURE_OPENAI_DEPLOYMENT</c> is
+    /// unset. Override it with a deployment name that exists in the configured Azure OpenAI resource.
     /// </summary>
-    public const string PreferredDeployment = "gpt-5-mini";
+    public const string PreferredDeployment = InferenceProviderEnvironment.AzureDefaultModel;
 
     /// <summary>
-    /// Recommended embedding deployment. Changing the embedding space invalidates any precomputed
+    /// Recommended embedding model. Changing the embedding space invalidates any precomputed
     /// vector asset carrying a different model/template stamp.
     /// </summary>
     public const string PreferredEmbeddingDeployment = "text-embedding-3-small";
@@ -144,48 +157,63 @@ public static class Config
     }
 
     /// <summary>
-    /// Local configuration readiness. This does not contact Azure and therefore cannot establish
-    /// connectivity, authorization, deployment compatibility, quota, or model health.
+    /// The host this process would use, re-read from the environment on every access.
+    /// </summary>
+    /// <remarks>
+    /// Never cached: a cached first resolution makes the process ignore a variable set later, and
+    /// makes every test after the first see stale settings.
+    /// </remarks>
+    public static InferenceProviderSettings ProviderSettings => InferenceProviderEnvironment.Resolve();
+
+    /// <summary>Stable lowercase tag of the resolved host, or <c>none</c>.</summary>
+    public static string ProviderTag => ProviderSettings.ProviderTag;
+
+    /// <summary>
+    /// <c>model@provider</c> for the subject, built from the log-safe label. The host is part of
+    /// what was measured, so a Bitdeer run and an Azure run on the same model name stay
+    /// distinguishable in provenance rather than collapsing into one indistinguishable record.
+    /// </summary>
+    public static string ModelIdentity => $"{Deployments.SubjectLabel}@{ProviderTag}";
+
+    /// <summary><c>model@provider</c> for the judge, built from the log-safe label.</summary>
+    public static string JudgeModelIdentity => $"{Deployments.JudgeLabel}@{ProviderTag}";
+
+    /// <summary>
+    /// Local configuration readiness. This does not contact the provider and therefore cannot
+    /// establish connectivity, authorization, model compatibility, quota, or model health.
     /// </summary>
     public static AzureOpenAiReadiness Readiness => ResolveLiveConfiguration().Readiness;
 
     /// <summary>True when the selected local authentication path has all required settings.</summary>
     public static bool IsConfigured => Readiness.IsReady;
 
-    /// <summary>Azure OpenAI resource/inference endpoint. It is never included in a safe status.</summary>
+    /// <summary>Resolved inference endpoint. It is never included in a safe status.</summary>
     public static Uri Endpoint => RequireLiveConfiguration().Endpoint;
 
     /// <summary>
-    /// Azure OpenAI API-key credential for compatibility callers. Throws when an identity mode is selected.
-    /// New composition code should use <see cref="AzureOpenAiClientFactory"/>.
+    /// Azure OpenAI API-key credential for compatibility callers. Throws when an identity mode is
+    /// selected, or when the resolved host does not speak the Azure protocol. New composition code
+    /// should use <see cref="Providers.InferenceClientFactory"/>.
     /// </summary>
     public static AzureKeyCredential KeyCredential => RequireLiveConfiguration().ApiKeyCredential
         ?? throw new InvalidOperationException(
-            "An API-key credential is unavailable because AZURE_OPENAI_AUTH_MODE selects Microsoft Entra authentication.");
+            "An Azure API-key credential is unavailable: either AZURE_OPENAI_AUTH_MODE selects "
+            + "Microsoft Entra authentication, or the resolved provider is not an Azure-protocol host.");
 
-    /// <summary>Resolved subject chat deployment.</summary>
-    public static string Model => FirstNonBlank(
-        ModelOverride,
-        Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT"),
-        PreferredDeployment);
+    /// <summary>Resolved subject chat model.</summary>
+    public static string Model => ResolveSubjectModel(ProviderSettings);
 
     /// <summary>
-    /// Resolved judge deployment. A missing <c>AZURE_OPENAI_JUDGE_DEPLOYMENT</c> deliberately
-    /// shares the subject deployment; set it to obtain independent judge routing.
+    /// Resolved judge model. A host that names no judge model deliberately shares the subject
+    /// model; set the host's judge variable to obtain independent judge routing.
     /// </summary>
-    public static string JudgeDeployment => FirstNonBlank(
-        Environment.GetEnvironmentVariable("AZURE_OPENAI_JUDGE_DEPLOYMENT"),
-        Model);
+    public static string JudgeDeployment => ResolveJudgeModel(ProviderSettings);
 
-    /// <summary>Resolved live embedding deployment.</summary>
-    public static string EmbeddingDeployment => FirstNonBlank(
-        EmbeddingModelOverride,
-        Environment.GetEnvironmentVariable("AZURE_OPENAI_EMBEDDING_DEPLOYMENT"),
-        PreferredEmbeddingDeployment);
+    /// <summary>Resolved live embedding model.</summary>
+    public static string EmbeddingDeployment => ResolveEmbeddingModel(ProviderSettings);
 
-    /// <summary>Resolved, typed deployment selection for safe operator surfaces.</summary>
-    public static AzureOpenAiDeploymentSelection Deployments =>
-        new(Model, JudgeDeployment, EmbeddingDeployment);
+    /// <summary>Resolved, typed model selection for safe operator surfaces.</summary>
+    public static AzureOpenAiDeploymentSelection Deployments => SelectionFor(ProviderSettings);
 
     /// <summary>Captures the environment exactly once for one client composition.</summary>
     internal static LiveConfigurationSnapshot? CaptureLiveConfiguration() =>
@@ -197,24 +225,26 @@ public static class Config
         var resolution = ResolveLiveConfiguration();
         return resolution.Configuration
             ?? throw new InvalidOperationException(
-                resolution.Readiness.BlockingReason ?? "Azure OpenAI live configuration is incomplete.");
+                resolution.Readiness.BlockingReason ?? "Live inference configuration is incomplete.");
     }
 
     /// <summary>
-    /// Prints deployment and authentication labels only. The endpoint, API key, token, and
+    /// Prints provider, model, and authentication labels only. The endpoint, API key, token, and
     /// managed-identity client id are never printed, fingerprinted, or hashed.
     /// </summary>
-    public static void PrintAzureTarget()
+    public static void PrintProviderTarget()
     {
-        var readiness = Readiness;
+        var settings = ProviderSettings;
+        var readiness = ResolveLiveConfiguration(settings).Readiness;
 
         Console.ForegroundColor = ConsoleColor.DarkCyan;
-        Console.WriteLine("  ─── Azure target ────────────────────────────────────────────────────");
+        Console.WriteLine("  ─── Inference target ────────────────────────────────────────────────");
         Console.ResetColor();
+        Console.WriteLine($"  Provider       : {readiness.ProviderDisplayName}  [{SelectionSource(settings)}]");
         Console.WriteLine($"  Authentication : {readiness.AuthenticationLabel}");
-        Console.WriteLine($"  Subject        : {readiness.Deployments.SubjectLabel}  [source: {SubjectDeploymentSource()}]");
-        Console.WriteLine($"  Judge          : {readiness.Deployments.JudgeLabel}  [source: {JudgeDeploymentSource()}]");
-        Console.WriteLine($"  Embeddings     : {readiness.Deployments.EmbeddingLabel}  [source: {EmbeddingDeploymentSource()}]");
+        Console.WriteLine($"  Subject        : {readiness.Deployments.SubjectLabel}  [source: {SubjectModelSource(settings)}]");
+        Console.WriteLine($"  Judge          : {readiness.Deployments.JudgeLabel}  [source: {JudgeModelSource(settings)}]");
+        Console.WriteLine($"  Embeddings     : {readiness.Deployments.EmbeddingLabel}  [source: {EmbeddingModelSource(settings)}]");
         if (!readiness.IsReady)
             Console.WriteLine($"  Readiness      : {readiness.BlockingReason}");
         Console.ForegroundColor = ConsoleColor.DarkCyan;
@@ -234,62 +264,77 @@ public static class Config
             for (var index = 0; index < target.Length; index++)
             {
                 var character = source[index];
-                target[index] = char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.'
+                target[index] = char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.' or '/' or ':'
                     ? character
                     : '?';
             }
         });
     }
 
-    private static LiveConfigurationResolution ResolveLiveConfiguration()
+    private static LiveConfigurationResolution ResolveLiveConfiguration() =>
+        ResolveLiveConfiguration(ProviderSettings);
+
+    private static LiveConfigurationResolution ResolveLiveConfiguration(InferenceProviderSettings settings)
     {
-        var deployments = Deployments;
-        var rawAuthMode = NonBlank(Environment.GetEnvironmentVariable(AuthenticationModeEnvironmentVariable));
-        var auth = ParseAuthenticationMode(rawAuthMode);
+        var deployments = SelectionFor(settings);
+
+        if (!settings.IsConfigured)
+        {
+            return NotReady(
+                settings,
+                "no provider selected",
+                deployments,
+                settings.Diagnostic ?? "No inference provider is configured.");
+        }
+
+        return settings.UsesAzureProtocol
+            ? ResolveAzureProtocol(settings, deployments)
+            : ResolveOpenAiProtocol(settings, deployments);
+    }
+
+    // ── Azure protocol: an Azure OpenAI resource, or a Microsoft Foundry resource endpoint ────
+
+    private static LiveConfigurationResolution ResolveAzureProtocol(
+        InferenceProviderSettings settings,
+        AzureOpenAiDeploymentSelection deployments)
+    {
+        // A Foundry resource authenticates by key: AZURE_OPENAI_AUTH_MODE governs the Azure OpenAI
+        // host only, and letting it reach across would silently change how a different host connects.
+        var auth = settings.Provider == InferenceProvider.AzureOpenAI
+            ? ParseAuthenticationMode(NonBlank(Environment.GetEnvironmentVariable(AuthenticationModeEnvironmentVariable)))
+            : new AuthenticationResolution(AzureOpenAiAuthenticationMode.ApiKey, "API key", Error: null);
 
         if (auth.Mode is null)
-            return NotReady(auth.Label, deployments, auth.Error!);
+            return NotReady(settings, auth.Label, deployments, auth.Error!);
 
-        if (DeploymentValueRequiresRedaction(deployments.SubjectDeployment)
-            || DeploymentValueRequiresRedaction(deployments.JudgeDeployment)
-            || DeploymentValueRequiresRedaction(deployments.EmbeddingDeployment))
-        {
-            return NotReady(
-                auth.Label,
-                deployments,
-                "A deployment variable contains credential-shaped content; value withheld. Set deployment names, not credentials.",
-                auth.Mode);
-        }
+        if (RejectUnsafeModelNames(settings, auth, deployments, Config.IsValidDeploymentName) is { } rejected)
+            return rejected;
 
-        if (!IsValidDeploymentName(deployments.SubjectDeployment)
-            || !IsValidDeploymentName(deployments.JudgeDeployment)
-            || !IsValidDeploymentName(deployments.EmbeddingDeployment))
-        {
-            return NotReady(
-                auth.Label,
-                deployments,
-                "Deployment names may contain only ASCII letters, digits, hyphens, underscores, and periods; value withheld.",
-                auth.Mode);
-        }
+        var endpointVariable = InferenceProviderEnvironment.EndpointVariableOf(settings.Provider)!;
+        var resourceNoun = settings.Provider == InferenceProvider.AzureOpenAI
+            ? "Azure OpenAI"
+            : "Microsoft Foundry";
 
-        var rawEndpoint = NonBlank(Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT"));
+        var rawEndpoint = NonBlank(settings.RawEndpoint);
         if (rawEndpoint is null
             || !Uri.TryCreate(rawEndpoint, UriKind.Absolute, out var endpoint)
             || endpoint.Scheme != Uri.UriSchemeHttps)
         {
             return NotReady(
+                settings,
                 auth.Label,
                 deployments,
-                "AZURE_OPENAI_ENDPOINT must be an absolute HTTPS Azure OpenAI resource endpoint.",
+                $"{endpointVariable} must be an absolute HTTPS {resourceNoun} resource endpoint.",
                 auth.Mode);
         }
 
         if (IsFoundryProjectEndpoint(endpoint))
         {
             return NotReady(
+                settings,
                 auth.Label,
                 deployments,
-                "AZURE_OPENAI_ENDPOINT must be an Azure OpenAI resource/inference endpoint, not a Microsoft Foundry project endpoint.",
+                $"{endpointVariable} must be an {resourceNoun} resource/inference endpoint, not a Microsoft Foundry project endpoint.",
                 auth.Mode);
         }
 
@@ -299,9 +344,10 @@ public static class Config
             || !string.IsNullOrEmpty(endpoint.UserInfo))
         {
             return NotReady(
+                settings,
                 auth.Label,
                 deployments,
-                "AZURE_OPENAI_ENDPOINT must be the base Azure OpenAI resource/inference endpoint without a path, query, fragment, or user information.",
+                $"{endpointVariable} must be the base {resourceNoun} resource/inference endpoint without a path, query, fragment, or user information.",
                 auth.Mode);
         }
 
@@ -310,13 +356,14 @@ public static class Config
 
         if (auth.Mode == AzureOpenAiAuthenticationMode.ApiKey)
         {
-            var apiKey = NonBlank(Environment.GetEnvironmentVariable("AZURE_OPENAI_API_KEY"));
+            var apiKey = NonBlank(settings.ApiKey);
             if (apiKey is null)
             {
                 return NotReady(
+                    settings,
                     auth.Label,
                     deployments,
-                    "AZURE_OPENAI_API_KEY is required for api-key authentication.",
+                    $"{InferenceProviderEnvironment.ApiKeyVariableOf(settings.Provider)} is required for api-key authentication.",
                     auth.Mode);
             }
 
@@ -329,6 +376,7 @@ public static class Config
             if (managedIdentityClientId is not null && !Guid.TryParse(managedIdentityClientId, out _))
             {
                 return NotReady(
+                    settings,
                     auth.Label,
                     deployments,
                     $"{ManagedIdentityClientIdEnvironmentVariable} must be a user-assigned identity client GUID.",
@@ -343,21 +391,94 @@ public static class Config
             };
         }
 
-        var readiness = new AzureOpenAiReadiness(
-            true,
-            auth.Mode,
+        return Ready(
+            settings,
             auth.Label,
+            auth.Mode.Value,
             deployments,
-            BlockingReason: null);
+            endpoint,
+            apiKeyCredential,
+            apiKey: null,
+            managedIdentityClientId);
+    }
 
-        return new LiveConfigurationResolution(
-            readiness,
-            new LiveConfigurationSnapshot(
-                endpoint,
-                auth.Mode.Value,
-                apiKeyCredential,
-                managedIdentityClientId,
-                deployments));
+    // ── OpenAI protocol: Bitdeer, OpenAI, and any other OpenAI-compatible host ────────────────
+
+    private static LiveConfigurationResolution ResolveOpenAiProtocol(
+        InferenceProviderSettings settings,
+        AzureOpenAiDeploymentSelection deployments)
+    {
+        var auth = new AuthenticationResolution(AzureOpenAiAuthenticationMode.ApiKey, "API key", Error: null);
+
+        if (RejectUnsafeModelNames(settings, auth, deployments, Config.IsValidModelName) is { } rejected)
+            return rejected;
+
+        var endpointVariable = InferenceProviderEnvironment.EndpointVariableOf(settings.Provider)!;
+        if (!InferenceProviderEnvironment.TryValidateEndpoint(settings.RawEndpoint, out var endpoint, out var reason))
+        {
+            // The reason names the variable and the rule, never the configured value: a URL can
+            // carry a credential in its user-info, path, query, or fragment.
+            return NotReady(settings, auth.Label, deployments, $"{endpointVariable} {reason}", auth.Mode);
+        }
+
+        var apiKey = NonBlank(settings.ApiKey);
+        if (apiKey is null)
+        {
+            return NotReady(
+                settings,
+                auth.Label,
+                deployments,
+                $"{InferenceProviderEnvironment.ApiKeyVariableOf(settings.Provider)} is required for {settings.DisplayName}.",
+                auth.Mode);
+        }
+
+        return Ready(
+            settings,
+            auth.Label,
+            auth.Mode!.Value,
+            deployments,
+            endpoint!,
+            apiKeyCredential: null,
+            apiKey,
+            managedIdentityClientId: null);
+    }
+
+    // ── Shared model-name policy ──────────────────────────────────────────────────────────────
+
+    private static LiveConfigurationResolution? RejectUnsafeModelNames(
+        InferenceProviderSettings settings,
+        AuthenticationResolution auth,
+        AzureOpenAiDeploymentSelection deployments,
+        Func<string?, bool> isValidName)
+    {
+        if (DeploymentValueRequiresRedaction(deployments.SubjectDeployment)
+            || DeploymentValueRequiresRedaction(deployments.JudgeDeployment)
+            || DeploymentValueRequiresRedaction(deployments.EmbeddingDeployment))
+        {
+            return NotReady(
+                settings,
+                auth.Label,
+                deployments,
+                "A model variable contains credential-shaped content; value withheld. Set model names, not credentials.",
+                auth.Mode);
+        }
+
+        if (!isValidName(deployments.SubjectDeployment)
+            || !isValidName(deployments.JudgeDeployment)
+            || !isValidName(deployments.EmbeddingDeployment))
+        {
+            return NotReady(
+                settings,
+                auth.Label,
+                deployments,
+                settings.UsesAzureProtocol
+                    ? "Deployment names may contain only ASCII letters, digits, hyphens, underscores, and periods; value withheld."
+                    : "Model names may contain only ASCII letters, digits, hyphens, underscores, periods, slashes, and colons, "
+                      + "with no relative segment; value withheld.",
+                auth.Mode);
+        }
+
+        return null;
     }
 
     private static AuthenticationResolution ParseAuthenticationMode(string? rawMode)
@@ -391,7 +512,37 @@ public static class Config
             Error: "AZURE_OPENAI_AUTH_MODE must be api-key, default-credential, or managed-identity.");
     }
 
+    private static LiveConfigurationResolution Ready(
+        InferenceProviderSettings settings,
+        string authenticationLabel,
+        AzureOpenAiAuthenticationMode authenticationMode,
+        AzureOpenAiDeploymentSelection deployments,
+        Uri endpoint,
+        AzureKeyCredential? apiKeyCredential,
+        string? apiKey,
+        string? managedIdentityClientId) =>
+        new(
+            new AzureOpenAiReadiness(
+                true,
+                authenticationMode,
+                authenticationLabel,
+                deployments,
+                BlockingReason: null,
+                settings.ProviderTag,
+                settings.DisplayName),
+            new LiveConfigurationSnapshot(
+                settings.Provider,
+                settings.ProviderTag,
+                settings.DisplayName,
+                endpoint,
+                authenticationMode,
+                apiKeyCredential,
+                apiKey,
+                managedIdentityClientId,
+                deployments));
+
     private static LiveConfigurationResolution NotReady(
+        InferenceProviderSettings settings,
         string authenticationLabel,
         AzureOpenAiDeploymentSelection deployments,
         string reason,
@@ -402,35 +553,84 @@ public static class Config
                 authenticationMode,
                 authenticationLabel,
                 deployments,
-                reason),
+                reason,
+                settings.ProviderTag,
+                settings.DisplayName),
             Configuration: null);
 
-    private static string SubjectDeploymentSource() =>
-        !string.IsNullOrWhiteSpace(ModelOverride)
-            ? "Config.ModelOverride (code)"
-            : NonBlank(Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT")) is not null
-                ? "AZURE_OPENAI_DEPLOYMENT (env)"
-                : $"default ({PreferredDeployment})";
+    // ── Model resolution, and where each resolved name came from ──────────────────────────────
 
-    private static string JudgeDeploymentSource() =>
-        NonBlank(Environment.GetEnvironmentVariable("AZURE_OPENAI_JUDGE_DEPLOYMENT")) is not null
-            ? "AZURE_OPENAI_JUDGE_DEPLOYMENT (env)"
-            : "subject deployment";
+    private static AzureOpenAiDeploymentSelection SelectionFor(InferenceProviderSettings settings) =>
+        new(ResolveSubjectModel(settings), ResolveJudgeModel(settings), ResolveEmbeddingModel(settings));
 
-    private static string EmbeddingDeploymentSource() =>
-        !string.IsNullOrWhiteSpace(EmbeddingModelOverride)
-            ? "Config.EmbeddingModelOverride (code)"
-            : NonBlank(Environment.GetEnvironmentVariable("AZURE_OPENAI_EMBEDDING_DEPLOYMENT")) is not null
-                ? "AZURE_OPENAI_EMBEDDING_DEPLOYMENT (env)"
-                : $"default ({PreferredEmbeddingDeployment})";
+    private static string ResolveSubjectModel(InferenceProviderSettings settings) =>
+        FirstNonBlank(ModelOverride, settings.Model, PreferredDeployment);
+
+    private static string ResolveJudgeModel(InferenceProviderSettings settings) =>
+        FirstNonBlank(settings.JudgeModel, ResolveSubjectModel(settings));
+
+    private static string ResolveEmbeddingModel(InferenceProviderSettings settings) =>
+        FirstNonBlank(EmbeddingModelOverride, settings.EmbeddingModel, PreferredEmbeddingDeployment);
+
+    private static string SelectionSource(InferenceProviderSettings settings) => settings.Selection switch
+    {
+        InferenceProviderSelection.Explicit => $"{InferenceProviderEnvironment.SelectorVariable} (env)",
+        InferenceProviderSelection.AutoDetected => "auto-detected from credentials",
+        _ => "none"
+    };
+
+    private static string SubjectModelSource(InferenceProviderSettings settings) =>
+        !string.IsNullOrWhiteSpace(ModelOverride) ? "Config.ModelOverride (code)"
+        : VariableSource(InferenceProviderEnvironment.ModelVariableOf(settings.Provider))
+          ?? $"default ({ResolveSubjectModel(settings)})";
+
+    private static string JudgeModelSource(InferenceProviderSettings settings) =>
+        VariableSource(InferenceProviderEnvironment.JudgeVariableOf(settings.Provider)) ?? "subject model";
+
+    private static string EmbeddingModelSource(InferenceProviderSettings settings) =>
+        !string.IsNullOrWhiteSpace(EmbeddingModelOverride) ? "Config.EmbeddingModelOverride (code)"
+        : VariableSource(InferenceProviderEnvironment.EmbeddingVariableOf(settings.Provider))
+          ?? $"default ({PreferredEmbeddingDeployment})";
+
+    private static string? VariableSource(string? name) =>
+        name is not null && NonBlank(Environment.GetEnvironmentVariable(name)) is not null
+            ? $"{name} (env)"
+            : null;
 
     private static string FirstNonBlank(params string?[] values) =>
         values.Select(NonBlank).First(value => value is not null)!;
 
+    /// <summary>
+    /// The Azure-protocol name policy. Slashes are excluded deliberately: an Azure deployment name
+    /// is interpolated into the request path, so permitting a separator alongside periods would
+    /// make <c>../..</c> a traversal rather than a nonsense name.
+    /// </summary>
     internal static bool IsValidDeploymentName(string? value) =>
         !string.IsNullOrWhiteSpace(value)
         && value.Trim().All(static character =>
             char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.');
+
+    /// <summary>
+    /// The OpenAI-protocol name policy. A model there is a body field rather than a path segment
+    /// and is routinely namespaced, as in <c>zai-org/GLM-5.3-Flash</c>, so a slash is allowed while
+    /// relative and empty segments are not.
+    /// </summary>
+    internal static bool IsValidModelName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+
+        var trimmed = value.Trim();
+        if (trimmed.StartsWith('/') || trimmed.EndsWith('/')) return false;
+        if (trimmed.Contains("..", StringComparison.Ordinal)) return false;
+        if (trimmed.Contains("//", StringComparison.Ordinal)) return false;
+
+        return trimmed.All(static character =>
+            char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.' or '/' or ':');
+    }
+
+    /// <summary>The name policy that applies to the currently resolved host.</summary>
+    internal static bool IsValidModelNameForResolvedProvider(string? value) =>
+        ProviderSettings.UsesAzureProtocol ? IsValidDeploymentName(value) : IsValidModelName(value);
 
     private static bool IsFoundryProjectEndpoint(Uri endpoint)
     {
@@ -454,7 +654,7 @@ public static class Config
         }
 
         // Common opaque-token forms that may not equal the currently configured API key. This is
-        // deliberately conservative: deployment names are labels, never secret storage.
+        // deliberately conservative: model names are labels, never secret storage.
         return trimmed.Length >= 16 && trimmed.StartsWith("sk-", StringComparison.OrdinalIgnoreCase)
             || trimmed.Length >= 24 && trimmed.StartsWith("eyJ", StringComparison.Ordinal)
             || trimmed.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase);
@@ -474,25 +674,40 @@ public static class Config
 }
 
 /// <summary>
-/// Immutable composition-scoped Azure configuration. Its string form deliberately contains only
-/// safe authentication and deployment labels.
+/// Immutable composition-scoped live configuration. Its string form deliberately contains only
+/// safe provider, authentication, and model labels.
 /// </summary>
 internal sealed class LiveConfigurationSnapshot(
+    InferenceProvider provider,
+    string providerTag,
+    string providerDisplayName,
     Uri endpoint,
     AzureOpenAiAuthenticationMode authenticationMode,
     AzureKeyCredential? apiKeyCredential,
+    string? apiKey,
     string? managedIdentityClientId,
     AzureOpenAiDeploymentSelection deployments)
 {
+    internal InferenceProvider Provider { get; } = provider;
+    internal string ProviderTag { get; } = providerTag;
+    internal string ProviderDisplayName { get; } = providerDisplayName;
     internal Uri Endpoint { get; } = endpoint;
     internal AzureOpenAiAuthenticationMode AuthenticationMode { get; } = authenticationMode;
     internal AzureKeyCredential? ApiKeyCredential { get; } = apiKeyCredential;
+
+    /// <summary>The raw key for the OpenAI-protocol branch. Never logged, never printed.</summary>
+    internal string? ApiKey { get; } = apiKey;
+
     internal string? ManagedIdentityClientId { get; } = managedIdentityClientId;
     internal string ModelDeployment => Deployments.SubjectDeployment;
     internal string JudgeDeployment => Deployments.JudgeDeployment;
     internal string EmbeddingDeployment => Deployments.EmbeddingDeployment;
     internal AzureOpenAiDeploymentSelection Deployments { get; } = deployments;
 
+    /// <summary>True when this snapshot is built with the Azure OpenAI protocol.</summary>
+    internal bool UsesAzureProtocol =>
+        Provider is InferenceProvider.AzureOpenAI or InferenceProvider.Foundry;
+
     public override string ToString() =>
-        $"auth={AuthenticationMode}; {Deployments}";
+        $"provider={ProviderTag}; auth={AuthenticationMode}; {Deployments}";
 }

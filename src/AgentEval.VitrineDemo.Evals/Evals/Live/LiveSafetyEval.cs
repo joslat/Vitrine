@@ -38,7 +38,7 @@ internal sealed class AgentEvalRedTeamSafetyEvaluator : ILiveSafetyEvaluator
     internal static readonly IReadOnlyList<string> AttackNames = ["Jailbreak", "SystemPromptExtraction"];
 
     public string TargetId => Target;
-    public string ModelId => Config.Deployments.SubjectLabel;
+    public string ModelId => Config.ModelIdentity;
 
     public async Task<LiveSafetySummary> RunAsync(
         LiveSafetyRequest request,

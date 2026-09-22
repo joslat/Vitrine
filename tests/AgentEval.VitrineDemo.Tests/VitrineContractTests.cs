@@ -154,6 +154,9 @@ public sealed class VitrineContractTests
     [Fact]
     public void HashBoundariesRejectConfiguredSecretsBeforeDigesting()
     {
+        // Scrub EVERY provider variable: an ambient key for any host would otherwise
+        // auto-detect into this test and change what it is asserting on.
+        using var providerEnvironment = new ProviderEnvironmentScope();
         const string key = "SENTINEL-UNLABELLED-VITRINE-KEY-9371";
         const string endpoint = "https://sentinel-prehash.example.invalid/openai";
         var oldKey = Environment.GetEnvironmentVariable("AZURE_OPENAI_API_KEY");
@@ -179,6 +182,9 @@ public sealed class VitrineContractTests
     [Fact]
     public void CredentialBannerPrintsDeploymentOnly()
     {
+        // Scrub EVERY provider variable: an ambient key for any host would otherwise
+        // auto-detect into this test and change what it is asserting on.
+        using var providerEnvironment = new ProviderEnvironmentScope();
         const string endpoint = "https://synthetic-vitrine-resource.example.invalid/";
         const string key = "sk-SYNTHETIC-VITRINE-KEY-DO-NOT-USE-123456789";
         const string deployment = "vitrine-test-deployment";
@@ -193,7 +199,7 @@ public sealed class VitrineContractTests
             Environment.SetEnvironmentVariable("AZURE_OPENAI_API_KEY", key);
             Environment.SetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT", deployment);
             Console.SetOut(writer);
-            Galaxus.RecommendationAgent.Config.PrintAzureTarget();
+            Galaxus.RecommendationAgent.Config.PrintProviderTarget();
         }
         finally
         {

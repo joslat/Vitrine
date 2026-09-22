@@ -85,8 +85,9 @@ public static class EmbeddingCacheBuilder
             PrintRefusal(
                 $"Embedding source '{source.Name}' ({source.ModelId}) is OFFLINE.\n" +
                 "     Writing it into a committed asset would invite a reader to believe the file holds\n" +
-                "     real embedding-model vectors. Configure AZURE_OPENAI_ENDPOINT plus an explicit supported authentication mode and\n" +
-                "     AZURE_OPENAI_EMBEDDING_DEPLOYMENT, or pass allowOfflineSource: true deliberately.");
+                "     real embedding-model vectors. Select an inference provider (AI_INFERENCE_PROVIDER, or the\n" +
+                "     credentials of one host) and optionally that host's embedding-model variable, or pass\n" +
+                "     allowOfflineSource: true deliberately.");
             return null;
         }
 

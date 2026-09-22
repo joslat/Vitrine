@@ -97,8 +97,11 @@ public sealed class LiveEvalServices
             || trimmed.StartsWith("eyJ", StringComparison.Ordinal)
                 && trimmed.Count(static character => character == '.') >= 2)
             return "configured-model";
+        // Slash and at-sign are kept: a host-namespaced model such as zai-org/GLM-5.3-Flash and the
+        // model@provider identity are both legitimate here, and stripping them would rewrite the
+        // very fact this label records.
         var safe = new string(trimmed.Where(static character =>
-            char.IsLetterOrDigit(character) || character is '-' or '_' or '.').ToArray());
+            char.IsLetterOrDigit(character) || character is '-' or '_' or '.' or '/' or '@').ToArray());
         return safe.Length is > 0 and <= 80 ? safe : "configured-model";
     }
 
@@ -459,7 +462,7 @@ public sealed class LiveEvalServices
     private sealed class DefaultAgentSubject : ILiveEvalSubject
     {
         public string ArmId => "robin-agent-live";
-        public string ModelId => Config.Deployments.SubjectLabel;
+        public string ModelId => Config.ModelIdentity;
         public LiveSubjectArchitecture Architecture => LiveSubjectArchitecture.Agent;
 
         public async Task<LiveSubjectObservation> RunAsync(
@@ -526,7 +529,7 @@ public sealed class LiveEvalServices
     private sealed class DefaultWorkflowSubject : ILiveEvalSubject
     {
         public string ArmId => "discovery-workflow-live";
-        public string ModelId => Config.Deployments.SubjectLabel;
+        public string ModelId => Config.ModelIdentity;
         public LiveSubjectArchitecture Architecture => LiveSubjectArchitecture.Workflow;
 
         public async Task<LiveSubjectObservation> RunAsync(
@@ -649,7 +652,7 @@ public sealed class LiveEvalServices
 
     private sealed class DefaultJudge : ILiveEvalJudge
     {
-        public string ModelId => Config.Deployments.JudgeLabel;
+        public string ModelId => Config.JudgeModelIdentity;
 
         public async Task<EvaluationResult> EvaluateAsync(
             LiveJudgeRequest request,

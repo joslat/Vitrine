@@ -101,7 +101,7 @@ public static class Demo02_InterestMapWorkflow
                 return 2;
             }
 
-            Config.PrintAzureTarget();
+            Config.PrintProviderTarget();
             Console.WriteLine();
         }
 
@@ -189,7 +189,7 @@ public static class Demo02_InterestMapWorkflow
             // endpoint, which names the Azure resource, and never the key in any form.
             var arm = offline
                 ? "offline baseline — no model call"
-                : $"live loop · subject deployment {Config.Deployments.SubjectLabel} · {Config.Readiness.AuthenticationLabel}";
+                : $"live loop · {Config.Readiness.ProviderDisplayName} · subject model {Config.Deployments.SubjectLabel} · {Config.Readiness.AuthenticationLabel}";
 
             var written = RunReportHtml.Write(
                 reportPath, "Demo 02 — 5 executors, 1 loop-back edge", arm,
@@ -630,9 +630,10 @@ public static class Demo02_InterestMapWorkflow
     private static void PrintMissingCredentials()
     {
         Console.ForegroundColor = ConsoleColor.Yellow;
-        Console.WriteLine("\n  ⚠️  Skipping the live loop — Azure OpenAI is not locally ready.");
+        Console.WriteLine("\n  ⚠️  Skipping the live loop — no inference provider is locally ready.");
         Console.WriteLine($"     {Config.Readiness.BlockingReason}");
-        Console.WriteLine("     Configure API-key, local Entra, or managed-identity authentication as documented in");
+        Console.WriteLine("     Select a host with AI_INFERENCE_PROVIDER (azure, bitdeer, openai, foundry,");
+        Console.WriteLine("     openai-compatible) and give it the variables named above, as documented in");
         Console.WriteLine("     docs/Vitrine-Live-Run-Setup.html, or run the deterministic path:");
         Console.WriteLine("       dotnet run --project src/AgentEval.VitrineDemo -- 2 --offline\n");
         Console.ResetColor();

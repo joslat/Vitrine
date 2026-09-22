@@ -19,9 +19,10 @@
 <a class="skip" href="#content">Skip to content</a>
 <header class="hero"><div class="wrap">
   <div class="eyebrow">VITRINE · Operator reference</div>
-  <h1>Microsoft Foundry live-run setup</h1>
-  <p class="lead">Provision the deployment types VITRINE understands, select authentication for one
-    PowerShell session, run the smallest useful smoke, and keep claims inside the evidence.</p>
+  <h1>Live-run setup</h1>
+  <p class="lead">Choose which inference host answers, provision the model types VITRINE
+    understands, select authentication for one PowerShell session, run the smallest useful smoke,
+    and keep claims inside the evidence.</p>
 </div></header>
 <nav class="topnav" aria-label="VITRINE documentation">
   <div class="wrap">
@@ -37,6 +38,7 @@
 <main id="content" class="doc-shell">
 <aside class="toc" aria-label="On this page"><strong>On this page</strong><ul>
   <li><a href="#boundary">Know the boundary</a></li>
+  <li><a href="#providers">Choose the host</a></li>
   <li><a href="#foundry">Prepare Foundry</a></li>
   <li><a href="#variables">Choose authentication and deployments</a></li>
   <li><a href="#local-check">Check locally</a></li>
@@ -61,6 +63,44 @@
   <p>A one-case smoke can establish that this checkout reached a named deployment and produced one
     observed result. It does not establish stochastic reliability, production fitness, business
     impact, or the behavior of another model/version.</p>
+
+  <h2 id="providers">Choose the inference host</h2>
+  <p><code>AI_INFERENCE_PROVIDER</code> decides which host answers. Leave it unset and VITRINE
+    auto-detects in the order below, so a machine that has only ever configured
+    <code>AZURE_OPENAI_*</code> behaves exactly as it did before this selector existed.</p>
+  <table>
+    <thead><tr><th>Value</th><th>Host</th><th>Required</th><th>Optional, with defaults</th></tr></thead>
+    <tbody>
+      <tr><td><code>azure</code></td><td>Azure OpenAI resource</td><td><code>AZURE_OPENAI_ENDPOINT</code>, <code>AZURE_OPENAI_API_KEY</code> (not needed in an Entra mode)</td><td><code>AZURE_OPENAI_AUTH_MODE</code>, <code>AZURE_OPENAI_DEPLOYMENT</code> (<code>gpt-5-mini</code>), <code>AZURE_OPENAI_JUDGE_DEPLOYMENT</code>, <code>AZURE_OPENAI_EMBEDDING_DEPLOYMENT</code></td></tr>
+      <tr><td><code>bitdeer</code></td><td>Bitdeer AI Model Studio</td><td><code>BITDEER_API_KEY</code></td><td><code>BITDEER_ENDPOINT</code> (<code>https://api-inference.bitdeer.ai/v1</code>), <code>BITDEER_MODEL</code> (<code>zai-org/GLM-5.3-Flash</code>), <code>BITDEER_JUDGE_MODEL</code>, <code>BITDEER_EMBEDDING_MODEL</code></td></tr>
+      <tr><td><code>openai</code></td><td>OpenAI</td><td><code>OPENAI_API_KEY</code></td><td><code>OPENAI_BASE_URL</code> (<code>https://api.openai.com/v1</code>), <code>OPENAI_MODEL</code> (<code>gpt-4o-mini</code>), <code>OPENAI_JUDGE_MODEL</code>, <code>OPENAI_EMBEDDING_MODEL</code></td></tr>
+      <tr><td><code>foundry</code></td><td>Microsoft Foundry resource</td><td><code>FOUNDRY_ENDPOINT</code>, <code>FOUNDRY_API_KEY</code>, <code>FOUNDRY_MODEL</code></td><td><code>FOUNDRY_JUDGE_MODEL</code>, <code>FOUNDRY_EMBEDDING_MODEL</code></td></tr>
+      <tr><td><code>openai-compatible</code></td><td>vLLM, Ollama, LM Studio, Together, Groq&hellip;</td><td><code>OPENAI_COMPATIBLE_ENDPOINT</code>, <code>OPENAI_COMPATIBLE_MODEL</code></td><td><code>OPENAI_COMPATIBLE_API_KEY</code> (a keyless local server needs none), <code>OPENAI_COMPATIBLE_JUDGE_MODEL</code>, <code>OPENAI_COMPATIBLE_EMBEDDING_MODEL</code></td></tr>
+    </tbody>
+  </table>
+  <p><strong>A named host that is missing variables fails closed and says which ones.</strong> It
+    never falls back to another host whose credentials happen to be present: running a paid
+    benchmark on the model you did not choose is worse than not running it. A host you did not name
+    and only half-configured reports what <em>that</em> host lacks, rather than reciting every
+    host's requirements at you.</p>
+  <p><strong>Bitdeer needs one variable.</strong> That is what defaulting its endpoint and model is
+    for:</p>
+  <pre><code>$env:AI_INFERENCE_PROVIDER = 'bitdeer'
+$env:BITDEER_API_KEY = Read-Host 'Bitdeer API key' -MaskInput
+
+# Optional: a different model on the same host.
+# $env:BITDEER_MODEL = 'zai-org/GLM-5.3-Flash'
+
+# Close this PowerShell session when finished so its secret leaves the process environment.
+dotnet run --project src/AgentEval.VitrineDemo -- 1 --live --confirm-paid</code></pre>
+  <p>Azure OpenAI and a Microsoft Foundry resource speak the Azure OpenAI protocol; every other host
+    is an OpenAI client at its own base URL. Those endpoints must be <code>https</code>, or
+    <code>http</code> only to a loopback address, so a key is never sent in cleartext to a remote
+    host. <code>VITRINE_PROVIDER_NETWORK_TIMEOUT_S</code> (default 180) bounds one attempt; the
+    SDK's own 100-second default can fire on a slow real model and abort a whole run.</p>
+  <p>The remaining sections cover the Azure-protocol path in detail. On any other host, read
+    &ldquo;deployment&rdquo; as &ldquo;model&rdquo; and substitute that host's variables from the
+    table above; the readiness check, the smoke run, and the evidence rules are identical.</p>
 
   <h2 id="foundry">Prepare the Microsoft Foundry resource</h2>
   <ol>

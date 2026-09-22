@@ -33,6 +33,9 @@ public sealed class AppSmokeTests
     [Fact]
     public void ShellDisplayStateContainsNoEnvironmentConfiguration()
     {
+        // Scrub EVERY provider variable: an ambient key for any host would otherwise
+        // auto-detect into this test and change what it is asserting on.
+        using var providerEnvironment = new ProviderEnvironmentScope();
         const string endpoint = "https://sentinel-vitrine-resource.example.invalid/";
         const string key = "SENTINEL-VITRINE-SECRET";
         var originalEndpoint = Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT");

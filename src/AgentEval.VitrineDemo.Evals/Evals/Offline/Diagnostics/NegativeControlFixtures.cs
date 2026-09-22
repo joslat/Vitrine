@@ -6,6 +6,7 @@ using Galaxus.RecommendationAgent.Domain;
 using Galaxus.RecommendationAgent.Evaluation;
 using Galaxus.RecommendationAgent.Guardrails;
 using Galaxus.RecommendationAgent.Observability;
+using Galaxus.RecommendationAgent.Providers;
 using Galaxus.RecommendationAgent.Retrieval;
 using Galaxus.RecommendationAgent.Rendering;
 using Galaxus.RecommendationAgent.Tools;
@@ -296,8 +297,10 @@ internal sealed record ControlEnvironment(
             start.ArgumentList.Add("-EvalProofOnly");
             start.ArgumentList.Add("-ProofReportPath");
             start.ArgumentList.Add(reportPath);
-            start.Environment.Remove("AZURE_OPENAI_API_KEY");
-            start.Environment.Remove("AZURE_OPENAI_ENDPOINT");
+            // Every provider variable, not only the Azure pair: an ambient key for any host would
+            // hand this "offline" child process a configured provider through auto-detection.
+            foreach (var name in InferenceProviderEnvironment.AllVariables)
+                start.Environment.Remove(name);
             start.Environment.Remove("VITRINE_RUN_LIVE_MODEL_TESTS");
             using var process = Process.Start(start)
                 ?? throw new InvalidOperationException("The offline eval proof process did not start.");
