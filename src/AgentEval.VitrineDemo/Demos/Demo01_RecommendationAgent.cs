@@ -173,7 +173,7 @@ public static class Demo01_RecommendationAgent
 
         if (arm == RecommendationExecutionArm.LiveAzure)
         {
-            Config.PrintAzureTarget();
+            Config.PrintProviderTarget();
             Console.WriteLine();
         }
 
@@ -272,7 +272,7 @@ public static class Demo01_RecommendationAgent
                 RecommendationExecutionArm.ZeroModelBaseline => "offline baseline — no model call",
                 RecommendationExecutionArm.ScriptedAgent => "scripted ChatClient — deterministic local chat boundary",
                 RecommendationExecutionArm.LiveAzure =>
-                    $"live agent · subject deployment {Config.Deployments.SubjectLabel} · {Config.Readiness.AuthenticationLabel}",
+                    $"live agent · {Config.Readiness.ProviderDisplayName} · subject model {Config.Deployments.SubjectLabel} · {Config.Readiness.AuthenticationLabel}",
                 _ => throw new InvalidOperationException("The Demo01 report arm was not recognized."),
             };
 
@@ -884,9 +884,10 @@ public static class Demo01_RecommendationAgent
     private static void PrintMissingCredentials()
     {
         Console.ForegroundColor = ConsoleColor.Yellow;
-        Console.WriteLine("\n  ⚠️  Skipping the live run — Azure OpenAI is not locally ready.");
+        Console.WriteLine("\n  ⚠️  Skipping the live run — no inference provider is locally ready.");
         Console.WriteLine($"     {Config.Readiness.BlockingReason}");
-        Console.WriteLine("     Configure API-key, local Entra, or managed-identity authentication as documented in");
+        Console.WriteLine("     Select a host with AI_INFERENCE_PROVIDER (azure, bitdeer, openai, foundry,");
+        Console.WriteLine("     openai-compatible) and give it the variables named above, as documented in");
         Console.WriteLine("     docs/Vitrine-Live-Run-Setup.html, or run the deterministic path:");
         Console.WriteLine("       dotnet run --project src/AgentEval.VitrineDemo -- 1 --offline\n");
         Console.ResetColor();

@@ -13,6 +13,7 @@ using AgentEval.VitrineDemo.App.Models;
 using AgentEval.VitrineDemo.App.Runtime;
 using AgentEval.VitrineDemo.App.ViewModels;
 using AgentEval.VitrineDemo.Evals;
+using Galaxus.RecommendationAgent.Providers;
 using AgentEval.VitrineDemo.Evals.Live;
 using Galaxus.RecommendationAgent.Catalog;
 using Galaxus.RecommendationAgent.Domain;
@@ -201,31 +202,27 @@ public static class VitrineArtifactSerializer
     /// This deliberately follows every public string-bearing branch, including future additive
     /// snapshot fields, before integrity serialization is allowed to begin.
     /// </summary>
-    private static bool ContainsUnsafeString(object value)
-    {
-        var configuredApiKey = NonBlankEnvironmentValue("AZURE_OPENAI_API_KEY");
-        var configuredEndpoint = NonBlankEnvironmentValue("AZURE_OPENAI_ENDPOINT");
-        var configuredManagedIdentityClientId =
-            NonBlankEnvironmentValue("AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID");
-        return ContainsString(value, text =>
-            configuredApiKey is not null && text.Contains(configuredApiKey, StringComparison.Ordinal)
-            || configuredEndpoint is not null && text.Contains(configuredEndpoint, StringComparison.OrdinalIgnoreCase)
-            || configuredManagedIdentityClientId is not null
-                && text.Contains(configuredManagedIdentityClientId, StringComparison.OrdinalIgnoreCase)
+    private static bool ContainsUnsafeString(object value) =>
+        ContainsString(value, static text =>
+            ContainsAnyConfiguredSecret(text)
             || !string.Equals(PayloadPreviewPolicy.Sanitize(text), text, StringComparison.Ordinal));
-    }
 
-    private static bool ContainsConfiguredSecret(object value)
+    private static bool ContainsConfiguredSecret(object value) =>
+        ContainsString(value, static text => ContainsAnyConfiguredSecret(text));
+
+    /// <summary>
+    /// Matches the value of any provider key or endpoint currently configured, from the resolver's
+    /// single list, so a host added later cannot be half-covered here.
+    /// </summary>
+    private static bool ContainsAnyConfiguredSecret(string text)
     {
-        var configuredApiKey = NonBlankEnvironmentValue("AZURE_OPENAI_API_KEY");
-        var configuredEndpoint = NonBlankEnvironmentValue("AZURE_OPENAI_ENDPOINT");
-        var configuredManagedIdentityClientId =
-            NonBlankEnvironmentValue("AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID");
-        return ContainsString(value, text =>
-            configuredApiKey is not null && text.Contains(configuredApiKey, StringComparison.Ordinal)
-            || configuredEndpoint is not null && text.Contains(configuredEndpoint, StringComparison.OrdinalIgnoreCase)
-            || configuredManagedIdentityClientId is not null
-                && text.Contains(configuredManagedIdentityClientId, StringComparison.OrdinalIgnoreCase));
+        foreach (var variable in InferenceProviderEnvironment.SecretBearingVariables)
+        {
+            var configured = NonBlankEnvironmentValue(variable.Name);
+            if (configured is not null && text.Contains(configured, variable.Comparison)) return true;
+        }
+
+        return false;
     }
 
     private static bool ContainsString(object value, Func<string, bool> predicate)

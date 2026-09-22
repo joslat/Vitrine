@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using Galaxus.RecommendationAgent.Catalog;
+using Galaxus.RecommendationAgent.Providers;
 using Galaxus.RecommendationAgent.Retrieval;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
@@ -494,7 +495,7 @@ public static class GalaxusDiscoveryLoop
 
     private static IChatClient CreateChatClient()
     {
-        var azureClient = AzureOpenAiClientFactory.CreateConfigured(out var configuration);
-        return azureClient.GetChatClient(configuration.ModelDeployment).AsIChatClient();
+        var configuration = Config.RequireLiveConfiguration();
+        return InferenceClientFactory.CreateChatClient(configuration, configuration.ModelDeployment);
     }
 }

@@ -8,6 +8,7 @@ using Galaxus.RecommendationAgent.Catalog;
 using Galaxus.RecommendationAgent.Domain;
 using Galaxus.RecommendationAgent.Guardrails;
 using Galaxus.RecommendationAgent.Observability;
+using Galaxus.RecommendationAgent.Providers;
 using Galaxus.RecommendationAgent.Workflows;
 
 namespace Galaxus.RecommendationAgent.Rendering;
@@ -58,15 +59,11 @@ public static class RunReportHtml
     /// <summary>Environment variables whose values may never appear in a written report.</summary>
     /// <remarks>
     /// The bar comes from the environment, not from the page: the artifact being checked does not
-    /// get to supply the thing it is checked against. <c>AZURE_OPENAI_ENDPOINT</c> is included as
-    /// well as the key because the endpoint URL names the Azure resource.
+    /// get to supply the thing it is checked against. Every provider's endpoint is included as well
+    /// as its key, because an endpoint URL names the resource and can itself carry a credential.
     /// </remarks>
     private static readonly string[] ForbiddenEnvironmentValues =
-    [
-        "AZURE_OPENAI_API_KEY",
-        "AZURE_OPENAI_ENDPOINT",
-        "AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID"
-    ];
+        [.. InferenceProviderEnvironment.SecretBearingVariables.Select(static variable => variable.Name)];
 
     /// <summary>
     /// Writes the report and returns the path it was written to.

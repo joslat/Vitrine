@@ -307,7 +307,7 @@ public static class EmbeddingSpace
             return FallBack(
                 requested,
                 $"the {index.CachedVectorCount} committed '{index.ModelId}' product vectors validated, but a QUERY "
-              + "must be embedded at search time and Azure OpenAI live configuration is not ready. An "
+              + "must be embedded at search time and no inference provider is locally ready. An "
               + "index with no way to embed a query returns nothing at all, which is worse than a different space",
                 index.LoadWarnings);
         }
@@ -359,11 +359,11 @@ public static class EmbeddingSpace
         var reasonText =
             (requested == EmbeddingSpaceChoice.Auto ? "default" : "requested on the command line (--real-vectors)")
           + $": {searchable.CachedVectorCount} committed '{searchable.ModelId}' product vectors validated, and "
-          + $"QUERIES are embedded LIVE against deployment '{live!.ModelId}' at search time. "
+          + $"QUERIES are embedded LIVE against model '{live!.ModelId}' at search time. "
           + $"Space identity probe: cosine {cosine:F4} against the committed vector for the same text "
           + $"(expected 1.0000, floor {SpaceIdentityProbeFloor:F2}). {probeNote}"
           + (overridden
-                ? $" ⚠️  AZURE_OPENAI_EMBEDDING_DEPLOYMENT resolves to '{configured}', which was NOT used: the "
+                ? $" ⚠️  The configured embedding model resolves to '{configured}', which was NOT used: the "
                 + "committed index names the only embedder that can answer questions about it, and two "
                 + "embedding models are two spaces. Rebuild the index if you want a different one."
                 : string.Empty);

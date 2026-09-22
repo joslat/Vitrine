@@ -240,6 +240,9 @@ public sealed class EvaluationHardeningTests
     [Fact]
     public async Task UnsafeAssessmentEvidenceNeverEntersResultOrProgress()
     {
+        // Scrub EVERY provider variable: an ambient key for any host would otherwise
+        // auto-detect into this test and change what it is asserting on.
+        using var providerEnvironment = new ProviderEnvironmentScope();
         const string key = "UNLABELLED-PROGRESS-KEY-7291";
         var previous = Environment.GetEnvironmentVariable("AZURE_OPENAI_API_KEY");
         try
@@ -495,6 +498,9 @@ public sealed class EvaluationHardeningTests
     [Fact]
     public void AllEvaluationReportProjectionsRejectEmbeddedConfiguredValuesBeforeWriting()
     {
+        // Scrub EVERY provider variable: an ambient key for any host would otherwise
+        // auto-detect into this test and change what it is asserting on.
+        using var providerEnvironment = new ProviderEnvironmentScope();
         const string apiKey = "SENTINEL-EVAL-OPAQUE-KEY-7D39F2";
         const string endpoint = "SENTINEL-EVAL-OPAQUE-ENDPOINT";
         var originalEndpoint = Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT");

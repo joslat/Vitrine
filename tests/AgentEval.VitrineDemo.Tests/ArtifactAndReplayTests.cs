@@ -18,6 +18,9 @@ public sealed class ArtifactAndReplayTests
     [Fact]
     public async Task ExportContainsNoEnvironmentSecretOrEndpointAndRoundTrips()
     {
+        // Scrub EVERY provider variable: an ambient key for any host would otherwise
+        // auto-detect into this test and change what it is asserting on.
+        using var providerEnvironment = new ProviderEnvironmentScope();
         const string endpoint = "https://sentinel-vitrine-export.example.invalid/path";
         const string key = "SENTINEL-VITRINE-EXPORT-SECRET";
         var originalEndpoint = Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT");
@@ -390,6 +393,9 @@ public sealed class ArtifactAndReplayTests
     [Fact]
     public void ConfiguredSecretsAreRejectedBareOrEmbeddedAcrossCreateIntegrityJsonAndRenderBoundaries()
     {
+        // Scrub EVERY provider variable: an ambient key for any host would otherwise
+        // auto-detect into this test and change what it is asserting on.
+        using var providerEnvironment = new ProviderEnvironmentScope();
         const string apiKey = "SENTINEL-VITRINE-OPAQUE-KEY-4C8E63A1";
         const string endpoint = "SENTINEL-VITRINE-OPAQUE-ENDPOINT";
         const string safeSurface = "safe-observation-surface";

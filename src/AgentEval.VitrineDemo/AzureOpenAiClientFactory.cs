@@ -3,13 +3,15 @@
 
 using Azure.AI.OpenAI;
 using Azure.Identity;
+using Galaxus.RecommendationAgent.Providers;
 using System.Collections.Concurrent;
 
 namespace Galaxus.RecommendationAgent;
 
 /// <summary>
-/// The single Azure OpenAI resource-client composition boundary used by chat, workflow, judge,
-/// and embedding adapters. Credential selection happens here and nowhere else.
+/// The Azure-protocol half of the client composition boundary, shared by an Azure OpenAI resource
+/// and a Microsoft Foundry resource endpoint. Azure credential selection happens here and nowhere
+/// else; <see cref="InferenceClientFactory"/> decides which protocol family is used at all.
 /// </summary>
 internal static class AzureOpenAiClientFactory
 {
@@ -26,13 +28,6 @@ internal static class AzureOpenAiClientFactory
     private static readonly ConcurrentDictionary<string, ManagedIdentityCredential> UserAssignedCredentials =
         new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Creates a resource client and returns the exact configuration snapshot it uses.</summary>
-    internal static AzureOpenAIClient CreateConfigured(out LiveConfigurationSnapshot configuration)
-    {
-        configuration = Config.RequireLiveConfiguration();
-        return Create(configuration);
-    }
-
     /// <summary>Creates a resource client from one immutable configuration snapshot.</summary>
     internal static AzureOpenAIClient Create(LiveConfigurationSnapshot configuration)
     {
@@ -43,18 +38,27 @@ internal static class AzureOpenAiClientFactory
         // retain an old key or bind a later run to an earlier endpoint. Identity credential
         // instances are reused above because their token caches are designed for that lifetime.
 
+        // The SDK default of 100 seconds fires on a slow real model and aborts a whole run, so the
+        // per-attempt timeout is raised here for every authentication mode alike.
+        var options = new AzureOpenAIClientOptions
+        {
+            NetworkTimeout = InferenceProviderEnvironment.NetworkTimeout()
+        };
+
         return configuration.AuthenticationMode switch
         {
             AzureOpenAiAuthenticationMode.ApiKey => new AzureOpenAIClient(
                 configuration.Endpoint,
                 configuration.ApiKeyCredential
-                    ?? throw new InvalidOperationException("API-key authentication was selected without a credential.")),
+                    ?? throw new InvalidOperationException("API-key authentication was selected without a credential."),
+                options),
 
             // This explicit mode is intended only for local development. Hosted production uses
             // ManagedIdentityCredential below so it has no ambiguous fallback chain.
             AzureOpenAiAuthenticationMode.DefaultAzureCredential => new AzureOpenAIClient(
                 configuration.Endpoint,
-                LocalDevelopmentCredential.Value),
+                LocalDevelopmentCredential.Value,
+                options),
 
             AzureOpenAiAuthenticationMode.ManagedIdentity => new AzureOpenAIClient(
                 configuration.Endpoint,
@@ -62,7 +66,8 @@ internal static class AzureOpenAiClientFactory
                     ? UserAssignedCredentials.GetOrAdd(
                         clientId,
                         static id => new ManagedIdentityCredential(ManagedIdentityId.FromUserAssignedClientId(id)))
-                    : SystemAssignedCredential.Value),
+                    : SystemAssignedCredential.Value,
+                options),
 
             _ => throw new InvalidOperationException("Unsupported Azure OpenAI authentication mode.")
         };

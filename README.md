@@ -49,7 +49,7 @@ The live **[VITRINE documentation hub](https://azuresamurai.blog/Vitrine/)** is 
 shareable front door. Its checked-in source links to the
 [value proposal](https://azuresamurai.blog/Vitrine/Vitrine-Digitec-Galaxus-Value-Proposal.html),
 [operator walkthrough](https://azuresamurai.blog/Vitrine/Vitrine-Walkthrough.html),
-[Microsoft Foundry live-run setup](https://azuresamurai.blog/Vitrine/Vitrine-Live-Run-Setup.html),
+[Live-run setup](https://azuresamurai.blog/Vitrine/Vitrine-Live-Run-Setup.html),
 [architecture](https://azuresamurai.blog/Vitrine/Vitrine-Architecture.html),
 [evaluation protocol](https://azuresamurai.blog/Vitrine/Vitrine-Evaluation-Protocol.html),
 [retrieval deep dive](https://azuresamurai.blog/Vitrine/Vitrine-Retrieval-Deep-Dive.html), and
@@ -158,18 +158,47 @@ dotnet run --project src/AgentEval.VitrineDemo.Evals -- `
 dotnet run --project src/AgentEval.VitrineDemo -- 1 --live --confirm-paid
 ```
 
-The live client uses an Azure OpenAI inference/resource endpoint and one explicit authentication
-mode: `api-key`, local-development `DefaultAzureCredential`, or deterministic hosted
-`ManagedIdentityCredential` (system- or user-assigned). An unset `AZURE_OPENAI_AUTH_MODE` keeps
-the API-key path only for backward compatibility; an explicitly selected identity mode never
-silently falls back to a key. `AZURE_OPENAI_JUDGE_DEPLOYMENT` can separate the judge from the
-subject and otherwise explicitly resolves to the subject deployment. Optional live embedding work
-uses the same resource/authentication composition with `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`. The
-[Microsoft Foundry live-run guide](https://azuresamurai.blog/Vitrine/Vitrine-Live-Run-Setup.html)
+`AI_INFERENCE_PROVIDER` selects which host answers: `azure`, `bitdeer`, `openai`, `foundry`, or
+`openai-compatible`. Leave it unset and VITRINE auto-detects in that order, so a machine that has
+only ever configured `AZURE_OPENAI_*` behaves exactly as it did before the selector existed. A host
+named explicitly but configured incompletely **fails closed with the missing variable named** — it
+never falls back to a host you did not choose, because running a paid benchmark on the wrong model
+is worse than not running it. Every measurement records `model@provider`, since the same model name
+on two hosts is not the same measurement.
+
+| Host | Required | Optional, with defaults |
+|---|---|---|
+| `azure` | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` | `AZURE_OPENAI_AUTH_MODE`, `AZURE_OPENAI_DEPLOYMENT` (`gpt-5-mini`), `AZURE_OPENAI_JUDGE_DEPLOYMENT`, `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` |
+| `bitdeer` | `BITDEER_API_KEY` | `BITDEER_ENDPOINT` (`https://api-inference.bitdeer.ai/v1`), `BITDEER_MODEL` (`zai-org/GLM-5.3-Flash`), `BITDEER_JUDGE_MODEL`, `BITDEER_EMBEDDING_MODEL` |
+| `openai` | `OPENAI_API_KEY` | `OPENAI_BASE_URL` (`https://api.openai.com/v1`), `OPENAI_MODEL` (`gpt-4o-mini`), `OPENAI_JUDGE_MODEL`, `OPENAI_EMBEDDING_MODEL` |
+| `foundry` | `FOUNDRY_ENDPOINT`, `FOUNDRY_API_KEY`, `FOUNDRY_MODEL` | `FOUNDRY_JUDGE_MODEL`, `FOUNDRY_EMBEDDING_MODEL` |
+| `openai-compatible` | `OPENAI_COMPATIBLE_ENDPOINT`, `OPENAI_COMPATIBLE_MODEL` | `OPENAI_COMPATIBLE_API_KEY`, `OPENAI_COMPATIBLE_JUDGE_MODEL`, `OPENAI_COMPATIBLE_EMBEDDING_MODEL` |
+
+**Bitdeer needs one variable.** That is the point of defaulting its endpoint and model:
+
+```powershell
+$env:AI_INFERENCE_PROVIDER = 'bitdeer'
+$env:BITDEER_API_KEY       = '<key>'
+dotnet run --project src/AgentEval.VitrineDemo -- 1 --live --confirm-paid
+```
+
+Azure OpenAI and Microsoft Foundry share the Azure protocol; every other host is an OpenAI client at
+its own base URL, which must be `https` or `http` only to loopback so a key never travels in
+cleartext. The Azure path keeps one explicit authentication mode: `api-key`, local-development
+`DefaultAzureCredential`, or deterministic hosted `ManagedIdentityCredential` (system- or
+user-assigned). An unset `AZURE_OPENAI_AUTH_MODE` keeps the API-key path only for backward
+compatibility; an explicitly selected identity mode never silently falls back to a key. Each host's
+judge variable can separate the judge from the subject and otherwise explicitly resolves to the
+subject model. Optional live embedding work uses that host's embedding-model variable; on a host
+that serves no `text-embedding-3-small`, set it to a model that host actually has.
+`VITRINE_PROVIDER_NETWORK_TIMEOUT_S` (default 180) bounds one attempt. The
+[live-run setup guide](https://azuresamurai.blog/Vitrine/Vitrine-Live-Run-Setup.html)
 explains required variables, the **Cognitive Services OpenAI User** role, safe session-scoped
 setup, local readiness versus provider connectivity, the smallest CLI/UI smoke, and
-troubleshooting. VITRINE never prints, persists, fingerprints, or hashes the key, token,
-managed-identity client id, or endpoint URL. Raw Eval06 prompts, responses, extraction
+troubleshooting. VITRINE never prints, persists, fingerprints, or hashes any host's key, token,
+managed-identity client id, or endpoint URL; an endpoint that reaches an operator surface is cut
+down to scheme, host, and port, because a configured URL can carry a credential in its user-info,
+path, query, or fragment alike. Raw Eval06 prompts, responses, extraction
 canaries, system instructions, provider messages, and exception text are excluded from its receipt.
 
 Eval process classes are: `0` pass, `1` measured failure, `2` invalid arguments, `3` not measured,
@@ -193,12 +222,32 @@ Public-use boundaries are documented in [NOTICE.md](NOTICE.md), [DATA-PROVENANCE
 [SECURITY.md](SECURITY.md), and [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). The source is
 available under the [MIT License](LICENSE).
 
+## Credits and attribution
+
+VITRINE is the work of **José Luis Latorre Millas** — the idea, the creative direction, and the
+concept are his. The evidence-first premise that shapes every part of this repository, the personas
+and scenarios, the guardrail and abstention design, and the evaluation strategy that refuses to
+present an estimate as a measurement all originate with the author. AI coding assistants supported
+implementation and review; authorship and responsibility remain with him.
+See [AUTHORS.md](AUTHORS.md) for the full credit.
+
+This project is released under the [MIT License](LICENSE), which lets you use, modify, and
+redistribute it freely, including commercially. It makes **one** condition, and it is required:
+
+> The above copyright notice and this permission notice shall be included in all copies or
+> substantial portions of the Software.
+
+So if you reuse this work in whole or in part, keep `LICENSE` alongside it, keep the
+`Copyright (c) 2026 José Luis Latorre Millas` line intact, and keep the per-file
+`SPDX-License-Identifier: MIT` headers. Beyond that, a visible credit naming the author with a link
+back here is warmly appreciated — a request rather than a licence term.
+
 ## Verification
 
 The current credential-free receipt is:
 
 - Release build: 0 warnings, 0 errors.
-- `Category!=LiveModel`: 450/450 passed, 0 failed, 0 skipped.
+- `Category!=LiveModel`: 482/482 passed, 0 failed, 0 skipped.
 - Offline admitted-check self-test: exit 0.
 - Offline check stages: 6/6 completed; all 5/5 mandatory evaluation gates pass, the matched-quality
   diagnostic is reported separately, and 43/43 registered mutation diagnostics are caught.

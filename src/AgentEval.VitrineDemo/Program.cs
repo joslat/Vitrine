@@ -41,8 +41,8 @@ Console.OutputEncoding = Encoding.UTF8;
 //   --live                  Request the model-backed subject arm (never inferred from credentials).
 //   --confirm-paid          Required with every provider-capable option before work can start.
 //   --rebuild-embeddings    Regenerate Data/catalogue.embeddings.json from a LIVE embedding model.
-//   --model <deployment>    Override AZURE_OPENAI_DEPLOYMENT for this run only.
-//   --embedding-model <d>   Override AZURE_OPENAI_EMBEDDING_DEPLOYMENT for this run only.
+//   --model <name>          Override the resolved host's subject model for this run only.
+//   --embedding-model <n>   Override the resolved host's embedding model for this run only.
 //   --model-timeout <secs>  Demo 02 only: wall-clock ceiling on ONE model call.
 //   --report <path>         Demo 01: self-contained HTML report from the same typed result.
 //   --log [path]            Tee Console.Out + Error to a log file (path optional).
@@ -454,9 +454,9 @@ static async Task ShowMenuAsync(ParsedArgs parsed)
         else if (!Config.IsConfigured)
         {
             Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("  ⚠️  Live mode was confirmed, but Azure OpenAI is not locally ready.");
+            Console.WriteLine("  ⚠️  Live mode was confirmed, but no inference provider is locally ready.");
             Console.WriteLine($"     {Config.Readiness.BlockingReason}");
-            Console.WriteLine("     See docs/Vitrine-Live-Run-Setup.html for API-key, local Entra, and managed-identity setup.");
+            Console.WriteLine("     See docs/Vitrine-Live-Run-Setup.html for each host's variables and setup.");
             Console.WriteLine("     Remove --live to keep every menu entry offline.\n");
             Console.ResetColor();
         }
@@ -521,8 +521,9 @@ static async Task<int> RebuildEmbeddingsAsync()
     {
         Console.ForegroundColor = ConsoleColor.Yellow;
         Console.WriteLine($"\n  ⚠️  Cannot rebuild the embedding assets: {reason}");
-        Console.WriteLine("     Configure the endpoint and one supported authentication mode, plus (optionally)");
-        Console.WriteLine("     AZURE_OPENAI_EMBEDDING_DEPLOYMENT, then run --rebuild-embeddings again.");
+        Console.WriteLine("     Select an inference provider with AI_INFERENCE_PROVIDER (azure, bitdeer, openai,");
+        Console.WriteLine("     foundry, openai-compatible) and its credentials, plus (optionally) that host's");
+        Console.WriteLine("     embedding-model variable, then run --rebuild-embeddings again.");
         Console.WriteLine("     The demo itself needs none of this: its default retrieval path is offline.");
         Console.ResetColor();
         return 2;
@@ -626,8 +627,8 @@ Flags:
                          product document and checking it against its committed vector —
                          expected 1.0, and the measured value is printed. Both spaces are
                          printed in the banner; nothing is ever downgraded silently.
-  --model <deployment>   Override AZURE_OPENAI_DEPLOYMENT for this run only.
-  --embedding-model <d>  Override AZURE_OPENAI_EMBEDDING_DEPLOYMENT for this run only.
+  --model <name>         Override the resolved host's subject model for this run only.
+  --embedding-model <n>  Override the resolved host's embedding model for this run only.
   --model-timeout <secs> Demo 02 only. Wall-clock ceiling on ONE model call (default 60).
                          A stalled deployment must DEGRADE, not queue: lower this to watch
                          every model-backed stage fall back and the loop still answer.

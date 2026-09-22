@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Galaxus.RecommendationAgent.Observability;
+using Galaxus.RecommendationAgent.Providers;
 namespace AgentEval.VitrineDemo.Evals;
 /// <summary>JSON projection of the typed suite result; nullable measurements remain null.</summary>
 public static class EvaluationReportJson {
@@ -293,19 +294,17 @@ internal static class EvaluationReportBoundary {
     private const string UnsafeReportMessage = "Evaluation report contains disallowed secret-bearing content.";
     public static void EnsureSafe(object result) {
         ArgumentNullException.ThrowIfNull(result);
-        var configuredApiKey = NonBlankEnvironmentValue("AZURE_OPENAI_API_KEY");
-        var configuredEndpoint = NonBlankEnvironmentValue("AZURE_OPENAI_ENDPOINT");
-        var configuredManagedIdentityClientId =
-            NonBlankEnvironmentValue("AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID");
+        // Every provider key and endpoint currently configured, from the resolver's single list.
+        var configured = InferenceProviderEnvironment.SecretBearingVariables
+            .Select(variable => (variable.Comparison, Value: NonBlankEnvironmentValue(variable.Name)))
+            .Where(entry => entry.Value is not null)
+            .ToList();
         var visited = new HashSet<object>(ReferenceEqualityComparer.Instance);
         if (Visit(result)) throw new InvalidDataException(UnsafeReportMessage);
         bool Visit(object? current) {
             if (current is null) return false;
             if (current is string text)
-                return configuredApiKey is not null && text.Contains(configuredApiKey, StringComparison.Ordinal)
-                    || configuredEndpoint is not null && text.Contains(configuredEndpoint, StringComparison.OrdinalIgnoreCase)
-                    || configuredManagedIdentityClientId is not null
-                        && text.Contains(configuredManagedIdentityClientId, StringComparison.OrdinalIgnoreCase)
+                return configured.Any(entry => text.Contains(entry.Value!, entry.Comparison))
                     || !string.Equals(RecommendationRuntimeEvents.SafePreview(text), text, StringComparison.Ordinal);
             var type = current.GetType();
             if (type.IsValueType) return false;

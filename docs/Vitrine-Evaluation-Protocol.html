@@ -555,9 +555,11 @@ evaluation-gate or process-exit authority.</p>
 <h3 id="paid-llm-judge">Paid LLM judge</h3>
 <p>Eval 01–05 use a separately composed LLM judge role through
 <code>AtomicLlmEval</code> and the scenario-specific
-criteria/ground-truth contract above. It can route to
-<code>AZURE_OPENAI_JUDGE_DEPLOYMENT</code>; when that variable is absent it deliberately shares
-the subject deployment, and the receipt states that relation. That paid judge path is not part
+criteria/ground-truth contract above. It can route to the resolved host's judge variable
+(<code>AZURE_OPENAI_JUDGE_DEPLOYMENT</code> on Azure, <code>BITDEER_JUDGE_MODEL</code> on Bitdeer,
+and so on); when that variable is absent it deliberately shares the subject model, and the receipt
+states that relation. Receipts record <code>model@provider</code> rather than the model name alone,
+because the same model on two hosts is not the same measurement. That paid judge path is not part
 of the offline <code>matched-quality</code> diagnostic check.</p>
 <h2 id="subject-arms-and-package-boundary">Subject arms and package
 boundary</h2>

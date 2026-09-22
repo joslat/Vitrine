@@ -254,6 +254,9 @@ public sealed class ControlRoomUxTests
     [Fact]
     public void SafePreviewRedactsBareConfiguredValuesBeforeTheyEnterAnEvent()
     {
+        // Scrub EVERY provider variable: an ambient key for any host would otherwise
+        // auto-detect into this test and change what it is asserting on.
+        using var providerEnvironment = new ProviderEnvironmentScope();
         const string key = "bare-configured-value-that-is-not-a-token-pattern";
         const string endpoint = "https://private-resource.example.invalid";
         var previousKey = Environment.GetEnvironmentVariable("AZURE_OPENAI_API_KEY");

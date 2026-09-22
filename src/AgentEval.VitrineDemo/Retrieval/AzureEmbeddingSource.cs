@@ -2,6 +2,7 @@
 // Copyright (c) 2026 José Luis Latorre Millas
 
 using Microsoft.Extensions.AI;
+using Galaxus.RecommendationAgent.Providers;
 
 namespace Galaxus.RecommendationAgent.Retrieval;
 
@@ -119,13 +120,12 @@ public sealed class AzureEmbeddingSource : IEmbeddingSource, IDisposable
     /// <exception cref="InvalidOperationException">Azure OpenAI is not configured.</exception>
     public static AzureEmbeddingSource Create(string? deployment = null)
     {
-        var azureClient = AzureOpenAiClientFactory.CreateConfigured(out var configuration);
+        var configuration = Config.RequireLiveConfiguration();
         var model = string.IsNullOrWhiteSpace(deployment)
             ? configuration.EmbeddingDeployment
             : deployment.Trim();
 
-        IEmbeddingGenerator<string, Embedding<float>> generator =
-            azureClient.GetEmbeddingClient(model).AsIEmbeddingGenerator();
+        var generator = InferenceClientFactory.CreateEmbeddingGenerator(configuration, model);
 
         return new AzureEmbeddingSource(generator, model, DeclaredDimensionsFor(model), ownsGenerator: true);
     }
@@ -220,8 +220,8 @@ public sealed class AzureEmbeddingSource : IEmbeddingSource, IDisposable
                 // Correct the declaration and say so loudly: an index silently built at one
                 // length and queried at another returns nothing and looks like "no matches".
                 throw new InvalidOperationException(
-                    $"Embedding deployment '{ModelId}' returned {vector.Length}-dimensional vectors, " +
-                    $"but {_dimensions} was expected. Point AZURE_OPENAI_EMBEDDING_DEPLOYMENT at a " +
+                    $"Embedding model '{ModelId}' returned {vector.Length}-dimensional vectors, " +
+                    $"but {_dimensions} was expected. Point {EmbeddingVariableName()} at a " +
                     $"{_dimensions}-dimensional model, or rebuild the embedding assets against this one " +
                     "(a mixed-dimension index cannot be searched).");
             }
@@ -234,6 +234,15 @@ public sealed class AzureEmbeddingSource : IEmbeddingSource, IDisposable
         // it makes "cosine == dot product" an invariant this project owns rather than one it hopes for.
         return EmbeddingVectors.Normalized(vector.Span);
     }
+
+    /// <summary>
+    /// The variable an operator would set to change the embedding model on the resolved host —
+    /// <c>AZURE_OPENAI_EMBEDDING_DEPLOYMENT</c> on Azure, <c>BITDEER_EMBEDDING_MODEL</c> on Bitdeer,
+    /// and so on. Naming the wrong host's variable in an error sends the reader to the wrong place.
+    /// </summary>
+    private static string EmbeddingVariableName() =>
+        InferenceProviderEnvironment.EmbeddingVariableOf(Config.ProviderSettings.Provider)
+        ?? "the host's embedding-model variable";
 
     /// <summary>Disposes the wrapped generator when this instance created it.</summary>
     public void Dispose()
